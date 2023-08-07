@@ -16,7 +16,7 @@ runs:
         python-version: '3.x'
 
     - name: 'Install dependencies'
-      run: pip install --upgrade pip && pip install repodynamics[workflow_context]
+      run: pip install repodynamics[workflow_context]
       shell: bash
 
     - name: "Run"
