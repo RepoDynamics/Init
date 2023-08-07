@@ -15,7 +15,7 @@ runs:
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: requirements.txt
+        cache-dependency-path: ${{ github.action_path }}/requirements.txt
 
     - name: 'Install dependencies'
       run: pip install -r ${{ github.action_path }}/requirements.txt
