@@ -30,6 +30,9 @@ runs:
     - run : echo "$PATH"
       shell: bash
 
+    - run: find .
+      shell: bash
+
     - name: "Run"
       # https://github.com/crazy-max/ghaction-dump-context/blob/master/action.yml
       env:
@@ -39,5 +42,5 @@ runs:
         RD_RUNNER_CONTEXT: ${{ toJson(runner) }}
         RD_STRATEGY_CONTEXT: ${{ toJson(strategy) }}
         RD_MATRIX_CONTEXT: ${{ toJson(matrix) }}
-      run: src/workflow_context.py
+      run: python src/workflow_context.py
       shell: bash
