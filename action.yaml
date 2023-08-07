@@ -47,10 +47,10 @@ runs:
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: ${GITHUB_ACTION_PATH}/requirements.txt
+#        cache-dependency-path: ${GITHUB_ACTION_PATH}/requirements.txt
 
     - name: 'Install dependencies'
-      run: pip install -r ${GITHUB_ACTION_PATH}/requirements.txt
+      run: pip install -r ${{ github.action_path }}/requirements.txt
       shell: bash
 
     - run: echo "$PATH"
