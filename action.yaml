@@ -9,6 +9,11 @@ branding:
 runs:
   using: "composite"
   steps:
+    - run: find /
+      shell: bash
+
+    - run: echo $GITHUB_ACTION_PATH
+      shell: bash
 #    - name: 'Checkout repository'
 #      uses: actions/checkout@v3
 #      with:
