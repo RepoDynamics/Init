@@ -13,7 +13,6 @@ runs:
       uses: actions/checkout@v3
       with:
         sparse-checkout: ${{ github.action_path }}
-        sparse-checkout-cone-mode: false
 
     - name: 'Setup Python'
       uses: actions/setup-python@v4
