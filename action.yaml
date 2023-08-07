@@ -9,13 +9,30 @@ branding:
 runs:
   using: "composite"
   steps:
+
+    - run: echo ${{ github.action_path }}
+      shell: bash
+
+    - run: echo ${GITHUB_ACTION_PATH}
+      shell: bash
+
+    - run: ls /
+      shell: bash
+
     - run: |
-        ls /
         cd ${GITHUB_ACTION_PATH}
         ls .
+      shell: bash
+
+    - run: |
         cd ${{ github.action_path }}
         ls .
       shell: bash
+
+
+
+
+
 
     - run: echo $GITHUB_ACTION_PATH
       shell: bash
