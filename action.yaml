@@ -9,27 +9,28 @@ branding:
 runs:
   using: "composite"
   steps:
-    - name: 'Checkout repository'
-      uses: actions/checkout@v3
-      with:
-        sparse-checkout: ${{ github.action_path }}
+#    - name: 'Checkout repository'
+#      uses: actions/checkout@v3
+#      with:
+#        sparse-checkout: ${{ github.action_path }}
+#        sparse-checkout-cone-mode: false
 
     - name: 'Setup Python'
       uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: ${{ github.action_path }}/requirements.txt
+        cache-dependency-path: ${GITHUB_ACTION_PATH}/requirements.txt
 
     - name: 'Install dependencies'
-      run: pip install -r ${{ github.action_path }}/requirements.txt
+      run: pip install -r ${GITHUB_ACTION_PATH}/requirements.txt
       shell: bash
 
     - run: echo "$PATH"
       shell: bash
 
-    - run: echo "${{ github.action_path }}" >> $GITHUB_PATH
-      shell: bash
+#    - run: echo "${{ github.action_path }}" >> $GITHUB_PATH
+#      shell: bash
 
     - run : echo "$PATH"
       shell: bash
