@@ -1,0 +1,39 @@
+name: 'RepoDynamics: Workflow Context'
+author: 'Armin Ariamajd'
+description: 'Add workflow contexts to your job summary.'
+branding:
+  icon: file-text
+  color: blue
+
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: 'Setup Python'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+        cache-dependency-path: requirements.txt
+
+    - name: 'Install dependencies'
+      run: pip install -r requirements.txt
+
+    - run: echo "$PATH"
+
+    - run: echo "${{ github.action_path }}" >> $GITHUB_PATH
+      shell: bash
+
+    - run : echo "$PATH"
+
+    - name: "Run"
+      # https://github.com/crazy-max/ghaction-dump-context/blob/master/action.yml
+      env:
+        RD__WORKFLOW_CONTEXT__GITHUB: ${{ toJson(github) }}
+        RD_JOB_CONTEXT: ${{ toJson(job) }}
+        RD_STEPS_CONTEXT: ${{ toJson(steps) }}
+        RD_RUNNER_CONTEXT: ${{ toJson(runner) }}
+        RD_STRATEGY_CONTEXT: ${{ toJson(strategy) }}
+        RD_MATRIX_CONTEXT: ${{ toJson(matrix) }}
+      run: src/workflow_context.py
