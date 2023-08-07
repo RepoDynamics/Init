@@ -19,13 +19,16 @@ runs:
 
     - name: 'Install dependencies'
       run: pip install -r requirements.txt
+      shell: bash
 
     - run: echo "$PATH"
+      shell: bash
 
     - run: echo "${{ github.action_path }}" >> $GITHUB_PATH
       shell: bash
 
     - run : echo "$PATH"
+      shell: bash
 
     - name: "Run"
       # https://github.com/crazy-max/ghaction-dump-context/blob/master/action.yml
@@ -37,3 +40,4 @@ runs:
         RD_STRATEGY_CONTEXT: ${{ toJson(strategy) }}
         RD_MATRIX_CONTEXT: ${{ toJson(matrix) }}
       run: src/workflow_context.py
+      shell: bash
