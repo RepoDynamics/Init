@@ -9,7 +9,12 @@ branding:
 runs:
   using: "composite"
   steps:
-    - run: find /
+    - run: |
+        ls /
+        cd ${GITHUB_ACTION_PATH}
+        ls .
+        cd ${{ github.action_path }}
+        ls .
       shell: bash
 
     - run: echo $GITHUB_ACTION_PATH
