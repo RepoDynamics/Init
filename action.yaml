@@ -42,5 +42,5 @@ runs:
         RD_RUNNER_CONTEXT: ${{ toJson(runner) }}
         RD_STRATEGY_CONTEXT: ${{ toJson(strategy) }}
         RD_MATRIX_CONTEXT: ${{ toJson(matrix) }}
-      run: python src/workflow_context.py
+      run: python "${{ github.action_path }}/src/workflow_context.py"
       shell: bash
