@@ -46,7 +46,7 @@ runs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.x'
-        cache: 'pip'
+#        cache: 'pip'
 #        cache-dependency-path: ${GITHUB_ACTION_PATH}/requirements.txt
 
     - name: 'Install dependencies'
