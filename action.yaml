@@ -1,6 +1,6 @@
 name: 'RepoDynamics: Workflow Context'
 author: 'Armin Ariamajd'
-description: 'Add workflow contexts to your job summary.'
+description: 'Add workflow contexts to GitHub Actions job summaries.'
 branding:
   icon: file-text
   color: blue
@@ -10,69 +10,22 @@ runs:
   using: "composite"
   steps:
 
-    - run: echo ${{ github.action_path }}
-      shell: bash
-
-    - run: echo ${GITHUB_ACTION_PATH}
-      shell: bash
-
-    - run: ls /
-      shell: bash
-
-    - run: |
-        cd ${GITHUB_ACTION_PATH}
-        ls .
-      shell: bash
-
-    - run: |
-        cd ${{ github.action_path }}
-        ls .
-      shell: bash
-
-
-
-
-
-
-    - run: echo $GITHUB_ACTION_PATH
-      shell: bash
-#    - name: 'Checkout repository'
-#      uses: actions/checkout@v3
-#      with:
-#        sparse-checkout: ${{ github.action_path }}
-#        sparse-checkout-cone-mode: false
-
     - name: 'Setup Python'
       uses: actions/setup-python@v4
       with:
         python-version: '3.x'
-#        cache: 'pip'
-#        cache-dependency-path: ${GITHUB_ACTION_PATH}/requirements.txt
 
     - name: 'Install dependencies'
-      run: pip install -r "${{ github.action_path }}/requirements.txt"
-      shell: bash
-
-    - run: echo "$PATH"
-      shell: bash
-
-#    - run: echo "${{ github.action_path }}" >> $GITHUB_PATH
-#      shell: bash
-
-    - run : echo "$PATH"
-      shell: bash
-
-    - run: find .
+      run: pip install --upgrade pip && pip install repodynamics[workflow_context]
       shell: bash
 
     - name: "Run"
-      # https://github.com/crazy-max/ghaction-dump-context/blob/master/action.yml
       env:
         RD__WORKFLOW_CONTEXT__GITHUB: ${{ toJson(github) }}
-        RD_JOB_CONTEXT: ${{ toJson(job) }}
-        RD_STEPS_CONTEXT: ${{ toJson(steps) }}
-        RD_RUNNER_CONTEXT: ${{ toJson(runner) }}
-        RD_STRATEGY_CONTEXT: ${{ toJson(strategy) }}
-        RD_MATRIX_CONTEXT: ${{ toJson(matrix) }}
-      run: python "${{ github.action_path }}/src/workflow_context.py"
+        RD__WORKFLOW_CONTEXT__JOB: ${{ toJson(job) }}
+        RD__WORKFLOW_CONTEXT__STEPS: ${{ toJson(steps) }}
+        RD__WORKFLOW_CONTEXT__RUNNER: ${{ toJson(runner) }}
+        RD__WORKFLOW_CONTEXT__STRATEGY: ${{ toJson(strategy) }}
+        RD__WORKFLOW_CONTEXT__MATRIX: ${{ toJson(matrix) }}
+      run: python -m repodynamics.actions workflow_context
       shell: bash
