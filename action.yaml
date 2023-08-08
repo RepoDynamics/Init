@@ -83,9 +83,17 @@ runs:
         RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
         RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: |
+        if [[ -z "RD__META__SUMMARY-ONLY" ]]; then
+            echo "RD__META__SUMMARY-ONLY is not set or is empty"
+        else
+            echo "RD__META__SUMMARY-ONLY is set to $RD__META__SUMMARY-ONLY"
+        fi
+        echo $RD__META__SUMMARY-ONLY
         if [ "$RD__META__SUMMARY-ONLY" = "true" ]; then
+          echo "Installing RepoDynamics[meta-summary]..."
           pip install repodynamics[meta-summary]  
-        else  
+        else
+          echo "Installing RepoDynamics[meta]..."
           pip install repodynamics[meta]  
         fi
       shell: bash
