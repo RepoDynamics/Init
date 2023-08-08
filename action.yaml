@@ -1,31 +1,110 @@
-name: 'RepoDynamics: Workflow Context'
+name: 'RepoDynamics Meta'
+description: 'Load repository metadata.'
 author: 'Armin Ariamajd'
-description: 'Add workflow contexts to GitHub Actions job summaries.'
 branding:
   icon: file-text
   color: blue
+
+
+inputs:
+
+  force-update:
+      description: |
+        One of `none`, `core` or `all` (default: none):
+          - none: load entirely from cache, if no changes in metadata files are detected.
+          - core: force update the core metadata, but not the cached API metadata.
+          - all: force update the core metadata and the cached API metadata.
+        Note that when a change is detected, the core metadata is always updated,
+        but non-expired cached API metadata is only updated when `all` is selected.
+      default: none
+      required: false
+
+  checkout-ref:
+    description: 'Reference to checkout, i.e. the `ref` input of `actions/checkout`.'
+    default: ""
+    required: false
+
+
+outputs:
+
+  meta:
+    description: "Repository metadata as a JSON string."
+    value: ${{ steps.output.outputs.meta }}
 
 
 runs:
   using: "composite"
   steps:
 
+    - name: 'Checkout repository from ${{ inputs.branch || github.ref }}'
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ inputs.checkout-ref }}
+
     - name: 'Setup Python'
       uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
-    - name: 'Install dependencies'
-      run: pip install repodynamics[workflow_context]
+    - name: 'Get current date'
+      id: get-date
+      run: |
+        echo "date=$(/bin/date -u "+%Y-%W")" >> $GITHUB_OUTPUT
       shell: bash
 
-    - name: "Run"
+    - name: 'Cache metadata'
+      id: cache
+      # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
+      # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
+      # https://github.com/actions/cache
+      uses: actions/cache@v3
+      with:
+        path: |
+          metadata_full.json
+          metadata_api_cache.yaml
+        # Cache is invalidated when metadata files are changed, or after a week.
+        # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
+        key: >-
+          metadata-${{ steps.get-date.outputs.date }}-${{
+            hashFiles(
+              'meta/*.yaml',
+              'src/metadata.yaml',
+            )
+          }}
+
+    - name: 'Install RepoDynamics'
       env:
-        RD__WORKFLOW_CONTEXT__GITHUB: ${{ toJson(github) }}
-        RD__WORKFLOW_CONTEXT__JOB: ${{ toJson(job) }}
-        RD__WORKFLOW_CONTEXT__STEPS: ${{ toJson(steps) }}
-        RD__WORKFLOW_CONTEXT__RUNNER: ${{ toJson(runner) }}
-        RD__WORKFLOW_CONTEXT__STRATEGY: ${{ toJson(strategy) }}
-        RD__WORKFLOW_CONTEXT__MATRIX: ${{ toJson(matrix) }}
-      run: python -m repodynamics.actions workflow_context
+        RD__META__SUMMARY-ONLY: ${{ inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'}}
+        RD__META__UPDATE-CACHE: ${{ (inputs.force-update == 'all' }}
+        RD__META__CACHE-FILEPATH: metadata_api_cache.yaml
+        RD__META__OUTPUT-FILEPATH: metadata_full.json
+        RD__META__GITHUB-TOKEN: ${{ secrets.GITHUB_TOKEN }}  # or $GITHUB_TOKEN or ${{ github.token }}
+        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
+        RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
+        RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
+      run: |
+        if [ $RD__META__SUMMARY-ONLY ]; then
+          pip install repodynamics[meta-summary]  
+        else  
+          pip install repodynamics[meta]  
+        fi
       shell: bash
+
+    - name: 'Get metadata'
+      if: inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'
+      id: get-metadata
+      run: python -m repodynamics.actions meta
+      shell: bash
+
+    - name: 'Output metadata'
+      if: ${{ !failure() }}
+      id: output
+      run: echo "json=$(cat metadata_full.json)" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: 'Write summary'
+      if: ${{ !failure() && inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
+      run: python -m repodynamics.actions meta-summary
+      shell: bash
+
+
