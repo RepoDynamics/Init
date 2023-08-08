@@ -40,23 +40,27 @@ runs:
       shell: bash
       run: |
         # Intro
-        printf "$(cat ${{github.action_path}}/logo.txt)"
+        printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
     
+
     - name: 'Checkout Repository'
       run: |
         # Checkout Repository
-        echo -e "\033[1;30;103m1️⃣Checking out the repository"
-        echo -e "\033[94m ref: ${{ inputs.checkout-ref }}"
+        H="\033[1;30;35m"  # bold black text on magenta background
+        I="\033[1;94m"      # bold bright-blue text
+        echo -e "\n${H} 1. Checking out the repository \n"
+        echo -e "\t${I}checkout-ref: ${{ inputs.checkout-ref }}"
       shell: bash
     - uses: actions/checkout@v3
       with:
         ref: ${{ inputs.checkout-ref }}
 
+
     - name: 'Setup Python'
       run: |
         # Setup Python
-        echo -e "\033[1;30;103m Setting up Python"
-        echo -e "\033[94m python-version: 3.x"
+        H="\033[1;30;35m"  
+        echo -e "\n${H} 2. Setting up Python \n"
       shell: bash
     - uses: actions/setup-python@v4
       with:
@@ -66,9 +70,8 @@ runs:
     - name: 'Cache'
       run: |
         # Cache
-        echo -e "\033[1;30;103m Getting cache"
-        echo -e "\033[94m path: metadata_full.json, metadata_api_cache.yaml"
-        echo -e "\033[94m key: metadata-${{ steps.get-date.outputs.date }}-${{ hashFiles('meta/*.yaml', 'src/metadata.yaml') }}"
+        H="\033[1;30;35m" 
+        echo -e "\n${H} 3. Initializing cache \n"
       shell: bash
     - id: cache
       # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
@@ -82,27 +85,32 @@ runs:
         # Cache is invalidated when metadata files are changed, or after a week.
         # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
         key: >-
-          metadata-${{ steps.get-date.outputs.date }}-${{
+          metadata-${{
             hashFiles(
               'meta/*.yaml',
               'src/metadata.yaml'
             )
           }}
 
+
     - name: 'Install RepoDynamics'
-      env:
-        SUMMARY_ONLY: ${{ inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
-      run: |
-        GREEN='\033[0;32m'
-        NC='\033[0m' # No Color
-        if [ "$SUMMARY_ONLY" = "true" ]; then
-          echo -e "${GREEN}Installing RepoDynamics[meta-summary].${NC}"
-          pip install repodynamics[meta-summary]  
-        else
-          echo -e "${GREEN}Installing RepoDynamics[meta].${NC}"
-          pip install repodynamics[meta]  
-        fi
       shell: bash
+      run: |
+        # Install RepoDynamics
+        echo -e "\n\033[1;30;35m 4. Installing RepoDynamics \n"
+        GREEN='\033[0;32m'
+        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
+          echo -e "\t${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
+          pip install repodynamics[meta-summary]
+        else
+          if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
+            echo -e "\t${GREEN}No cache was found; installing RepoDynamics[meta]."
+          else
+            echo -e "\t${GREEN}Force-update was selected; installing RepoDynamics[meta]."
+          fi
+          pip install repodynamics[meta]
+        fi
+
 
     - name: 'Get metadata'
       if: inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'
