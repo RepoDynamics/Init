@@ -74,7 +74,7 @@ runs:
 
     - name: 'Install RepoDynamics'
       env:
-        RD__META__SUMMARY-ONLY: ${{ inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'}}
+        RD__META__SUMMARY-ONLY: ${{ inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
         RD__META__UPDATE-CACHE: ${{ inputs.force-update == 'all' }}
         RD__META__CACHE-FILEPATH: metadata_api_cache.yaml
         RD__META__OUTPUT-FILEPATH: metadata_full.json
