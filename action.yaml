@@ -46,10 +46,9 @@ runs:
     - name: 'Checkout Repository'
       run: |
         # Checkout Repository
-        H="\033[1;30;45m"  # bold black text on magenta background
         I="\033[1;94m"      # bold bright-blue text
-        echo -e "\n${H} 1. Checkout Repository "
-        echo -e "   ${I}checkout-ref: ${{ inputs.checkout-ref }}"
+        echo -e "\n\033[1;30;45m 1. Checkout Repository "
+        echo -e "${I}checkout-ref: ${{ inputs.checkout-ref || '' }}"
       shell: bash
     - uses: actions/checkout@v3
       with:
@@ -74,7 +73,7 @@ runs:
         echo -e "\n${H} 3. Initialize Cache "
       shell: bash
     - id: cache
-      # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
+      # This returns a cache-hit output, which is either 'true' or '' (str, not bool).
       # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
       # https://github.com/actions/cache
       uses: actions/cache@v3
@@ -84,13 +83,7 @@ runs:
           metadata_api_cache.yaml
         # Cache is invalidated when metadata files are changed.
         # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
-        key: >-
-          metadata-${{
-            hashFiles(
-              'meta/*.yaml',
-              'src/metadata.yaml'
-            )
-          }}
+        key: metadata-${{hashFiles('meta/*.yaml')}}
 
 
     - name: 'Install RepoDynamics'
@@ -100,13 +93,13 @@ runs:
         echo -e "\n\033[1;30;45m 4. Install RepoDynamics "
         GREEN='\033[0;32m'
         if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
-          echo -e "   ${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
+          echo -e "${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
           pip install repodynamics[meta-summary]
         else
           if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
-            echo -e "   ${GREEN}No cache was found; installing RepoDynamics[meta]."
+            echo -e "${GREEN}No cache was found; installing RepoDynamics[meta]."
           else
-            echo -e "   ${GREEN}Force-update was selected; installing RepoDynamics[meta]."
+            echo -e "${GREEN}Force-update was selected; installing RepoDynamics[meta]."
           fi
           pip install repodynamics[meta]
         fi
