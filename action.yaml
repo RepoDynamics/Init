@@ -40,9 +40,8 @@ runs:
       shell: bash
       run: |
         BLUE='\033[0;34m'
-        NC='\033[0m' # No Color
         while IFS= read -r line; do
-            printf "${BLUE}%s${NC}\n" "$line"
+            printf "${BLUE}%s\n" "$line"
         done < ${{github.action_path}}/logo.txt
 
     - name: 'Checkout repository from ${{ inputs.branch || github.ref }}'
