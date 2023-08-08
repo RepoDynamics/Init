@@ -39,12 +39,13 @@ runs:
     - name: 'Welcome'
       shell: bash
       run: |
-#        BLUE='\033[34m'
-#        NC='\033[0m'
-#        echo -e "${BLUE}$(cat ${{github.action_path}}/logo.txt)${NC}"
         tput setaf 4
         cat ${{github.action_path}}/logo.txt
         tput sgr0
+
+#        BLUE='\033[34m'
+#        NC='\033[0m'
+#        echo -e "${BLUE}$(cat ${{github.action_path}}/logo.txt)${NC}"
 
     - name: 'Checkout repository from ${{ inputs.branch || github.ref }}'
       uses: actions/checkout@v3
