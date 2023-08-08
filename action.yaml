@@ -36,30 +36,40 @@ runs:
   using: "composite"
   steps:
 
-    - name: 'Welcome'
+    - name: 'Logo'
       shell: bash
       run: |
-        # Welcome message
+        # Intro
         printf "$(cat ${{github.action_path}}/logo.txt)"
-
-    - name: 'Checkout repository'
-      uses: actions/checkout@v3
+    
+    - name: 'Checkout Repository'
+      run: |
+        # Checkout Repository
+        echo -e "\033[1;30;103m1️⃣Checking out the repository"
+        echo -e "\033[94m ref: ${{ inputs.checkout-ref }}"
+      shell: bash
+    - uses: actions/checkout@v3
       with:
         ref: ${{ inputs.checkout-ref }}
 
     - name: 'Setup Python'
-      uses: actions/setup-python@v4
+      run: |
+        # Setup Python
+        echo -e "\033[1;30;103m Setting up Python"
+        echo -e "\033[94m python-version: 3.x"
+      shell: bash
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
-    - name: 'Get current date'
-      id: get-date
-      run: |
-        echo "date=$(/bin/date -u "+%Y-%W")" >> $GITHUB_OUTPUT
-      shell: bash
 
-    - name: 'Cache metadata'
-      id: cache
+    - name: 'Cache'
+      run: |
+        # Cache
+        echo -e "\033[1;30;103m Getting cache"
+        echo -e "\033[94m path: metadata_full.json, metadata_api_cache.yaml"
+        echo -e "\033[94m key: metadata-${{ steps.get-date.outputs.date }}-${{ hashFiles('meta/*.yaml', 'src/metadata.yaml') }}"
+    - id: cache
       # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
       # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
       # https://github.com/actions/cache
