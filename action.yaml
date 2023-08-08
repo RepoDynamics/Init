@@ -66,11 +66,30 @@ runs:
         python-version: '3.x'
 
 
+    - name: 'Install RepoDynamics'
+      shell: bash
+      run: |
+        # Install RepoDynamics
+        echo -e "\n\033[1;30;45m 3. Install RepoDynamics "
+        GREEN='\033[0;32m'
+        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
+          echo -e "${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
+          pip install repodynamics[meta-summary]
+        else
+          if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
+            echo -e "${GREEN}No cache was found; installing RepoDynamics[meta]."
+          else
+            echo -e "${GREEN}Force-update was selected; installing RepoDynamics[meta]."
+          fi
+          pip install repodynamics[meta]
+        fi
+
+
     - name: 'Initialize Cache'
       run: |
-        # Initialize Cache
+        # Initialize Metadata Cache
         H="\033[1;30;45m" 
-        echo -e "\n${H} 3. Initialize Cache "
+        echo -e "\n${H} 4. Initialize Metadata Cache "
       shell: bash
     - id: cache
       # This returns a cache-hit output, which is either 'true' or '' (str, not bool).
@@ -86,25 +105,6 @@ runs:
         key: metadata-${{hashFiles('meta/*.yaml')}}
 
 
-    - name: 'Install RepoDynamics'
-      shell: bash
-      run: |
-        # Install RepoDynamics
-        echo -e "\n\033[1;30;45m 4. Install RepoDynamics "
-        GREEN='\033[0;32m'
-        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
-          echo -e "${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
-          pip install repodynamics[meta-summary]
-        else
-          if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
-            echo -e "${GREEN}No cache was found; installing RepoDynamics[meta]."
-          else
-            echo -e "${GREEN}Force-update was selected; installing RepoDynamics[meta]."
-          fi
-          pip install repodynamics[meta]
-        fi
-
-
     - name: 'Get metadata'
       id: metadata
       env:
@@ -115,6 +115,6 @@ runs:
         RD__META__GITHUB_TOKEN: ${{ github.token }}
       run: |
         # Get Metadata
-        echo -e "\n\033[1;30;45m 5. Get Metadata "
+        echo -e "\n\033[1;30;45m 5. Run RepoDynamics Meta "
         python -m repodynamics.actions meta
       shell: bash
