@@ -93,6 +93,14 @@ runs:
     - name: 'Get metadata'
       if: inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'
       id: get-metadata
+      env:
+        RD__META__UPDATE-CACHE: ${{ inputs.force-update == 'all' }}
+        RD__META__CACHE-FILEPATH: "metadata_api_cache.yaml"
+        RD__META__OUTPUT-FILEPATH: "metadata_full.json"
+        RD__META__GITHUB-TOKEN: ${{ github.token }}  # or $GITHUB_TOKEN or ${{ github.token }}
+        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
+        RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
+        RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: python -m repodynamics.actions meta
       shell: bash
 
@@ -104,6 +112,10 @@ runs:
 
     - name: 'Write summary'
       if: ${{ !failure() && inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
+      env:
+        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
+        RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
+        RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: python -m repodynamics.actions meta-summary
       shell: bash
 
