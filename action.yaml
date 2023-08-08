@@ -68,17 +68,17 @@ runs:
           metadata-${{ steps.get-date.outputs.date }}-${{
             hashFiles(
               'meta/*.yaml',
-              'src/metadata.yaml',
+              'src/metadata.yaml'
             )
           }}
 
     - name: 'Install RepoDynamics'
       env:
         RD__META__SUMMARY-ONLY: ${{ inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'}}
-        RD__META__UPDATE-CACHE: ${{ (inputs.force-update == 'all' }}
+        RD__META__UPDATE-CACHE: ${{ inputs.force-update == 'all' }}
         RD__META__CACHE-FILEPATH: metadata_api_cache.yaml
         RD__META__OUTPUT-FILEPATH: metadata_full.json
-        RD__META__GITHUB-TOKEN: ${{ secrets.GITHUB_TOKEN }}  # or $GITHUB_TOKEN or ${{ github.token }}
+        RD__META__GITHUB-TOKEN: ${{ github.token }}  # or $GITHUB_TOKEN or ${{ github.token }}
         RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
         RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
         RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
