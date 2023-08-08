@@ -29,7 +29,7 @@ outputs:
 
   meta:
     description: "Repository metadata as a JSON string."
-    value: ${{ steps.output.outputs.meta }}
+    value: ${{ steps.metadata.outputs.json }}
 
 
 runs:
@@ -46,10 +46,10 @@ runs:
     - name: 'Checkout Repository'
       run: |
         # Checkout Repository
-        H="\033[1;30;35m"  # bold black text on magenta background
+        H="\033[1;30;45m"  # bold black text on magenta background
         I="\033[1;94m"      # bold bright-blue text
-        echo -e "\n${H} 1. Checking out the repository \n"
-        echo -e "\t${I}checkout-ref: ${{ inputs.checkout-ref }}"
+        echo -e "\n${H} 1. Checkout Repository "
+        echo -e "   ${I}checkout-ref: ${{ inputs.checkout-ref }}"
       shell: bash
     - uses: actions/checkout@v3
       with:
@@ -59,19 +59,19 @@ runs:
     - name: 'Setup Python'
       run: |
         # Setup Python
-        H="\033[1;30;35m"  
-        echo -e "\n${H} 2. Setting up Python \n"
+        H="\033[1;30;45m"  
+        echo -e "\n${H} 2. Setup Python "
       shell: bash
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
 
 
-    - name: 'Cache'
+    - name: 'Initialize Cache'
       run: |
-        # Cache
-        H="\033[1;30;35m" 
-        echo -e "\n${H} 3. Initializing cache \n"
+        # Initialize Cache
+        H="\033[1;30;45m" 
+        echo -e "\n${H} 3. Initialize Cache "
       shell: bash
     - id: cache
       # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
@@ -82,7 +82,7 @@ runs:
         path: |
           metadata_full.json
           metadata_api_cache.yaml
-        # Cache is invalidated when metadata files are changed, or after a week.
+        # Cache is invalidated when metadata files are changed.
         # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
         key: >-
           metadata-${{
@@ -97,48 +97,31 @@ runs:
       shell: bash
       run: |
         # Install RepoDynamics
-        echo -e "\n\033[1;30;35m 4. Installing RepoDynamics \n"
+        echo -e "\n\033[1;30;45m 4. Install RepoDynamics "
         GREEN='\033[0;32m'
         if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
-          echo -e "\t${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
+          echo -e "   ${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
           pip install repodynamics[meta-summary]
         else
           if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
-            echo -e "\t${GREEN}No cache was found; installing RepoDynamics[meta]."
+            echo -e "   ${GREEN}No cache was found; installing RepoDynamics[meta]."
           else
-            echo -e "\t${GREEN}Force-update was selected; installing RepoDynamics[meta]."
+            echo -e "   ${GREEN}Force-update was selected; installing RepoDynamics[meta]."
           fi
           pip install repodynamics[meta]
         fi
 
 
     - name: 'Get metadata'
-      if: inputs.force-update != 'none' || steps.cache.outputs.cache-hit != 'true'
-      id: get-metadata
+      id: metadata
       env:
-        RD__META__UPDATE-CACHE: ${{ inputs.force-update == 'all' }}
-        RD__META__CACHE-FILEPATH: metadata_api_cache.yaml
-        RD__META__OUTPUT-FILEPATH: metadata_full.json
-        RD__META__GITHUB-TOKEN: ${{ github.token }}
-        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
-        RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
-        RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
-      run: python -m repodynamics.actions meta
+        RD__META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
+        RD__META__FORCE_UPDATE: ${{ inputs.force-update }}
+        RD__META__METADATA_FILEPATH: metadata_full.json
+        RD__META__CACHE_FILEPATH: metadata_api_cache.yaml
+        RD__META__GITHUB_TOKEN: ${{ github.token }}
+      run: |
+        # Get Metadata
+        echo -e "\n\033[1;30;45m 5. Get Metadata "
+        python -m repodynamics.actions meta
       shell: bash
-
-    - name: 'Output metadata'
-      if: ${{ !failure() }}
-      id: output
-      run: echo "json=$(cat metadata_full.json)" >> $GITHUB_OUTPUT
-      shell: bash
-
-    - name: 'Write summary'
-      if: ${{ !failure() && inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
-      env:
-        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
-        RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
-        RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
-      run: python -m repodynamics.actions meta-summary
-      shell: bash
-
-
