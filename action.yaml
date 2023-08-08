@@ -69,6 +69,7 @@ runs:
         echo -e "\033[1;30;103m Getting cache"
         echo -e "\033[94m path: metadata_full.json, metadata_api_cache.yaml"
         echo -e "\033[94m key: metadata-${{ steps.get-date.outputs.date }}-${{ hashFiles('meta/*.yaml', 'src/metadata.yaml') }}"
+      shell: bash
     - id: cache
       # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
       # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
