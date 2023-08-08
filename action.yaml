@@ -83,7 +83,7 @@ runs:
         RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
         RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: |
-        if [ $RD__META__SUMMARY-ONLY ]; then
+        if [ "$RD__META__SUMMARY-ONLY" = "true" ]; then
           pip install repodynamics[meta-summary]  
         else  
           pip install repodynamics[meta]  
