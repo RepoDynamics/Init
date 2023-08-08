@@ -74,26 +74,15 @@ runs:
 
     - name: 'Install RepoDynamics'
       env:
-        RD__META__SUMMARY_ONLY: ${{ inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
-        RD__META__UPDATE_CACHE: ${{ inputs.force-update == 'all' }}
-        RD__META__CACHE_FILEPATH: "metadata_api_cache.yaml"
-        RD__META__OUTPUT_FILEPATH: "metadata_full.json"
-        RD__META__GITHUB_TOKEN: ${{ github.token }}  # or $GITHUB_TOKEN or ${{ github.token }}
-        RD__META-SUMMARY__CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
-        RD__META-SUMMARY__FORCE_UPDATE: ${{ inputs.force-update }}
-        RD__META-SUMMARY__METADATA_FILEPATH: metadata_full.json
+        SUMMARY_ONLY: ${{ inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
       run: |
-        if [[ -z "RD__META__SUMMARY_ONLY" ]]; then
-            echo "RD__META__SUMMARY_ONLY is not set or is empty"
-        else
-            echo "RD__META__SUMMARY_ONLY is set to $RD__META__SUMMARY_ONLY"
-        fi
-        echo $RD__META__SUMMARY_ONLY
-        if [ "$RD__META__SUMMARY_ONLY" = "true" ]; then
-          echo "Installing RepoDynamics[meta-summary]..."
+        GREEN='\033[0;32m'
+        NC='\033[0m' # No Color
+        if [ "$SUMMARY_ONLY" = "true" ]; then
+          echo -e "${GREEN}Installing RepoDynamics[meta-summary].${NC}"
           pip install repodynamics[meta-summary]  
         else
-          echo "Installing RepoDynamics[meta]..."
+          echo -e "${GREEN}Installing RepoDynamics[meta].${NC}"
           pip install repodynamics[meta]  
         fi
       shell: bash
@@ -103,10 +92,10 @@ runs:
       id: get-metadata
       env:
         RD__META__UPDATE-CACHE: ${{ inputs.force-update == 'all' }}
-        RD__META__CACHE-FILEPATH: "metadata_api_cache.yaml"
-        RD__META__OUTPUT-FILEPATH: "metadata_full.json"
-        RD__META__GITHUB-TOKEN: ${{ github.token }}  # or $GITHUB_TOKEN or ${{ github.token }}
-        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
+        RD__META__CACHE-FILEPATH: metadata_api_cache.yaml
+        RD__META__OUTPUT-FILEPATH: metadata_full.json
+        RD__META__GITHUB-TOKEN: ${{ github.token }}
+        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
         RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
         RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: python -m repodynamics.actions meta
@@ -121,7 +110,7 @@ runs:
     - name: 'Write summary'
       if: ${{ !failure() && inputs.force-update == 'none' && steps.cache.outputs.cache-hit == 'true' }}
       env:
-        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit }}
+        RD__META-SUMMARY__CACHE-HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
         RD__META-SUMMARY__FORCE-UPDATE: ${{ inputs.force-update }}
         RD__META-SUMMARY__METADATA-FILEPATH: metadata_full.json
       run: python -m repodynamics.actions meta-summary
