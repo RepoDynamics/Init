@@ -103,14 +103,14 @@ runs:
         sparse-checkout-cone-mode: false
         path: repodynamics/metadata/repo_1
     - uses: actions/checkout@v3
-      if: inputs.repo-2 != ""
+      if: inputs.repo-2 != ''
       with:
         ref: ${{ inputs.ref-2 }}
         sparse-checkout: ${{ inputs.path-2 }}
         sparse-checkout-cone-mode: false
         path: repodynamics/metadata/repo_2
     - uses: actions/checkout@v3
-      if: inputs.repo-3 != ""
+      if: inputs.repo-3 != ''
       with:
         ref: ${{ inputs.ref-3 }}
         sparse-checkout: ${{ inputs.path-3 }}
@@ -173,7 +173,7 @@ runs:
               'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yaml',
               'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yml',
               'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yaml',
-              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yml',
+              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yml'
             )
           }}
 
