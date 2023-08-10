@@ -19,9 +19,55 @@ inputs:
       default: none
       required: false
 
-  checkout-ref:
-    description: 'Reference to checkout, i.e. the `ref` input of `actions/checkout`.'
+  ref:
+    description: |
+      Reference (i.e. branch, tag or SHA) of the current repository to checkout, 
+      i.e. the `ref` input of `actions/checkout`.
     default: ""
+    required: false
+
+  path:
+    description: |
+      Path to the directory in the repository containing the metadata files.
+    default: "meta/data"
+    required: false
+
+  repo-2:
+    description: |
+      Second repository to checkout, i.e. the `repository` input of `actions/checkout`.
+    default: ""
+    required: false
+
+  ref-2:
+    description: |
+      Reference (i.e. branch, tag or SHA) of the second repository to checkout, 
+      i.e. the `ref` input of `actions/checkout`.
+    default: "main"
+    required: false
+
+  path-2:
+    description: |
+      Path to the directory in the second repository containing the metadata files.
+    default: "meta/data"
+    required: false
+
+  repo-3:
+    description: |
+      Third repository to checkout, i.e. the `repository` input of `actions/checkout`.
+    default: ""
+    required: false
+
+  ref-3:
+    description: |
+      Reference (i.e. branch, tag or SHA) of the third repository to checkout, 
+      i.e. the `ref` input of `actions/checkout`.
+    default: "main"
+    required: false
+
+  path-3:
+    description: |
+      Path to the directory in the third repository containing the metadata files.
+    default: "meta/data"
     required: false
 
 
@@ -43,16 +89,33 @@ runs:
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
     
 
-    - name: 'Checkout Repository'
+    - name: 'Checkout Repositories'
       run: |
-        # Checkout Repository
+        # Checkout Repositories
         I="\033[1;94m"      # bold bright-blue text
-        echo -e "\n\033[1;30;45m 1. Checkout Repository "
-        echo -e "${I}checkout-ref: ${{ inputs.checkout-ref || '' }}"
+        echo -e "\n\033[1;30;45m 1. Checkout Repositories "
+        echo -e "${I}checkout-ref: ${{ inputs.ref || github.ref }}"
       shell: bash
     - uses: actions/checkout@v3
       with:
-        ref: ${{ inputs.checkout-ref }}
+        ref: ${{ inputs.ref }}
+        sparse-checkout: ${{ inputs.path }}
+        sparse-checkout-cone-mode: false
+        path: repodynamics/metadata/repo_1
+    - uses: actions/checkout@v3
+      if: ${{ inputs.repo-2 != "" }}
+      with:
+        ref: ${{ inputs.ref-2 }}
+        sparse-checkout: ${{ inputs.path-2 }}
+        sparse-checkout-cone-mode: false
+        path: repodynamics/metadata/repo_2
+    - uses: actions/checkout@v3
+      if: ${{ inputs.repo-3 != "" }}
+      with:
+        ref: ${{ inputs.ref-3 }}
+        sparse-checkout: ${{ inputs.path-3 }}
+        sparse-checkout-cone-mode: false
+        path: repodynamics/metadata/repo_3
 
 
     - name: 'Setup Python'
@@ -102,7 +165,17 @@ runs:
           metadata_api_cache.yaml
         # Cache is invalidated when metadata files are changed.
         # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
-        key: metadata-${{hashFiles('meta/*.yaml')}}
+        key: >-
+          metadata-${{
+            hashFiles(
+              'repodynamics/metadata/repo_1/${{ inputs.path }}/*.yaml',
+              'repodynamics/metadata/repo_1/${{ inputs.path }}/*.yml',
+              'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yaml',
+              'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yml',
+              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yaml',
+              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yml',
+            )
+          }}
 
 
     - name: 'Get metadata'
