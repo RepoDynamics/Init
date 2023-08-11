@@ -52,12 +52,12 @@ runs:
     
 
     - name: 'Checkout Repository'
+      shell: bash
       run: |
         # Checkout Repository
-        I="\033[1;94m"      # bold bright-blue text
-        echo -e "\n\033[1;30;45m 1. Checkout Main Repository "
+        I="\033[1;94m" # bold bright-blue text
+        echo -e "\n\033[1;30;45m 1. Checkout Main Repository  "
         echo -e "${I}checkout-ref: ${{ inputs.ref || github.ref }}"
-      shell: bash
     - uses: actions/checkout@v3
       with:
         ref: ${{ inputs.ref }}
@@ -66,7 +66,12 @@ runs:
           ${{ inputs.path }}/data
         sparse-checkout-cone-mode: false
         path: repodynamics/metadata/main
-
+    - shell: bash
+      run: |
+        # Display Downloaded Files
+        I="\033[1;32m" # bold green text
+        echo -e "${I}Following metadata files were downloaded from the main repository:"
+        find repodynamics/metadata/main/${{ inputs.path }}
 
     - name: 'Setup Python'
       run: |
@@ -84,7 +89,7 @@ runs:
       shell: python
       run: |
         # Read Extensions
-        print("\n\033[1;30;45m 3. Read Extensions")
+        print("\n\033[1;30;45m 3. Read Extensions  ")
         import os
         import json
         with open("repodynamics/metadata/main/${{inputs.path}}/extensions.json") as f:
