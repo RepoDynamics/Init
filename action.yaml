@@ -71,7 +71,7 @@ runs:
         # Display Downloaded Files
         I="\033[1;32m" # bold green text
         echo -e "${I}Following metadata files were downloaded from the main repository:"
-        find repodynamics/metadata/main/${{ inputs.path }}
+        find repodynamics/metadata/main/${{ inputs.path }} -type f -exec basename {} \;
 
     - name: 'Setup Python'
       run: |
