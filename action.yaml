@@ -87,7 +87,7 @@ runs:
         print("\n\033[1;30;45m 3. Read Extensions")
         import os
         import json
-        with open("repodynamics/metadata/repo_1/${{inputs.path}}/extensions.json") as f:
+        with open("repodynamics/metadata/main/${{inputs.path}}/extensions.json") as f:
             extensions = json.load(f)
         print(f"\033[1;94m Extensions: {json.dumps(extensions, indent=4)}")
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
