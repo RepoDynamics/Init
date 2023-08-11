@@ -28,46 +28,8 @@ inputs:
 
   path:
     description: |
-      Path to the directory in the repository containing the metadata files.
-    default: "meta/data"
-    required: false
-
-  repo-2:
-    description: |
-      Second repository to checkout, i.e. the `repository` input of `actions/checkout`.
-    default: ""
-    required: false
-
-  ref-2:
-    description: |
-      Reference (i.e. branch, tag or SHA) of the second repository to checkout, 
-      i.e. the `ref` input of `actions/checkout`.
-    default: "main"
-    required: false
-
-  path-2:
-    description: |
-      Path to the directory in the second repository containing the metadata files.
-    default: "meta/data"
-    required: false
-
-  repo-3:
-    description: |
-      Third repository to checkout, i.e. the `repository` input of `actions/checkout`.
-    default: ""
-    required: false
-
-  ref-3:
-    description: |
-      Reference (i.e. branch, tag or SHA) of the third repository to checkout, 
-      i.e. the `ref` input of `actions/checkout`.
-    default: "main"
-    required: false
-
-  path-3:
-    description: |
-      Path to the directory in the third repository containing the metadata files.
-    default: "meta/data"
+      Path to the 'meta' directory in the repository.
+    default: "meta"
     required: false
 
 
@@ -82,40 +44,28 @@ runs:
   using: "composite"
   steps:
 
-    - name: 'Logo'
+    - name: 'Display Logo'
       shell: bash
       run: |
         # Intro
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
     
 
-    - name: 'Checkout Repositories'
+    - name: 'Checkout Repository'
       run: |
-        # Checkout Repositories
+        # Checkout Repository
         I="\033[1;94m"      # bold bright-blue text
-        echo -e "\n\033[1;30;45m 1. Checkout Repositories "
+        echo -e "\n\033[1;30;45m 1. Checkout Main Repository "
         echo -e "${I}checkout-ref: ${{ inputs.ref || github.ref }}"
       shell: bash
     - uses: actions/checkout@v3
       with:
         ref: ${{ inputs.ref }}
-        sparse-checkout: ${{ inputs.path }}
+        sparse-checkout: |
+          ${{ inputs.path/extensions.json }}
+          ${{ inputs.path/data }}
         sparse-checkout-cone-mode: false
-        path: repodynamics/metadata/repo_1
-    - uses: actions/checkout@v3
-      if: inputs.repo-2 != ''
-      with:
-        ref: ${{ inputs.ref-2 }}
-        sparse-checkout: ${{ inputs.path-2 }}
-        sparse-checkout-cone-mode: false
-        path: repodynamics/metadata/repo_2
-    - uses: actions/checkout@v3
-      if: inputs.repo-3 != ''
-      with:
-        ref: ${{ inputs.ref-3 }}
-        sparse-checkout: ${{ inputs.path-3 }}
-        sparse-checkout-cone-mode: false
-        path: repodynamics/metadata/repo_3
+        path: repodynamics/metadata/main
 
 
     - name: 'Setup Python'
@@ -129,23 +79,50 @@ runs:
         python-version: '3.x'
 
 
-    - name: 'Install RepoDynamics'
+    - name: 'Read Extensions'
+      id: ext
+      shell: python
+      run: |
+        # Read Extensions
+        print("\n\033[1;30;45m 3. Read Extensions")
+        import os
+        import json
+        with open("repodynamics/metadata/repo_1/${{inputs.path}}/extensions.json") as f:
+            extensions = json.load(f)
+        print(f"\033[1;94m Extensions: {json.dumps(extensions, indent=4)}")
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+            print(f"ext={json.dumps(extensions)}", file=f)
+
+
+    - name: 'Checkout Extension Repositories'
       shell: bash
       run: |
-        # Install RepoDynamics
-        echo -e "\n\033[1;30;45m 3. Install RepoDynamics "
-        GREEN='\033[0;32m'
-        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
-          echo -e "${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
-          pip install repodynamics[meta-summary]
-        else
-          if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
-            echo -e "${GREEN}No cache was found; installing RepoDynamics[meta]."
-          else
-            echo -e "${GREEN}Force-update was selected; installing RepoDynamics[meta]."
-          fi
-          pip install repodynamics[meta]
-        fi
+        # Checkout Extension Repositories
+        echo -e "\n\033[1;30;45m 4. Checkout Extension Repositories "
+    - if: fromJSON(steps.ext.outputs.ext).alt_1.repository != ''
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ fromJSON(steps.ext.outputs.ext).alt_1.repository }}
+        ref: ${{ fromJSON(steps.ext.outputs.ext).alt_1.ref }}
+        sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}
+        sparse-checkout-cone-mode: false
+        path: repodynamics/metadata/alt_1
+    - if: fromJSON(steps.ext.outputs.ext).alt_2.repository != ''
+      uses: actions/checkout@v3
+      with:
+          repository: ${{ fromJSON(steps.ext.outputs.ext).alt_2.repository }}
+          ref: ${{ fromJSON(steps.ext.outputs.ext).alt_2.ref }}
+          sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}
+          sparse-checkout-cone-mode: false
+          path: repodynamics/metadata/alt_2
+    - if: fromJSON(steps.ext.outputs.ext).alt_3.repository != ''
+      uses: actions/checkout@v3
+      with:
+          repository: ${{ fromJSON(steps.ext.outputs.ext).alt_3.repository }}
+          ref: ${{ fromJSON(steps.ext.outputs.ext).alt_3.ref }}
+          sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}
+          sparse-checkout-cone-mode: false
+          path: repodynamics/metadata/alt_3
 
 
     - name: 'Initialize Cache'
@@ -168,14 +145,35 @@ runs:
         key: >-
           metadata-${{
             hashFiles(
-              'repodynamics/metadata/repo_1/${{ inputs.path }}/*.yaml',
-              'repodynamics/metadata/repo_1/${{ inputs.path }}/*.yml',
-              'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yaml',
-              'repodynamics/metadata/repo_2/${{ inputs.path-2 }}/*.yml',
-              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yaml',
-              'repodynamics/metadata/repo_3/${{ inputs.path-3 }}/*.yml'
+              'repodynamics/metadata/main/${{ inputs.path }}/data/*.yaml',
+              'repodynamics/metadata/main/${{ inputs.path }}/data/*.yml',
+              'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yaml',
+              'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yml',
+              'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yaml',
+              'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yml',
+              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yaml',
+              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yml'
             )
           }}
+
+
+    - name: 'Install RepoDynamics'
+      shell: bash
+      run: |
+        # Install RepoDynamics
+        echo -e "\n\033[1;30;45m 3. Install RepoDynamics "
+        GREEN='\033[0;32m'
+        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
+          echo -e "${GREEN}Force-update was not selected and a cache was found; only installing RepoDynamics[meta-summary]."
+          pip install repodynamics[meta-summary]
+        else
+          if [[ "${{ steps.cache.outputs.cache-hit }}" != "true" ]]; then
+            echo -e "${GREEN}No cache was found; installing RepoDynamics[meta]."
+          else
+            echo -e "${GREEN}Force-update was selected; installing RepoDynamics[meta]."
+          fi
+          pip install repodynamics[meta]
+        fi
 
 
     - name: 'Get metadata'
@@ -183,11 +181,15 @@ runs:
       env:
         RD__META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
         RD__META__FORCE_UPDATE: ${{ inputs.force-update }}
-        RD__META__METADATA_FILEPATH: metadata_full.json
-        RD__META__CACHE_FILEPATH: metadata_api_cache.yaml
         RD__META__GITHUB_TOKEN: ${{ github.token }}
+        RD__META__FILEPATH_FULL: metadata_full.json
+        RD__META__FILEPATH_CACHE: metadata_api_cache.yaml
+        RD__META__DIRPATH_MAIN: 'repodynamics/metadata/main/${{ inputs.path }}'
+        RD__META__DIRPATH_ALT1: 'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}'
+        RD__META__DIRPATH_ALT2: 'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}'
+        RD__META__DIRPATH_ALT3: 'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}'
+      shell: bash
       run: |
         # Get Metadata
         echo -e "\n\033[1;30;45m 5. Run RepoDynamics Meta "
         python -m repodynamics.actions meta
-      shell: bash

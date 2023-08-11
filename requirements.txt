@@ -1,1 +1,1 @@
-repodynamics[meta]
+repodynamics[meta,meta-summary]
