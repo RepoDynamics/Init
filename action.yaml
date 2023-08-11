@@ -49,7 +49,27 @@ runs:
       run: |
         # Intro
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-    
+
+    - name: 'Setup Python'
+      run: |
+        # Setup Python
+        H="\033[1;30;45m"  
+        echo -e "\n${H} 1. Setup Python  "
+      shell: bash
+    - uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+        cache: 'pip'
+        cache-dependency-path: |
+          ${{ github.action_path }}/requirements.txt
+          ${{ github.action_path }}/requirements_full.txt
+
+    - name: 'Install RepoDynamics'
+      shell: bash
+      run: |
+        # Install RepoDynamics
+        echo -e "\n\033[1;30;45m 2. Install RepoDynamics "
+        pip install -r ${{ github.action_path }}/requirements.txt
 
     - name: 'Checkout Repository'
       shell: bash
@@ -70,22 +90,15 @@ runs:
       run: |
         # Display Downloaded Files
         I="\033[1;32m" # bold green text
-        echo -e "${I}Following metadata files were downloaded from the main repository:"
-        
+        ref="${{ inputs.ref || github.ref }}"
+        echo -e "${I}Following metadata files were downloaded from $ref in the current repository:"
         root_path="repodynamics/metadata/main"
         find "$root_path/${{ inputs.path }}" -type f | while IFS= read -r line; do
-            echo -e "\033[0;92m  ${line#$root_path/}"
+            echo -e "\033[0;92m   ${line#$root_path/}"
         done
+        echo -e "\n\n"
 
-    - name: 'Setup Python'
-      run: |
-        # Setup Python
-        H="\033[1;30;45m"  
-        echo -e "\n${H} 2. Setup Python "
-      shell: bash
-    - uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
+    
 
 
     - name: 'Read Extensions'
@@ -96,8 +109,13 @@ runs:
         print("\n\033[1;30;45m 3. Read Extensions  ")
         import os
         import json
-        with open("repodynamics/metadata/main/${{inputs.path}}/extensions.json") as f:
-            extensions = json.load(f)
+        try:
+          with open("repodynamics/metadata/main/${{inputs.path}}/extensions.json") as f:
+              extensions = json.load(f)
+        except FileNotFoundError:
+          print(
+            
+          )
         print(f"\033[1;94m Extensions: {json.dumps(extensions, indent=4)}")
         with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
             print(f"ext={json.dumps(extensions)}", file=f)
@@ -108,6 +126,14 @@ runs:
       run: |
         # Checkout Extension Repositories
         echo -e "\n\033[1;30;45m 4. Checkout Extension Repositories "
+    - if: >-
+        fromJSON(steps.ext.outputs.ext).alt_1.repository == '' 
+        && fromJSON(steps.ext.outputs.ext).alt_2.repository == '' 
+        && fromJSON(steps.ext.outputs.ext).alt_3.repository == ''
+      shell: bash
+      run: |
+        # No Extensions
+        echo -e "\033[1;32mSKIPPED! No alternative repositories were specified."
     - if: fromJSON(steps.ext.outputs.ext).alt_1.repository != ''
       uses: actions/checkout@v3
       with:
@@ -116,6 +142,18 @@ runs:
         sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}
         sparse-checkout-cone-mode: false
         path: repodynamics/metadata/alt_1
+    - if: fromJSON(steps.ext.outputs.ext).alt_1.repository != ''
+      shell: bash
+      run: |
+        # Display Downloaded Files
+        I="\033[1;32m" # bold green text
+        path="${{ fromJSON(steps.ext.outputs.ext).alt_1.repository }}/${{ fromJSON(steps.ext.outputs.ext).alt_1.ref }}"
+        echo -e "${I}Following metadata files were downloaded from $path:"
+        root_path="repodynamics/metadata/alt_1"
+        find "$root_path/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}" -type f | while IFS= read -r line; do
+            echo -e "\033[0;92m   ${line#$root_path/}"
+        done
+        echo -e "\n"
     - if: fromJSON(steps.ext.outputs.ext).alt_2.repository != ''
       uses: actions/checkout@v3
       with:
@@ -124,6 +162,18 @@ runs:
           sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}
           sparse-checkout-cone-mode: false
           path: repodynamics/metadata/alt_2
+    - if: fromJSON(steps.ext.outputs.ext).alt_2.repository != ''
+      shell: bash
+      run: |
+        # Display Downloaded Files
+        I="\033[1;32m" # bold green text
+        path="${{ fromJSON(steps.ext.outputs.ext).alt_2.repository }}/${{ fromJSON(steps.ext.outputs.ext).alt_2.ref }}"
+        echo -e "${I}Following metadata files were downloaded from $path:"
+        root_path="repodynamics/metadata/alt_2"
+        find "$root_path/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}" -type f | while IFS= read -r line; do
+            echo -e "\033[0;92m   ${line#$root_path/}"
+        done
+        echo -e "\n"
     - if: fromJSON(steps.ext.outputs.ext).alt_3.repository != ''
       uses: actions/checkout@v3
       with:
@@ -132,6 +182,18 @@ runs:
           sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}
           sparse-checkout-cone-mode: false
           path: repodynamics/metadata/alt_3
+    - if: fromJSON(steps.ext.outputs.ext).alt_3.repository != ''
+      shell: bash
+      run: |
+        # Display Downloaded Files
+        I="\033[1;32m" # bold green text
+        path="${{ fromJSON(steps.ext.outputs.ext).alt_3.repository }}/${{ fromJSON(steps.ext.outputs.ext).alt_3.ref }}"
+        echo -e "${I}Following metadata files were downloaded from $path:"
+        root_path="repodynamics/metadata/alt_3"
+        find "$root_path/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}" -type f | while IFS= read -r line; do
+            echo -e "\033[0;92m   ${line#$root_path/}"
+        done
+        echo -e "\n"
 
     - shell: bash
       run: ls -la
