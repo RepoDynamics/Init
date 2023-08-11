@@ -74,7 +74,7 @@ runs:
         
         root_path="repodynamics/metadata/main"
         find "$root_path/${{ inputs.path }}" -type f | while IFS= read -r line; do
-            echo "\033[0;92m  ${line#$root_path/}"
+            echo -e "\033[0;92m  ${line#$root_path/}"
         done
 
     - name: 'Setup Python'
