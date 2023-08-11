@@ -62,8 +62,8 @@ runs:
       with:
         ref: ${{ inputs.ref }}
         sparse-checkout: |
-          ${{ inputs.path/extensions.json }}
-          ${{ inputs.path/data }}
+          ${{ inputs.path }}/extensions.json
+          ${{ inputs.path }}/data
         sparse-checkout-cone-mode: false
         path: repodynamics/metadata/main
 
