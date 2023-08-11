@@ -153,7 +153,7 @@ runs:
               'repodynamics/metadata/main/${{ inputs.path }}/data/*.yaml',
               'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yaml',
               'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yaml',
+              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yaml'
             )
           }}
     - shell: bash
