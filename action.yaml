@@ -52,7 +52,7 @@ runs:
 
     - name: 'Setup Python'
       run: |
-        # Setup Python
+        
         H="\033[1;30;45m"  
         echo -e "\n${H} 1. Setup Python  "
       shell: bash
