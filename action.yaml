@@ -124,6 +124,11 @@ runs:
           sparse-checkout-cone-mode: false
           path: repodynamics/metadata/alt_3
 
+    - shell: bash
+      run: ls -la
+
+    - shell: bash
+      run: find repodynamics
 
     - name: 'Initialize Cache'
       run: |
@@ -146,15 +151,15 @@ runs:
           metadata-${{
             hashFiles(
               'repodynamics/metadata/main/${{ inputs.path }}/data/*.yaml',
-              'repodynamics/metadata/main/${{ inputs.path }}/data/*.yml',
               'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yml',
               'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yml',
               'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yml'
             )
           }}
+    - shell: bash
+      run: |
+        echo "${{ steps.cache.outputs.cache-hit }}"
+        ls -la
 
 
     - name: 'Install RepoDynamics'
