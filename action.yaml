@@ -210,10 +210,3 @@ runs:
           rd-print "Calculating metadata..." info
         fi
         python -m repodynamics.actions meta
-
-
-    
-        
-
-
-    
