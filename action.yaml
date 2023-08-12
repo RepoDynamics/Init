@@ -159,7 +159,7 @@ runs:
       shell: bash
       run: |
         # Initialize Metadata Cache
-        rd-print "4. Initialize Metadata Cache" heading meta
+        rd-print "5. Initialize Metadata Cache" heading meta
     - id: cache
       # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
       # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
@@ -197,7 +197,7 @@ runs:
       shell: bash
       run: |
         # Get Metadata
-        rd-print "5. Get Metadata" heading meta
+        rd-print "6. Get Metadata" heading meta
         if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
           rd-print "Force-update was not selected and a cache was found; loading metadata from cache..." info
         else
