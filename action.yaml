@@ -93,7 +93,7 @@ runs:
         RD_META_FILES__IS_MAIN: true
       run: |
         # Display Downloaded Files
-        repodynamics.actions meta files
+        python -m repodynamics.actions meta files
 
 
     - name: 'Checkout Extension Repositories'
@@ -114,7 +114,7 @@ runs:
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_1
       run: |
         # Display Downloaded Files
-        repodynamics.actions meta files
+        python -m repodynamics.actions meta files
 
     - if: fromJSON(steps.ext.outputs.ext).alt_2.repo != ''
       uses: actions/checkout@v3
@@ -133,7 +133,7 @@ runs:
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_2
       run: |
         # Display Downloaded Files
-        repodynamics.actions meta files
+        python -m repodynamics.actions meta files
 
     - if: fromJSON(steps.ext.outputs.ext).alt_3.repo != ''
       uses: actions/checkout@v3
@@ -152,7 +152,7 @@ runs:
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_3
       run: |
         # Display Downloaded Files
-        repodynamics.actions meta files
+        python -m repodynamics.actions meta files
 
 
     - name: 'Initialize Cache'
