@@ -108,7 +108,7 @@ runs:
     - if: fromJSON(steps.ext.outputs.ext).alt_1.repo != ''
       shell: bash
       env:
-        RD_META_FILES__REPOSITORY: ${{ fromJSON(steps.ext.outputs.ext).alt_1.repo }}
+        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_1.repo }}
         RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_1.ref }}
         RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_1
@@ -127,7 +127,7 @@ runs:
     - if: fromJSON(steps.ext.outputs.ext).alt_2.repo != ''
       shell: bash
       env:
-        RD_META_FILES__REPOSITORY: ${{ fromJSON(steps.ext.outputs.ext).alt_2.repo }}
+        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_2.repo }}
         RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_2.ref }}
         RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_2
@@ -146,7 +146,7 @@ runs:
     - if: fromJSON(steps.ext.outputs.ext).alt_3.repo != ''
       shell: bash
       env:
-        RD_META_FILES__REPOSITORY: ${{ fromJSON(steps.ext.outputs.ext).alt_3.repo }}
+        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_3.repo }}
         RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_3.ref }}
         RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}
         RD_META_FILES__PATH_DL: repodynamics/metadata/alt_3
