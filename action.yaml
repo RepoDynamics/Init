@@ -8,10 +8,10 @@ branding:
 
 inputs:
 
-  sync:
+  mode:
     description: |
       Whether to sync meta files.
-    default: false
+    default: read
     required: false
 
   force-update:
@@ -37,7 +37,7 @@ outputs:
 
   meta:
     description: "Repository metadata as a JSON string."
-    value: ${{ steps.metadata.outputs.json }}
+    value: ${{ steps.metadata.outputs.meta }}
 
   diff:
     description: "Repository metadata diff as a JSON string."
@@ -166,13 +166,10 @@ runs:
     - name: 'Get metadata'
       id: metadata
       env:
-        RD__META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
-        RD__META__FORCE_UPDATE: ${{ inputs.force-update }}
-        RD__META__GITHUB_TOKEN: ${{ github.token }}
-        RD__META__DIRPATH_MAIN: 'repodynamics/metadata/main/${{ inputs.path }}'
-        RD__META__DIRPATH_ALT1: 'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}'
-        RD__META__DIRPATH_ALT2: 'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}'
-        RD__META__DIRPATH_ALT3: 'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}'
+        RD_META__MODE: ${{ inputs.mode }}
+        RD_META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
+        RD_META__FORCE_UPDATE: ${{ inputs.force-update }}
+        RD_META__GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         # Get Metadata
