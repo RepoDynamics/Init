@@ -59,7 +59,7 @@ runs:
       shell: bash
       run: |
         # Setup Python
-        echo -e "\033[1;30;48;2;196;0;255m 1. Setup Python  "
+        echo -e "\033[1;30;48;2;200;120;255m 1. Setup Python  "
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
@@ -69,7 +69,7 @@ runs:
       shell: bash
       run: |
         # Install RepoDynamics
-        echo -e "\033[1;30;48;2;196;0;255m 2. Install RepoDynamics  "
+        echo -e "\033[1;30;48;2;200;120;255m 2. Install RepoDynamics  "
         pip install -r ${{ github.action_path }}/requirements.txt
 
 
