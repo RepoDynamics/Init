@@ -93,7 +93,14 @@ runs:
 
 
     - name: 'Checkout Extension Repositories'
-      if: fromJSON(steps.ext.outputs.alt1).repo != ''
+      shell: bash
+      run: |
+        # Checkout Extension Repositories
+        rd-print "4. Checkout Extension Repositories" heading meta
+        if [[ "${{ steps.ext.outputs.has_extensions }}" == "false" ]]; then
+          rd-print "No 'extensions.json' was found; skipping." success
+        fi
+    - if: fromJSON(steps.ext.outputs.alt1).repo != ''
       uses: actions/checkout@v3
       with:
         repository: ${{ fromJSON(steps.ext.outputs.alt1).repo }}
