@@ -8,6 +8,12 @@ branding:
 
 inputs:
 
+  sync:
+    description: |
+      Whether to sync meta files.
+    default: false
+    required: false
+
   force-update:
       description: |
         One of `none`, `core` or `all` (default: none):
@@ -26,18 +32,16 @@ inputs:
     default: ""
     required: false
 
-  path:
-    description: |
-      Path to the 'meta' directory in the repository.
-    default: "meta"
-    required: false
-
 
 outputs:
 
   meta:
     description: "Repository metadata as a JSON string."
     value: ${{ steps.metadata.outputs.json }}
+
+  diff:
+    description: "Repository metadata diff as a JSON string."
+    value: ${{ steps.metadata.outputs.diff }}
 
 
 runs:
@@ -78,78 +82,55 @@ runs:
     - uses: actions/checkout@v3
       with:
         ref: ${{ inputs.ref }}
-        sparse-checkout: |
-          ${{ inputs.path }}/extensions.json
-          ${{ inputs.path }}/data
-        sparse-checkout-cone-mode: false
-        path: repodynamics/metadata/main
     - id: ext
       shell: bash
       env:
         RD_META_FILES__REPO: ${{ github.repository }}
         RD_META_FILES__REF: ${{ inputs.ref || github.ref }}
-        RD_META_FILES__PATH: ${{ inputs.path }}
-        RD_META_FILES__PATH_DL: repodynamics/metadata/main
-        RD_META_FILES__IS_MAIN: true
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
 
     - name: 'Checkout Extension Repositories'
-      if: fromJSON(steps.ext.outputs.ext).alt_1.repo != ''
+      if: fromJSON(steps.ext.outputs.alt1).repo != ''
       uses: actions/checkout@v3
       with:
-        repository: ${{ fromJSON(steps.ext.outputs.ext).alt_1.repo }}
-        ref: ${{ fromJSON(steps.ext.outputs.ext).alt_1.ref }}
-        sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data
+        repository: ${{ fromJSON(steps.ext.outputs.alt1).repo }}
+        ref: ${{ fromJSON(steps.ext.outputs.alt1).ref }}
+        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt1).path }}
         sparse-checkout-cone-mode: false
-        path: repodynamics/metadata/alt_1
-    - if: fromJSON(steps.ext.outputs.ext).alt_1.repo != ''
+        path: ${{ fromJSON(steps.ext.outputs.alt1).path_dl }}
+    - if: fromJSON(steps.ext.outputs.alt1).repo != ''
       shell: bash
-      env:
-        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_1.repo }}
-        RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_1.ref }}
-        RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}
-        RD_META_FILES__PATH_DL: repodynamics/metadata/alt_1
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-    - if: fromJSON(steps.ext.outputs.ext).alt_2.repo != ''
+    - if: fromJSON(steps.ext.outputs.alt2).repo != ''
       uses: actions/checkout@v3
       with:
-          repository: ${{ fromJSON(steps.ext.outputs.ext).alt_2.repo }}
-          ref: ${{ fromJSON(steps.ext.outputs.ext).alt_2.ref }}
-          sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data
-          sparse-checkout-cone-mode: false
-          path: repodynamics/metadata/alt_2
-    - if: fromJSON(steps.ext.outputs.ext).alt_2.repo != ''
+        repository: ${{ fromJSON(steps.ext.outputs.alt2).repo }}
+        ref: ${{ fromJSON(steps.ext.outputs.alt2).ref }}
+        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt2).path }}
+        sparse-checkout-cone-mode: false
+        path: ${{ fromJSON(steps.ext.outputs.alt2).path_dl }}
+    - if: fromJSON(steps.ext.outputs.alt2).repo != ''
       shell: bash
-      env:
-        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_2.repo }}
-        RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_2.ref }}
-        RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}
-        RD_META_FILES__PATH_DL: repodynamics/metadata/alt_2
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-    - if: fromJSON(steps.ext.outputs.ext).alt_3.repo != ''
+    - if: fromJSON(steps.ext.outputs.alt3).repo != ''
       uses: actions/checkout@v3
       with:
-          repository: ${{ fromJSON(steps.ext.outputs.ext).alt_3.repo }}
-          ref: ${{ fromJSON(steps.ext.outputs.ext).alt_3.ref }}
-          sparse-checkout: ${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data
-          sparse-checkout-cone-mode: false
-          path: repodynamics/metadata/alt_3
-    - if: fromJSON(steps.ext.outputs.ext).alt_3.repo != ''
+        repository: ${{ fromJSON(steps.ext.outputs.alt3).repo }}
+        ref: ${{ fromJSON(steps.ext.outputs.alt3).ref }}
+        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt3).path }}
+        sparse-checkout-cone-mode: false
+        path: ${{ fromJSON(steps.ext.outputs.alt3).path_dl }}
+    - if: fromJSON(steps.ext.outputs.alt3).repo != ''
       shell: bash
-      env:
-        RD_META_FILES__REPO: ${{ fromJSON(steps.ext.outputs.ext).alt_3.repo }}
-        RD_META_FILES__REF: ${{ fromJSON(steps.ext.outputs.ext).alt_3.ref }}
-        RD_META_FILES__PATH: ${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}
-        RD_META_FILES__PATH_DL: repodynamics/metadata/alt_3
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
@@ -167,17 +148,17 @@ runs:
       uses: actions/cache@v3
       with:
         path: |
-          metadata_full.json
-          metadata_api_cache.yaml
+          .local/metadata.json
+          .local/metadata_api_cache.yaml
         # Cache is invalidated when metadata files are changed.
         # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
         key: >-
           metadata-${{
             hashFiles(
-              'repodynamics/metadata/main/${{ inputs.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}/data/*.yaml',
-              'repodynamics/metadata/alt_3/${{ fromJSON(steps.ext.outputs.ext).alt_3.path }}/data/*.yaml'
+              'meta/data/*.yaml',
+              '${{ fromJSON(steps.ext.outputs.alt1).hash_pattern }}',
+              '${{ fromJSON(steps.ext.outputs.alt2).hash_pattern }}',
+              '${{ fromJSON(steps.ext.outputs.alt3).hash_pattern }}'
             )
           }}
     
@@ -188,8 +169,6 @@ runs:
         RD__META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
         RD__META__FORCE_UPDATE: ${{ inputs.force-update }}
         RD__META__GITHUB_TOKEN: ${{ github.token }}
-        RD__META__FILEPATH_FULL: metadata_full.json
-        RD__META__FILEPATH_CACHE: metadata_api_cache.yaml
         RD__META__DIRPATH_MAIN: 'repodynamics/metadata/main/${{ inputs.path }}'
         RD__META__DIRPATH_ALT1: 'repodynamics/metadata/alt_1/${{ fromJSON(steps.ext.outputs.ext).alt_1.path }}'
         RD__META__DIRPATH_ALT2: 'repodynamics/metadata/alt_2/${{ fromJSON(steps.ext.outputs.ext).alt_2.path }}'
