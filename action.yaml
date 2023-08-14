@@ -43,6 +43,14 @@ outputs:
     description: "Repository metadata diff as a JSON string."
     value: ${{ steps.metadata.outputs.diff }}
 
+  changes-detected:
+    description: "Repository metadata as a JSON string."
+    value: ${{ steps.commit.outputs.changes_detected }}
+
+  commit-hash:
+    description: "Repository metadata as a JSON string."
+    value: ${{ steps.commit.outputs.commit_hash }}
+
 
 runs:
   using: "composite"
@@ -193,3 +201,15 @@ runs:
           rd-print "Calculating metadata..." info
         fi
         python -m repodynamics.actions meta
+    
+
+    - name: 'Sync files'
+      if: inputs.mode == 'sync' && fromJSON(steps.metadata.outputs.diff).any == 'true'
+      # https://github.com/marketplace/actions/git-auto-commit
+      uses: stefanzweifel/git-auto-commit-action@v4
+      id: commit
+      with:
+        commit_message: 'meta: sync dynamic files after metadata modification'
+        commit_user_name: 'RepoDynamics[bot]'
+        commit_user_email: 'contact@repodynamics.org'
+        commit_author: 'RepoDynamics[bot] <contact@repodynamics.org>'
