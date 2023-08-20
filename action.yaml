@@ -55,7 +55,7 @@ runs:
         fetch-depth: ${{ (inputs.detect-changes == 'true' && '0') || '1' }}
 
     - name: 'Setup Python'
-      shell: bashe
+      shell: bash
       run: |
         # Setup Python
         echo -e "\033[1;30;48;2;200;120;255m Setup Python "
