@@ -7,29 +7,15 @@ branding:
 
 
 inputs:
-
-  mode:
+  detect-changes:
     description: |
-      Whether to sync meta files.
-    default: read
+      Whether to detect changes in the repository metadata.
+    default: true
     required: false
-
-  force-update:
-      description: |
-        One of `none`, `core` or `all` (default: none):
-          - none: load entirely from cache, if no changes in metadata files are detected.
-          - core: force update the core metadata, but not the cached API metadata.
-          - all: force update the core metadata and the cached API metadata.
-        Note that when a change is detected, the core metadata is always updated,
-        but non-expired cached API metadata is only updated when `all` is selected.
-      default: none
-      required: false
-
-  ref:
+  sync:
     description: |
-      Reference (i.e. branch, tag or SHA) of the current repository to checkout, 
-      i.e. the `ref` input of `actions/checkout`.
-    default: ""
+      One of 'push', 'pull' or 'report' (default: report)
+    default: report
     required: false
 
 
@@ -56,59 +42,62 @@ runs:
   using: "composite"
   steps:
 
-    - name: 'Intro'
+    - name: 'Initialize'
       shell: bash
       run: |
-        # Repodynamics Meta
+        # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
 
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ (inputs.detect-changes == 'true' && 0) || 1 }}
 
-    - name: 'Setup Python'
-      shell: bash
-      run: |
-        # Setup Python
-        echo -e "\033[1;30;48;2;200;120;255m 1. Setup Python  "
-    - uses: actions/setup-python@v4
+    - name: 'Checkout Repository'
+      uses: actions/setup-python@v4
       with:
         python-version: '3.x'
-
+        cache: 'pip'
+        cache-dependency-path: '.github/workflows/requirements/**/*.txt'
 
     - name: 'Install RepoDynamics'
       shell: bash
       run: |
         # Install RepoDynamics
-        echo -e "\033[1;30;48;2;200;120;255m 2. Install RepoDynamics  "
-        pip install -r ${{ github.action_path }}/requirements.txt
+        echo "::group::Install RepoDynamics"
+        python -m pip install -r .github/workflows/requirements/repodynamics.txt
+        echo "::endgroup::"
+        echo "::group::Display environment"
+        python -m pip list
+        echo "::endgroup::"
 
+    - name: 'Detect Changes'
+      if: inputs.detect-changes == 'true'
+      id: changes-all
+      # https://github.com/marketplace/actions/changed-files
+      uses: tj-actions/changed-files@v37
 
-    - name: 'Checkout Main Repository'
-      shell: bash
-      run: |
-        # Checkout Main Repository
-        rd-print "3. Checkout Main Repository" heading meta
-        rd-print "checkout-ref: ${{ inputs.ref || github.ref }}" info
-    - uses: actions/checkout@v3
+    - name: 'Get changed categories'
+      if: inputs.detect-changes == 'true'
+      id: changes-groups
+      uses: tj-actions/changed-files@v37
       with:
-        ref: ${{ inputs.ref }}
-    - id: ext
+        files_yaml_from_source_file: ${{ github.action_path }}/changed_files.yaml
+
+    - name: 'Collect Metadata'
+      id: ext
+      if: inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true'
       shell: bash
       env:
         RD_META_FILES__REPO: ${{ github.repository }}
-        RD_META_FILES__REF: ${{ inputs.ref || github.ref }}
+        RD_META_FILES__REF: ${{ github.ref }}
       run: |
-        # Display Downloaded Files
+        # Collect Metadata
+        rd-print "Collect Metadata" heading meta
         python -m repodynamics.actions meta files
 
-
-    - name: 'Checkout Extension Repositories'
-      shell: bash
-      run: |
-        # Checkout Extension Repositories
-        rd-print "4. Checkout Extension Repositories" heading meta
-        if [[ "${{ steps.ext.outputs.has_extensions }}" == "false" ]]; then
-          rd-print "No 'extensions.json' was found; skipping." success
-        fi
-    - if: fromJSON(steps.ext.outputs.alt1).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt1).repo != ''
       uses: actions/checkout@v3
       with:
         repository: ${{ fromJSON(steps.ext.outputs.alt1).repo }}
@@ -116,13 +105,17 @@ runs:
         sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt1).path }}
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt1).path_dl }}
-    - if: fromJSON(steps.ext.outputs.alt1).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt1).repo != ''
       shell: bash
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-    - if: fromJSON(steps.ext.outputs.alt2).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt2).repo != ''
       uses: actions/checkout@v3
       with:
         repository: ${{ fromJSON(steps.ext.outputs.alt2).repo }}
@@ -130,13 +123,17 @@ runs:
         sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt2).path }}
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt2).path_dl }}
-    - if: fromJSON(steps.ext.outputs.alt2).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt2).repo != ''
       shell: bash
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-    - if: fromJSON(steps.ext.outputs.alt3).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt3).repo != ''
       uses: actions/checkout@v3
       with:
         repository: ${{ fromJSON(steps.ext.outputs.alt3).repo }}
@@ -144,72 +141,65 @@ runs:
         sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt3).path }}
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt3).path_dl }}
-    - if: fromJSON(steps.ext.outputs.alt3).repo != ''
+    - if: |
+        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        && fromJSON(steps.ext.outputs.alt3).repo != ''
       shell: bash
       run: |
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-
-    - name: 'Initialize Cache'
-      shell: bash
-      run: |
-        # Initialize Metadata Cache
-        rd-print "5. Initialize Metadata Cache" heading meta
-    - id: cache
-      # This returns a cache-hit output, which is either 'true' or 'false' (str, not bool).
-      # https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows#using-the-cache-action
-      # https://github.com/actions/cache
-      uses: actions/cache@v3
-      with:
-        path: |
-          .local/metadata.json
-          .local/metadata_api_cache.yaml
-        # Cache is invalidated when metadata files are changed.
-        # Ref. hashFiles: https://docs.github.com/en/actions/learn-github-actions/expressions#hashfiles
-        key: >-
-          metadata-${{
-            hashFiles(
-              'meta/data/*.yaml',
-              '${{ fromJSON(steps.ext.outputs.alt1).hash_pattern }}',
-              '${{ fromJSON(steps.ext.outputs.alt2).hash_pattern }}',
-              '${{ fromJSON(steps.ext.outputs.alt3).hash_pattern }}'
-            )
-          }}
-    
-
     - name: 'Get metadata'
+      if: |
+        inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true'
       id: metadata
       env:
-        RD_META__MODE: ${{ inputs.mode }}
-        RD_META__CACHE_HIT: ${{ steps.cache.outputs.cache-hit == 'true' }}
-        RD_META__FORCE_UPDATE: ${{ inputs.force-update }}
         RD_META__GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         # Get Metadata
-        rd-print "6. Get Metadata" heading meta
-        if [[ "${{ inputs.force-update }}" == "none" && "${{ steps.cache.outputs.cache-hit }}" == "true" ]]; then
-          rd-print "Force-update was not selected and a cache was found; loading metadata from cache..." info
-        else
-          if [[ "${{ inputs.force-update }}" != "none" ]]; then
-            rd-print "Force-update was selected; installing extra dependencies..." info
-          else
-            rd-print "No cache was found; installing extra dependencies..." info
-          fi
-          pip install repodynamics[meta]
-          rd-print "Calculating metadata..." info
-        fi
+        echo "::group::Install RepoDynamics Meta"
+        python -m pip install -r .github/workflows/requirements/meta.txt
+        echo "::endgroup::"
+        rd-print "Calculate Metadata" heading meta
         python -m repodynamics.actions meta
-    
 
     - name: 'Sync files'
-      if: inputs.mode == 'sync' && fromJSON(steps.metadata.outputs.diff).any == 'true'
+      if: inputs.sync == 'push'
       # https://github.com/marketplace/actions/git-auto-commit
       uses: stefanzweifel/git-auto-commit-action@v4
-      id: commit
+      id: push
       with:
         commit_message: 'meta: sync dynamic files after metadata modification'
-        commit_user_name: 'RepoDynamics[bot]'
-        commit_user_email: 'contact@repodynamics.org'
-        commit_author: 'RepoDynamics[bot] <contact@repodynamics.org>'
+        commit_user_name: 'RepoDynamics-Meta[bot]'
+        commit_user_email: 'action_meta@repodynamics.org'
+        commit_author: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+
+    - name: 'Pull'
+      if: inputs.sync == 'pull'
+      id: pull
+      uses: peter-evans/create-pull-request@v5
+      # https://github.com/marketplace/actions/create-pull-request
+      with:
+        commit-message: 'meta: sync dynamic files after metadata modification'
+        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+        branch: 'meta/update'
+        branch-suffix: timestamp
+        title: 'meta: sync dynamic files after metadata modification'
+        body-path: .local/repodynamics_meta/pr_body.md
+
+    - name: 'Finalize'
+      id: finalize
+      shell: bash
+      run: python -m repodynamics.actions meta finalize
+      env:
+        RD_META__DETECT: ${{ inputs.detect-changes }}
+        RD_META__SYNC: ${{ inputs.sync }}
+        RD_META__PUSH_CHANGES: ${{ steps.push.outputs.changes_detected }}
+        RD_META__PUSH_SHA: ${{ steps.push.outputs.commit_hash }}
+        RD_META__PULL_NUMBER: ${{ steps.pull.outputs.pull-request-number }}
+        RD_META__PULL_URL: ${{ steps.pull.outputs.pull-request-url }}
+        RD_META__PULL_HEAD_SHA: ${{ steps.pull.outputs.pull-request-head-sha }}
+        RD_META__CHANGES_CATEGORIES: ${{ toJson(steps.changes-groups.outputs) }}
+        RD_META__CHANGES_ALL: ${{ toJson(steps.changes-all.outputs) }}
+
