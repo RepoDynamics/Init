@@ -330,5 +330,3 @@ runs:
         RD_META__PULL_URL: ${{ steps.pull.outputs.pull-request-url }}
         RD_META__PULL_HEAD_SHA: ${{ steps.pull.outputs.pull-request-head-sha }}
         RD_META__CHANGES: ${{ toJson(steps.changes.outputs) }}
-        RD_META__SUMMARY: ${{ steps.metadata.outputs.summary }}
-
