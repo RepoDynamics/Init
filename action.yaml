@@ -49,12 +49,17 @@ runs:
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
         echo -e "\033[1;30;48;2;200;120;255m Checkout Repository "
 
-    - uses: actions/checkout@v3
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v3
       with:
         fetch-depth: ${{ (inputs.detect-changes == 'true' && '0') || '1' }}
 
-    - name: 'Checkout Repository'
-      uses: actions/setup-python@v4
+    - name: 'Setup Python'
+      shell: bashe
+      run: |
+        # Setup Python
+        echo -e "\033[1;30;48;2;200;120;255m Setup Python "
+    - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
@@ -77,13 +82,7 @@ runs:
 
     - name: 'Detect Changes'
       if: inputs.detect-changes == 'true'
-      id: changes-all
-      # https://github.com/marketplace/actions/changed-files
-      uses: tj-actions/changed-files@v37
-
-    - name: 'Get changed categories'
-      if: inputs.detect-changes == 'true'
-      id: changes-groups
+      id: changes
       uses: tj-actions/changed-files@v37
       with:
         files_yaml: |
@@ -204,7 +203,7 @@ runs:
 
     - name: 'Collect Metadata'
       id: ext
-      if: inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true'
+      if: inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
       shell: bash
       env:
         RD_META_FILES__REPO: ${{ github.repository }}
@@ -215,7 +214,7 @@ runs:
         python -m repodynamics.actions meta files
 
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt1).repo != ''
       uses: actions/checkout@v3
       with:
@@ -225,7 +224,7 @@ runs:
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt1).path_dl }}
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt1).repo != ''
       shell: bash
       run: |
@@ -233,7 +232,7 @@ runs:
         python -m repodynamics.actions meta files
 
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt2).repo != ''
       uses: actions/checkout@v3
       with:
@@ -243,7 +242,7 @@ runs:
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt2).path_dl }}
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt2).repo != ''
       shell: bash
       run: |
@@ -251,7 +250,7 @@ runs:
         python -m repodynamics.actions meta files
 
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt3).repo != ''
       uses: actions/checkout@v3
       with:
@@ -261,7 +260,7 @@ runs:
         sparse-checkout-cone-mode: false
         path: ${{ fromJSON(steps.ext.outputs.alt3).path_dl }}
     - if: |
-        (inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true')
+        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
         && fromJSON(steps.ext.outputs.alt3).repo != ''
       shell: bash
       run: |
@@ -270,7 +269,7 @@ runs:
 
     - name: 'Get metadata'
       if: |
-        inputs.detect-changes != 'true' || steps.changes-groups.outputs.meta_any_modified == 'true'
+        inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
       id: metadata
       env:
         RD_META__GITHUB_TOKEN: ${{ github.token }}
@@ -327,6 +326,5 @@ runs:
         RD_META__PULL_NUMBER: ${{ steps.pull.outputs.pull-request-number }}
         RD_META__PULL_URL: ${{ steps.pull.outputs.pull-request-url }}
         RD_META__PULL_HEAD_SHA: ${{ steps.pull.outputs.pull-request-head-sha }}
-        RD_META__CHANGES_CATEGORIES: ${{ toJson(steps.changes-groups.outputs) }}
-        RD_META__CHANGES_ALL: ${{ toJson(steps.changes-all.outputs) }}
+        RD_META__CHANGES: ${{ toJson(steps.changes.outputs) }}
 
