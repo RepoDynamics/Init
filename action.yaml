@@ -267,7 +267,7 @@ runs:
         # Display Downloaded Files
         python -m repodynamics.actions meta files
 
-    - name: 'Get metadata'
+    - name: 'Update Metadata'
       if: |
         inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
       id: metadata
@@ -276,7 +276,7 @@ runs:
       shell: bash
       run: |
         # Get Metadata
-        rd-print "Calculate Metadata" heading meta
+        rd-print "Sync & Update" heading meta
         
         echo "::group::Install RepoDynamics Meta"
         python -m pip install -r .github/workflows/requirements/meta.txt
@@ -314,12 +314,12 @@ runs:
         title: 'meta: sync dynamic files after metadata modification'
         body-path: .local/repodynamics_meta/pr_body.md
 
-    - name: 'Finalize'
-      id: finalize
+    - name: 'Create Summary'
+      id: last
       shell: bash
       run: |
-        # Finalize
-        echo -e "\033[1;30;48;2;200;120;255m Finalize "
+        # Create Summary
+        echo -e "\033[1;30;48;2;200;120;255m Create Summary "
         python -m repodynamics.actions meta finalize
       env:
         RD_META__DETECT: ${{ inputs.detect-changes }}
