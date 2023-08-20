@@ -71,7 +71,7 @@ runs:
         echo "::group::Display environment"
         python -m pip list
         echo "::endgroup::"
-        if [ "${{inputs.detect-changes}}" = "true" ]; then
+        if [[ "${{inputs.detect-changes}}" == "true" ]]; then
             echo -e "\033[1;30;48;2;200;120;255m Detect Changes "
         fi
 
@@ -282,8 +282,13 @@ runs:
         echo "::endgroup::"
         rd-print "Calculate Metadata" heading meta
         python -m repodynamics.actions meta
+        if [[ "${{inputs.sync}}" == "push" ]]; then
+            echo -e "\033[1;30;48;2;200;120;255m Push Changes "
+        elif [[ "${{inputs.sync}}" == "pull" ]]; then
+            echo -e "\033[1;30;48;2;200;120;255m Create Pull Request "
+        fi
 
-    - name: 'Sync files'
+    - name: 'Push'
       if: inputs.sync == 'push'
       # https://github.com/marketplace/actions/git-auto-commit
       uses: stefanzweifel/git-auto-commit-action@v4
@@ -310,7 +315,10 @@ runs:
     - name: 'Finalize'
       id: finalize
       shell: bash
-      run: python -m repodynamics.actions meta finalize
+      run: |
+        # Finalize
+        echo -e "\033[1;30;48;2;200;120;255m Finalize "
+        python -m repodynamics.actions meta finalize
       env:
         RD_META__DETECT: ${{ inputs.detect-changes }}
         RD_META__SYNC: ${{ inputs.sync }}
