@@ -47,6 +47,7 @@ runs:
       run: |
         # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
+        echo -e "\033[1;30;48;2;200;120;255m Checkout Repository "
 
     - uses: actions/checkout@v3
       with:
@@ -63,12 +64,16 @@ runs:
       shell: bash
       run: |
         # Install RepoDynamics
+        echo -e "\033[1;30;48;2;200;120;255m Install RepoDynamics "
         echo "::group::Install RepoDynamics"
         python -m pip install -r .github/workflows/requirements/repodynamics.txt
         echo "::endgroup::"
         echo "::group::Display environment"
         python -m pip list
         echo "::endgroup::"
+        if [ "${{inputs.detect-changes}}" = "true" ]; then
+            echo -e "\033[1;30;48;2;200;120;255m Detect Changes "
+        fi
 
     - name: 'Detect Changes'
       if: inputs.detect-changes == 'true'
