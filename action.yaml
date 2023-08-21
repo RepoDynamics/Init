@@ -272,6 +272,7 @@ runs:
         inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
       id: metadata
       env:
+        RD_META__REPO_FULLNAME: ${{ github.repository }}
         RD_META__GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
