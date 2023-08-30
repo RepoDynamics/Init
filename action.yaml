@@ -258,9 +258,9 @@ runs:
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
         RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
-        RD_INIT__META: ${{ steps.meta.outputs }}
-        RD_INIT__HOOKS: ${{ steps.hooks.outputs }}
-        RD_INIT__PULL: ${{ steps.pull.outputs }}
+        RD_INIT__META: ${{ toJson(steps.meta.outputs) }}
+        RD_INIT__HOOKS: ${{ toJson(steps.hooks.outputs) }}
+        RD_INIT__PULL: ${{ toJson(steps.pull.outputs) }}
       shell: bash
       run: |
         # Create Summary
