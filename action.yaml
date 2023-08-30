@@ -45,6 +45,12 @@ runs:
         # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
         echo -e "\033[1;30;48;2;79;255;15m Initialize "
+
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ (github.event_name == 'push' && '0') || '2' }}
+
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
@@ -60,11 +66,6 @@ runs:
         python -m pip list
         echo "::endgroup::"
         rd-print "Checkout Repository" heading init
-
-    - name: 'Checkout Repository'
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: ${{ (github.event_name == 'push' && '0') || '1' }}
 
     - name: 'Detect Changes'
       if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
