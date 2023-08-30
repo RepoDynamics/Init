@@ -44,13 +44,16 @@ runs:
       run: |
         # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-        echo -e "\033[1;30;48;2;79;255;15m Initialize "
+        echo -e "\033[1;30;48;2;79;255;15m Checkout Repository "
 
     - name: 'Checkout Repository'
       uses: actions/checkout@v3
       with:
         fetch-depth: ${{ (github.event_name == 'push' && '0') || '2' }}
 
+    - name: 'Setup Python'
+      shell: bash
+      run: echo -e "\033[1;30;48;2;79;255;15m Setup Python "
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
@@ -59,13 +62,13 @@ runs:
     - shell: bash
       run: |
         # Install RepoDynamics
+        echo -e "\033[1;30;48;2;79;255;15m Install RepoDynamics "
         echo "::group::Install Dependencies"
         python -m pip install -r ${{ inputs.requirements-path }}
         echo "::endgroup::"
         echo "::group::Display pip environment"
         python -m pip list
         echo "::endgroup::"
-        rd-print "Checkout Repository" heading init
 
     - name: 'Detect Changes'
       if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
@@ -208,7 +211,7 @@ runs:
             - '**/*.py'
             - '**/*.ipynb'
 
-    - name: 'Update Metadata'
+    - name: 'Manage Metadata'
       id: update-meta
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
@@ -216,7 +219,10 @@ runs:
       shell: bash
       run: |
         # Determine if metadata needs to be updated
+        rd-print "Manage Metadata" heading init
         python -m repodynamics.actions init update_meta
+
+    - name: 'Update Metadata'
     - id: meta
       if: steps.update-meta.outputs.update == 'true'
       uses: repodynamics/meta@main
