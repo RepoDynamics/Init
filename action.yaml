@@ -1,22 +1,19 @@
-name: 'RepoDynamics Meta'
-description: 'Load repository metadata.'
+name: 'RepoDynamics Init'
+description: 'Initialize workflow runs.'
 author: 'Armin Ariamajd'
 branding:
   icon: file-text
   color: blue
 
-
 inputs:
-  detect-changes:
-    description: |
-      Whether to detect changes in the repository metadata.
-    default: true
+  requirements-path:
+    description: 'Path to the requirements file.'
     required: false
-  sync:
-    description: |
-      One of 'push', 'pull' or 'report' (default: report)
-    default: report
+    default: '.github/workflows/requirements/repodynamics.txt'
+  pre-commit-config-path:
+    description: 'Path to the pre-commit configuration file.'
     required: false
+    default: '.pre-commit-config.yaml'
 
 
 outputs:
@@ -47,115 +44,123 @@ runs:
       run: |
         # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-        echo -e "\033[1;30;48;2;200;120;255m Checkout Repository "
-
-    - name: 'Checkout Repository'
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: ${{ (inputs.detect-changes == 'true' && '0') || '1' }}
-
-    - name: 'Setup Python'
-      shell: bash
-      run: |
-        # Setup Python
-        echo -e "\033[1;30;48;2;200;120;255m Setup Python "
+        echo -e "\033[1;30;48;2;79;255;15m Initialize "
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: '.github/workflows/requirements/**/*.txt'
-
-    - name: 'Install RepoDynamics'
-      shell: bash
+        cache-dependency-path: ${{ inputs.requirements-path }}
+    - shell: bash
       run: |
         # Install RepoDynamics
-        echo -e "\033[1;30;48;2;200;120;255m Install RepoDynamics "
-        echo "::group::Install RepoDynamics"
-        python -m pip install -r .github/workflows/requirements/repodynamics.txt
+        echo "::group::Install Dependencies"
+        python -m pip install -r ${{ inputs.requirements-path }}
         echo "::endgroup::"
-        echo "::group::Display environment"
+        echo "::group::Display pip environment"
         python -m pip list
         echo "::endgroup::"
-        if [[ "${{inputs.detect-changes}}" == "true" ]]; then
-            echo -e "\033[1;30;48;2;200;120;255m Detect Changes "
-        fi
+        rd-print "Checkout Repository" heading init
+
+    - name: 'Checkout Repository'
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ (github.event_name == 'push' && '0') || '1' }}
 
     - name: 'Detect Changes'
-      if: inputs.detect-changes == 'true'
-      id: changes
+      if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
+      shell: bash
+      run: |
+        # Detect Changes
+        rd-print "Detect Changes" heading init
+    - id: changes
+      if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
       uses: tj-actions/changed-files@v37
       with:
         files_yaml: |
           all:
             - '**'
           
-          github-discussion-template:
+          discussion-template:
             - '.github/DISCUSSION_TEMPLATE/*.yaml'
             - '.github/DISCUSSION_TEMPLATE/*.yml'
           
-          github-issue-template:
+          issue-template:
             - '.github/ISSUE_TEMPLATE/*.yaml'
             - '.github/ISSUE_TEMPLATE/*.yml'
           
-          github-pull-request-template:
+          pull-template:
             - '.github/PULL_REQUEST_TEMPLATE.md'
             - '.github/PULL_REQUEST_TEMPLATE/*.yaml'
             - '.github/PULL_REQUEST_TEMPLATE/*.yml'
             - '.github/PULL_REQUEST_TEMPLATE/*.md'
           
-          github-workflows:
-            - '.github/workflows/*.yaml'
-            - '.github/workflows/*.yml'
+          workflow:
+            - '.github/workflows/**'
+            - '!.github/workflows/**/README.md'
           
           github-config:
             - '.github/*.yaml'
             - '.github/*.yml'
-            - '.github/config/*.yaml'
-            - '.github/config/*.yml'
           
           data:
             - 'data/**'
+            - '!data/**/README.md'
+          
+          dev:
+            - 'dev/**'
+            - '!dev/build/conda/**'
+            - '!dev/build/pypi/**'
+            - '!dev/**/README.md'
           
           dev-build-conda:
             - 'dev/build/conda/**'
+            - '!dev/build/conda/**/README.md'
           
           dev-build-pypi:
             - 'dev/build/pypi/**'
+            - '!dev/build/pypi/**/README.md'
+          
+          docs:
+            - 'docs/**'
+            - '!docs/website/**'
+            - '!docs/articles/**'
+            - '!docs/**/README.md'
           
           docs-articles:
             - 'docs/articles/**'
+            - '!docs/articles/**/README.md'
           
           docs-website:
-            - 'docs/website/make.bat'
-            - 'docs/website/Makefile'
-            - 'docs/website/requirements.yaml'
-            - 'docs/website/source/**'
+            - 'docs/website/**'
+            - '!docs/website/**/README.md'
           
           meta:
             - 'meta/**'
-            - '!**/*README.md'
-          
+            - '!meta/**/README.md'
           meta-out:
             - 'meta/.out/**'
+            - '!meta/.out/**/README.md'
           meta-data:
-            - 'meta/data/*.yaml'
+            - 'meta/data/**'
+            - '!meta/data/**/README.md'
           meta-media:
             - 'meta/media/**'
-            - '!**/*README.md'
+            - '!meta/media/**/README.md'
           meta-template-health-file:
-            - 'meta/template/health_file/*.md'
-            - '!**/*README.md'
+            - 'meta/template/health_file/**'
+            - '!meta/template/health_file/**/README.md'
           meta-template-license:
-            - 'meta/template/license/*.txt'
+            - 'meta/template/license/**'
+            - '!meta/template/license/**/README.md'
           meta-template-issue-form:
-              - 'meta/template/issue_form/*.yaml'
-              - 'meta/template/issue_form/*.yml'
+              - 'meta/template/issue_form/**'
+              - '!meta/template/issue_form/**/README.md'
           meta-extensions:
             - 'meta/extensions.json'
           
           src:
             - 'src/**'
-            - '!**/*README.md'
+            - '!src/**/*README.md'
           
           tests:
             - 'tests/**'
@@ -165,6 +170,7 @@ runs:
             - 'pyproject.toml'
             - 'setup.py'
             - 'MANIFEST.in'
+            - 'dev/build/pypi/readme_pypi.md'
             - 'requirements.txt'
           
           license:
@@ -201,133 +207,67 @@ runs:
             - '**/*.py'
             - '**/*.ipynb'
 
-    - name: 'Collect Metadata'
-      id: ext
-      if: inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
-      shell: bash
-      env:
-        RD_META_FILES__REPO: ${{ github.repository }}
-        RD_META_FILES__REF: ${{ github.ref }}
-      run: |
-        # Collect Metadata
-        rd-print "Collect Metadata" heading meta
-        python -m repodynamics.actions meta files
-
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt1).repo != ''
-      uses: actions/checkout@v3
-      with:
-        repository: ${{ fromJSON(steps.ext.outputs.alt1).repo }}
-        ref: ${{ fromJSON(steps.ext.outputs.alt1).ref }}
-        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt1).path }}
-        sparse-checkout-cone-mode: false
-        path: ${{ fromJSON(steps.ext.outputs.alt1).path_dl }}
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt1).repo != ''
-      shell: bash
-      run: |
-        # Display Downloaded Files
-        python -m repodynamics.actions meta files
-
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt2).repo != ''
-      uses: actions/checkout@v3
-      with:
-        repository: ${{ fromJSON(steps.ext.outputs.alt2).repo }}
-        ref: ${{ fromJSON(steps.ext.outputs.alt2).ref }}
-        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt2).path }}
-        sparse-checkout-cone-mode: false
-        path: ${{ fromJSON(steps.ext.outputs.alt2).path_dl }}
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt2).repo != ''
-      shell: bash
-      run: |
-        # Display Downloaded Files
-        python -m repodynamics.actions meta files
-
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt3).repo != ''
-      uses: actions/checkout@v3
-      with:
-        repository: ${{ fromJSON(steps.ext.outputs.alt3).repo }}
-        ref: ${{ fromJSON(steps.ext.outputs.alt3).ref }}
-        sparse-checkout: ${{ fromJSON(steps.ext.outputs.alt3).path }}
-        sparse-checkout-cone-mode: false
-        path: ${{ fromJSON(steps.ext.outputs.alt3).path_dl }}
-    - if: |
-        (inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true')
-        && fromJSON(steps.ext.outputs.alt3).repo != ''
-      shell: bash
-      run: |
-        # Display Downloaded Files
-        python -m repodynamics.actions meta files
-
     - name: 'Update Metadata'
-      if: |
-        inputs.detect-changes != 'true' || steps.changes.outputs.meta_any_modified == 'true'
-      id: metadata
+      id: update-meta
       env:
-        RD_META__REPO_FULLNAME: ${{ github.repository }}
-        RD_META__GITHUB_TOKEN: ${{ github.token }}
+        RD_INIT__CONTEXT: ${{ toJson(github) }}
+        RD_INIT__META_MODIFIED: ${{ steps.changes.outputs.meta_any_modified }}
       shell: bash
       run: |
-        # Get Metadata
-        rd-print "Sync & Update" heading meta
-        
-        echo "::group::Install RepoDynamics Meta"
-        python -m pip install -r .github/workflows/requirements/meta.txt
-        echo "::endgroup::"
-        
-        python -m repodynamics.actions meta
-        
-        if [[ "${{inputs.sync}}" == "push" ]]; then
-            echo -e "\033[1;30;48;2;200;120;255m Push Changes "
-        elif [[ "${{inputs.sync}}" == "pull" ]]; then
-            echo -e "\033[1;30;48;2;200;120;255m Create Pull Request "
-        fi
-
-    - name: 'Push'
-      if: inputs.sync == 'push'
-      # https://github.com/marketplace/actions/git-auto-commit
-      uses: stefanzweifel/git-auto-commit-action@v4
-      id: push
+        # Determine if metadata needs to be updated
+        python -m repodynamics.actions init update_meta
+    - id: meta
+      if: steps.update-meta.outputs.update == 'true'
+      uses: repodynamics/meta@main
       with:
-        commit_message: 'meta: sync dynamic files after metadata modification'
-        commit_user_name: 'RepoDynamics-Meta[bot]'
-        commit_user_email: 'action_meta@repodynamics.org'
-        commit_author: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+        commit: ${{ steps.update-meta.outputs.commit }}
+        requirements-path: ${{ inputs.requirements-path }}
+
+    - name: 'Run Hooks'
+      id: run-hooks
+      env:
+        RD_INIT__CONTEXT: ${{ toJson(github) }}
+        RD_INIT__META_COMMIT_HASH: ${{ steps.meta.outputs.commit-hash }}
+      shell: bash
+      run: |
+          # Determine pre-commit configuration
+          python -m repodynamics.actions init run_hooks
+    - id: hooks
+      uses: repodynamics/hooks@main
+      with:
+        commit: ${{ steps.run-hooks.outputs.commit }}
+        from-ref: ${{ steps.run-hooks.outputs.from_ref }}
+        to-ref: ${{ steps.run-hooks.outputs.to_ref }}
+        config-path: ${{ inputs.pre-commit-config-path }}
+        requirements-path: ${{ inputs.requirements-path }}
 
     - name: 'Pull'
-      if: inputs.sync == 'pull'
+      if: steps.hooks.outputs.pull == 'true'
       id: pull
       uses: peter-evans/create-pull-request@v5
       # https://github.com/marketplace/actions/create-pull-request
       with:
-        commit-message: 'meta: sync dynamic files after metadata modification'
         committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
-        branch: 'meta/update'
+        branch: 'maint/repodynamics'
         branch-suffix: timestamp
-        title: 'meta: sync dynamic files after metadata modification'
-        body-path: .local/repodynamics_meta/pr_body.md
+        title: 'maint: sync dynamic files'
+        body-path: .local/temp/repodynamics/init/pr_body.md
 
     - name: 'Create Summary'
       id: last
+      env:
+        RD_INIT__CONTEXT: ${{ toJson(github) }}
+        RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
+        RD_INIT__META: ${{ steps.meta.outputs }}
+        RD_INIT__HOOKS: ${{ steps.hooks.outputs }}
+        RD_INIT__PULL: ${{ steps.pull.outputs }}
       shell: bash
       run: |
         # Create Summary
         echo -e "\033[1;30;48;2;200;120;255m Create Summary "
         python -m repodynamics.actions meta finalize
-      env:
-        RD_META__DETECT: ${{ inputs.detect-changes }}
-        RD_META__SYNC: ${{ inputs.sync }}
-        RD_META__PUSH_CHANGES: ${{ steps.push.outputs.changes_detected }}
-        RD_META__PUSH_SHA: ${{ steps.push.outputs.commit_hash }}
-        RD_META__PULL_NUMBER: ${{ steps.pull.outputs.pull-request-number }}
-        RD_META__PULL_URL: ${{ steps.pull.outputs.pull-request-url }}
-        RD_META__PULL_HEAD_SHA: ${{ steps.pull.outputs.pull-request-head-sha }}
-        RD_META__CHANGES: ${{ toJson(steps.changes.outputs) }}
+
+    - name: 'Run Context'
+      uses: repodynamics/context@main
+      with:
+        steps: true
