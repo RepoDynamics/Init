@@ -223,7 +223,7 @@ runs:
         python -m repodynamics.actions init update_meta
 
     - name: 'Update Metadata'
-    - id: meta
+      id: meta
       if: steps.update-meta.outputs.update == 'true'
       uses: repodynamics/meta@main
       with:
