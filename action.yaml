@@ -18,21 +18,21 @@ inputs:
 
 outputs:
 
-  meta:
-    description: "Repository metadata as a JSON string."
-    value: ${{ steps.metadata.outputs.meta }}
+  docs:
+    description: "Whether to run test workflow on package."
+    value: ${{ steps.final.outputs.docs }}
 
-  diff:
-    description: "Repository metadata diff as a JSON string."
-    value: ${{ steps.metadata.outputs.diff }}
+  package-test:
+    description: "Whether to run test workflow on package."
+    value: ${{ steps.final.outputs.package-test }}
 
-  changes-detected:
-    description: "Repository metadata as a JSON string."
-    value: ${{ steps.commit.outputs.changes_detected }}
+  package-lint:
+    description: "Whether to run linting workflow."
+    value: ${{ steps.final.outputs.package-lint }}
 
-  commit-hash:
-    description: "Repository metadata as a JSON string."
-    value: ${{ steps.commit.outputs.commit_hash }}
+  hash:
+    description: "Latest commit hash after changes are committed."
+    value: ${{ steps.final.outputs.hash }}
 
 
 runs:
@@ -261,7 +261,7 @@ runs:
         body-path: .local/temp/repodynamics/init/pr_body.md
 
     - name: 'Create Summary'
-      id: last
+      id: final
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
         RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
@@ -271,8 +271,8 @@ runs:
       shell: bash
       run: |
         # Create Summary
-        echo -e "\033[1;30;48;2;200;120;255m Create Summary "
-        python -m repodynamics.actions meta finalize
+        rd-print "Finalize" heading init
+        python -m repodynamics.actions init finalize
 
     - name: 'Run Context'
       uses: repodynamics/context@main
