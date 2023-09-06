@@ -5,16 +5,6 @@ branding:
   icon: file-text
   color: blue
 
-inputs:
-  requirements-path:
-    description: 'Path to the requirements file.'
-    required: false
-    default: '.github/workflows/requirements/repodynamics.txt'
-  pre-commit-config-path:
-    description: 'Path to the pre-commit configuration file.'
-    required: false
-    default: '.pre-commit-config.yaml'
-
 
 outputs:
 
@@ -44,27 +34,34 @@ runs:
       run: |
         # Initialize
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-        echo -e "\033[1;30;48;2;79;255;15m Checkout Repository "
+        python "${{ github.action_path }}/heading.py" "1" "Checkout Repository"
 
     - name: 'Checkout Repository'
       uses: actions/checkout@v3
       with:
         fetch-depth: ${{ (github.event_name == 'push' && '0') || '2' }}
 
-    - name: 'Setup Python'
-      shell: bash
-      run: echo -e "\033[1;30;48;2;79;255;15m Setup Python "
+    - shell: bash
+      run: |
+        # Setup Python
+        python "${{ github.action_path }}/heading.py" "1" "Setup Python"
+        echo "::group::Load requirements file"
+        TMP=".local/repodynamics/requirements.txt"
+        mkdir -p "$(dirname "$TMP")"
+        cp "${{ github.action_path }}/requirements.txt" "$TMP"
+        echo "::endgroup::"
+
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: ${{ inputs.requirements-path }}
+        cache-dependency-path: .local/repodynamics/requirements.txt
     - shell: bash
       run: |
         # Install RepoDynamics
         echo -e "\033[1;30;48;2;79;255;15m Install RepoDynamics "
         echo "::group::Install Dependencies"
-        python -m pip install -r ${{ inputs.requirements-path }}
+        python -m pip install -r .local/repodynamics/requirements.txt
         echo "::endgroup::"
         echo "::group::Display pip environment"
         python -m pip list
@@ -75,7 +72,7 @@ runs:
       shell: bash
       run: |
         # Detect Changes
-        rd-print "Detect Changes" heading init
+        rd-print "h1" "Detect Changes"
     - id: changes
       if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
       uses: tj-actions/changed-files@v37
@@ -159,8 +156,6 @@ runs:
           meta-template-issue-form:
               - 'meta/template/issue_form/**'
               - '!meta/template/issue_form/**/README.md'
-          meta-extensions:
-            - 'meta/extensions.json'
           
           src:
             - 'src/**'
@@ -206,47 +201,17 @@ runs:
           git-files:
             - '.gitignore'
             - '.gitattributes'
-          
-          source-files:
-            - '**/*.py'
-            - '**/*.ipynb'
 
-    - name: 'Manage Metadata'
+    - name: 'Run'
       id: update-meta
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
-        RD_INIT__META_MODIFIED: ${{ steps.changes.outputs.meta_any_modified }}
+        RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
       shell: bash
       run: |
-        # Determine if metadata needs to be updated
-        rd-print "Manage Metadata" heading init
-        python -m repodynamics.actions init update_meta
-
-    - name: 'Update Metadata'
-      id: meta
-      if: steps.update-meta.outputs.update == 'true'
-      uses: repodynamics/meta@main
-      with:
-        commit: ${{ steps.update-meta.outputs.commit }}
-        requirements-path: ${{ inputs.requirements-path }}
-
-    - name: 'Run Hooks'
-      id: run-hooks
-      env:
-        RD_INIT__CONTEXT: ${{ toJson(github) }}
-        RD_INIT__META_COMMIT_HASH: ${{ steps.meta.outputs.commit-hash }}
-      shell: bash
-      run: |
-          # Determine pre-commit configuration
-          python -m repodynamics.actions init run_hooks
-    - id: hooks
-      uses: repodynamics/hooks@main
-      with:
-        commit: ${{ steps.run-hooks.outputs.commit }}
-        from-ref: ${{ steps.run-hooks.outputs.from_ref }}
-        to-ref: ${{ steps.run-hooks.outputs.to_ref }}
-        config-path: ${{ inputs.pre-commit-config-path }}
-        requirements-path: ${{ inputs.requirements-path }}
+        # Run Action
+        rd-print "h1" "Run Action"
+        python -m repodynamics.actions init
 
     - name: 'Pull'
       if: steps.hooks.outputs.pull == 'true'
