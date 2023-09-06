@@ -213,31 +213,31 @@ runs:
         rd-print "h1" "Run Action"
         python -m repodynamics.actions init
 
-    - name: 'Pull'
-      if: steps.hooks.outputs.pull == 'true'
-      id: pull
-      uses: peter-evans/create-pull-request@v5
-      # https://github.com/marketplace/actions/create-pull-request
-      with:
-        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
-        branch: 'maint/repodynamics'
-        branch-suffix: timestamp
-        title: 'maint: sync dynamic files'
-        body-path: .local/temp/repodynamics/init/pr_body.md
-
-    - name: 'Create Summary'
-      id: final
-      env:
-        RD_INIT__CONTEXT: ${{ toJson(github) }}
-        RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
-        RD_INIT__META: ${{ toJson(steps.meta.outputs) }}
-        RD_INIT__HOOKS: ${{ toJson(steps.hooks.outputs) }}
-        RD_INIT__PULL: ${{ toJson(steps.pull.outputs) }}
-      shell: bash
-      run: |
-        # Create Summary
-        rd-print "Finalize" heading init
-        python -m repodynamics.actions init finalize
+#    - name: 'Pull'
+#      if: steps.hooks.outputs.pull == 'true'
+#      id: pull
+#      uses: peter-evans/create-pull-request@v5
+#      # https://github.com/marketplace/actions/create-pull-request
+#      with:
+#        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+#        branch: 'maint/repodynamics'
+#        branch-suffix: timestamp
+#        title: 'maint: sync dynamic files'
+#        body-path: .local/temp/repodynamics/init/pr_body.md
+#
+#    - name: 'Create Summary'
+#      id: final
+#      env:
+#        RD_INIT__CONTEXT: ${{ toJson(github) }}
+#        RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
+#        RD_INIT__META: ${{ toJson(steps.meta.outputs) }}
+#        RD_INIT__HOOKS: ${{ toJson(steps.hooks.outputs) }}
+#        RD_INIT__PULL: ${{ toJson(steps.pull.outputs) }}
+#      shell: bash
+#      run: |
+#        # Create Summary
+#        rd-print "Finalize" heading init
+#        python -m repodynamics.actions init finalize
 
     - name: 'Run Context'
       uses: repodynamics/context@main
