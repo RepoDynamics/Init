@@ -43,8 +43,8 @@ runs:
 
     - shell: bash
       run: |
-        # Setup Python
-        python "${{ github.action_path }}/heading.py" "1" "Setup Python"
+        # Setup Environment
+        python "${{ github.action_path }}/heading.py" "1" "Setup Environment"
         echo "::group::Load requirements file"
         TMP=".local/repodynamics/requirements.txt"
         mkdir -p "$(dirname "$TMP")"
@@ -59,7 +59,7 @@ runs:
     - shell: bash
       run: |
         # Install RepoDynamics
-        echo -e "\033[1;30;48;2;79;255;15m Install RepoDynamics "
+        python "${{ github.action_path }}/heading.py" "2" "Install RepoDynamics"
         echo "::group::Install Dependencies"
         python -m pip install -r .local/repodynamics/requirements.txt
         echo "::endgroup::"

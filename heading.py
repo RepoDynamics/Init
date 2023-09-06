@@ -5,10 +5,10 @@ import sys
 def heading(level, title):
     # Determine line length based on the option
     spec = {
-        "1": {"len": 80, "style": "\033[1;48;2;0;162;255m"},
-        "2": {"len": 65, "style": "\033[1;48;2;200;120;255m"},
-        "3": {"len": 50, "style": "\033[1;48;2;252;189;0m"},
-        "4": {"len": 35, "style": "\033[48;2;79;255;15m"},
+        "1": {"len": 80, "style": "\033[1;30;48;2;0;162;255m"},
+        "2": {"len": 65, "style": "\033[1;30;48;2;200;120;255m"},
+        "3": {"len": 50, "style": "\033[1;30;48;2;252;189;0m"},
+        "4": {"len": 35, "style": "\033[30;48;2;79;255;15m"},
     }
     if level not in spec:
         print("Invalid option. Choose between 1 and 4.")
