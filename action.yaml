@@ -203,7 +203,7 @@ runs:
             - '.gitattributes'
 
     - name: 'Run'
-      id: update-meta
+      id: meta
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
         RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
@@ -213,18 +213,18 @@ runs:
         rd-print "h1" "Run Action"
         python -m repodynamics.actions init
 
-#    - name: 'Pull'
-#      if: steps.hooks.outputs.pull == 'true'
-#      id: pull
-#      uses: peter-evans/create-pull-request@v5
-#      # https://github.com/marketplace/actions/create-pull-request
-#      with:
-#        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
-#        branch: 'maint/repodynamics'
-#        branch-suffix: timestamp
-#        title: 'maint: sync dynamic files'
-#        body-path: .local/temp/repodynamics/init/pr_body.md
-#
+    - name: 'Pull'
+      if: steps.meta.outputs.pull == 'true'
+      id: pull
+      uses: peter-evans/create-pull-request@v5
+      # https://github.com/marketplace/actions/create-pull-request
+      with:
+        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+        branch: 'maint/meta'
+        branch-suffix: timestamp
+        title: 'chore: sync dynamic files and reinforce hooks'
+        body-path: .local/temp/repodynamics/init/pr_body.md
+
 #    - name: 'Create Summary'
 #      id: final
 #      env:
