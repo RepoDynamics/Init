@@ -10,19 +10,19 @@ outputs:
 
   docs:
     description: "Whether to run test workflow on package."
-    value: ${{ steps.final.outputs.docs }}
+    value: ${{ steps.meta.outputs.docs }}
 
   package-test:
     description: "Whether to run test workflow on package."
-    value: ${{ steps.final.outputs.package-test }}
+    value: ${{ steps.meta.outputs.package-test }}
 
   package-lint:
     description: "Whether to run linting workflow."
-    value: ${{ steps.final.outputs.package-lint }}
+    value: ${{ steps.meta.outputs.package-lint }}
 
   hash:
     description: "Latest commit hash after changes are committed."
-    value: ${{ steps.final.outputs.hash }}
+    value: ${{ steps.meta.outputs.hash }}
 
 
 runs:
