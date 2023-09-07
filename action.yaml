@@ -24,6 +24,18 @@ outputs:
     description: "Latest commit hash after changes are committed."
     value: ${{ steps.meta.outputs.hash }}
 
+  name:
+    description: "Name of the repository."
+    value: ${{ steps.meta.outputs.name }}
+
+  website_url:
+    description: "URL of the website."
+    value: ${{ steps.meta.outputs.website_url }}
+
+  publish:
+    description: "Whether to publish the package."
+    value: ${{ steps.meta.outputs.publish }}
+
 
 runs:
   using: "composite"
@@ -224,6 +236,13 @@ runs:
         branch-suffix: timestamp
         title: 'chore: sync dynamic files and reinforce hooks'
         body-path: .local/temp/repodynamics/init/pr_body.md
+
+    - name: 'Upload Release Notes'
+      uses: actions/upload-artifact@v3
+      if: steps.meta.outputs.publish == 'true'
+      with:
+        path: ./local/temp/repodynamics/release_notes.md
+        name: release_notes
 
 #    - name: 'Create Summary'
 #      id: final
