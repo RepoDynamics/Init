@@ -241,7 +241,7 @@ runs:
       uses: actions/upload-artifact@v3
       if: steps.meta.outputs.publish == 'true'
       with:
-        path: ./local/temp/repodynamics/release_notes.md
+        path: .local/temp/repodynamics/release_notes.md
         name: release_notes
 
 #    - name: 'Create Summary'
