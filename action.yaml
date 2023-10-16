@@ -5,6 +5,45 @@ branding:
   icon: file-text
   color: blue
 
+inputs:
+
+  admin-token:
+    description: A personal access token with administration access to the repository.
+    required: false
+    default: ""
+  package-build:
+    required: false
+    default: 'false'
+    description: |
+      Build the package and upload the builds as artifacts.
+  package-lint:
+    required: false
+    default: 'false'
+    description: |
+      Run the linting workflow.
+  package-test:
+    required: false
+    default: 'false'
+    description: |
+      Run the test workflow on package.
+  website-build:
+    required: false
+    default: ""
+    description: |
+      Whether to build the website; either 'true' or 'false'.
+  website-announcement:
+    required: false
+    default: ""
+    description: |
+      New announcement message to show on the website; 
+      supports HTML syntax (don't forget to escape with \).
+      To remove announcement, set to 'null'.
+  website-announcement-message:
+    required: false
+    default: Update website announcement
+    description: |
+      Commit message (without type) for the announcement commit,
+      when 'website-announcement' is provided.
 
 outputs:
 
@@ -69,6 +108,7 @@ runs:
         python-version: '3.x'
         cache: 'pip'
         cache-dependency-path: ${{ steps.setup_env.outputs.path_requirements }}
+
     - shell: bash
       run: |
         # Install RepoDynamics
@@ -79,6 +119,18 @@ runs:
         echo "::group::Display pip environment"
         python -m pip list
         echo "::endgroup::"
+    - uses: actions/cache@v3
+      with:
+        path: ~/.cache/pre-commit
+        key: >-
+          pre-commit-3
+            -${{ env.pythonLocation }}
+            -${{ 
+              hashFiles(
+                '.github/.pre-commit-config.yaml', 
+                '${{ steps.setup_env.outputs.path_requirements }}'
+              ) 
+            }}
 
 #    - name: 'Detect Changes'
 #      if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
@@ -219,6 +271,13 @@ runs:
       id: meta
       env:
         RD_INIT__CONTEXT: ${{ toJson(github) }}
+        RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
+        RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}
+        RD_INIT__PACKAGE_LINT: ${{ inputs.package-lint }}
+        RD_INIT__PACKAGE_TEST: ${{ inputs.package-test }}
+        RD_INIT__WEBSITE_BUILD: ${{ inputs.website-build }}
+        RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
+        RD_INIT__WEBSITE_ANNOUNCEMENT_MESSAGE: ${{ inputs.website-announcement-message }}
       shell: bash
       run: |
         # Run Action
