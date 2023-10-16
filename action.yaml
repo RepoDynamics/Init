@@ -119,6 +119,7 @@ runs:
         echo "::group::Display pip environment"
         python -m pip list
         echo "::endgroup::"
+
     - uses: actions/cache@v3
       with:
         path: ~/.cache/pre-commit
@@ -284,24 +285,24 @@ runs:
         rd-print "h1" "Run Action"
         python -m repodynamics.actions init
 
-    - name: 'Pull'
-      if: steps.meta.outputs.pull == 'true'
-      id: pull
-      uses: peter-evans/create-pull-request@v5
-      # https://github.com/marketplace/actions/create-pull-request
-      with:
-        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
-        branch: 'maint/meta'
-        branch-suffix: timestamp
-        title: 'chore: sync dynamic files and reinforce hooks'
-        body-path: .local/temp/repodynamics/init/pr_body.md
+#    - name: 'Pull'
+#      if: steps.meta.outputs.pull == 'true'
+#      id: pull
+#      uses: peter-evans/create-pull-request@v5
+#      # https://github.com/marketplace/actions/create-pull-request
+#      with:
+#        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
+#        branch: 'maint/meta'
+#        branch-suffix: timestamp
+#        title: 'chore: sync dynamic files and reinforce hooks'
+#        body-path: .local/temp/repodynamics/init/pr_body.md
 
-    - name: 'Upload Release Notes'
-      uses: actions/upload-artifact@v3
-      if: steps.meta.outputs.publish == 'true'
-      with:
-        path: .local/temp/repodynamics/release_notes.md
-        name: release_notes
+#    - name: 'Upload Release Notes'
+#      uses: actions/upload-artifact@v3
+#      if: steps.meta.outputs.publish == 'true'
+#      with:
+#        path: .local/temp/repodynamics/release_notes.md
+#        name: release_notes
 
 #    - name: 'Create Summary'
 #      id: final
@@ -316,8 +317,3 @@ runs:
 #        # Create Summary
 #        rd-print "Finalize" heading init
 #        python -m repodynamics.actions init finalize
-
-    - name: 'Run Context'
-      uses: repodynamics/context@main
-      with:
-        steps: true
