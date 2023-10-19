@@ -31,19 +31,31 @@ inputs:
     default: ""
     description: |
       Whether to build the website; either 'true' or 'false'.
+  meta-sync:
+    default: report
+    required: false
+    description: |
+      The action to take when the dynamic files are out of sync with the repository meta content.
+      Selecting 'none' will disable this action.
+  hooks:
+    default: report
+    required: false
+    description: |
+      The action to take when running the workflow hooks.
+      Selecting 'none' will disable this action.
   website-announcement:
     required: false
     default: ""
     description: |
       New announcement message to show on the website; 
       supports HTML syntax (don't forget to escape with \).
-      To remove announcement, set to 'null'.
-  website-announcement-message:
+      Set to 'null' to remove announcement.
+  website-announcement-description:
     required: false
-    default: Update website announcement
+    default: ""
     description: |
-      Commit message (without type) for the announcement commit,
-      when 'website-announcement' is provided.
+      Commit description (i.e. without type and title) 
+      for the announcement commit and changelog entry.
 
 outputs:
 
@@ -277,8 +289,10 @@ runs:
         RD_INIT__PACKAGE_LINT: ${{ inputs.package-lint }}
         RD_INIT__PACKAGE_TEST: ${{ inputs.package-test }}
         RD_INIT__WEBSITE_BUILD: ${{ inputs.website-build }}
+        RD_INIT__META_SYNC: ${{ inputs.meta-sync }}
+        RD_INIT__HOOKS: ${{ inputs.hooks }}
         RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
-        RD_INIT__WEBSITE_ANNOUNCEMENT_MESSAGE: ${{ inputs.website-announcement-message }}
+        RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
       shell: bash
       run: |
         # Run Action
