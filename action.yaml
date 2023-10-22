@@ -59,33 +59,13 @@ inputs:
 
 outputs:
 
-  docs:
-    description: "Whether to run test workflow on package."
-    value: ${{ steps.meta.outputs.docs }}
+  config:
+    description: Configurations for subsequent workflow jobs.
+    value: ${{ steps.meta.outputs.config }}
 
-  package-test:
-    description: "Whether to run test workflow on package."
-    value: ${{ steps.meta.outputs.package-test }}
-
-  package-lint:
-    description: "Whether to run linting workflow."
-    value: ${{ steps.meta.outputs.package-lint }}
-
-  hash:
-    description: "Latest commit hash after changes are committed."
-    value: ${{ steps.meta.outputs.hash }}
-
-  name:
-    description: "Name of the repository."
-    value: ${{ steps.meta.outputs.name }}
-
-  website_url:
-    description: "URL of the website."
-    value: ${{ steps.meta.outputs.website_url }}
-
-  publish:
-    description: "Whether to publish the package."
-    value: ${{ steps.meta.outputs.publish }}
+  metadata-ci:
+    description: Metadata for subsequent workflow jobs.
+    value: ${{ steps.meta.outputs.metadata-ci }}
 
 
 runs:
