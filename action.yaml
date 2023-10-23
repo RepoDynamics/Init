@@ -279,6 +279,12 @@ runs:
         rd-print "h1" "Run Action"
         python -m repodynamics.actions init
 
+    - name: 'Upload log as artifact'
+      uses: actions/upload-artifact@v3
+      with:
+        path: ${{ steps.meta.outputs.path_log }}
+        name: RepoDynamics Action Log
+
 #    - name: 'Pull'
 #      if: steps.meta.outputs.pull == 'true'
 #      id: pull
