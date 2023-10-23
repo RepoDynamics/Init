@@ -282,7 +282,7 @@ runs:
     - name: 'Upload log as artifact'
       uses: actions/upload-artifact@v3
       with:
-        path: ${{ steps.meta.outputs.path_log }}
+        path: ${{ steps.meta.outputs.path-log }}
         name: RepoDynamics Action Log
 
 #    - name: 'Pull'
