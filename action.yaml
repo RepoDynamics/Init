@@ -283,7 +283,7 @@ runs:
       uses: actions/upload-artifact@v3
       with:
         path: ${{ steps.meta.outputs.path-log }}
-        name: RepoDynamics Action Log
+        name: Workflow Details
 
 #    - name: 'Pull'
 #      if: steps.meta.outputs.pull == 'true'
