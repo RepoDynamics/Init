@@ -85,6 +85,7 @@ runs:
         repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
         ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.ref) || github.ref }}
         fetch-depth: 0
+        path: repo1
 
     - id: setup_env
       shell: bash
@@ -111,6 +112,7 @@ runs:
         echo "::group::Display pip environment"
         python -m pip list
         echo "::endgroup::"
+        rd-print "h2" "Load Cache"
 
     - uses: actions/cache@v3
       with:
@@ -124,141 +126,6 @@ runs:
                 '${{ steps.setup_env.outputs.path_requirements }}'
               ) 
             }}
-
-#    - name: 'Detect Changes'
-#      if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
-#      shell: bash
-#      run: |
-#        # Detect Changes
-#        rd-print "h1" "Detect Changes"
-#    - id: changes
-#      if: contains(fromJSON('["push", "pull_request"]'), github.event_name)
-#      uses: tj-actions/changed-files@v37
-#      with:
-#        files_yaml: |
-#          all:
-#            - '**'
-#
-#          discussion-template:
-#            - '.github/DISCUSSION_TEMPLATE/*.yaml'
-#            - '.github/DISCUSSION_TEMPLATE/*.yml'
-#
-#          issue-template:
-#            - '.github/ISSUE_TEMPLATE/*.yaml'
-#            - '.github/ISSUE_TEMPLATE/*.yml'
-#
-#          pull-template:
-#            - '.github/PULL_REQUEST_TEMPLATE.md'
-#            - '.github/PULL_REQUEST_TEMPLATE/*.yaml'
-#            - '.github/PULL_REQUEST_TEMPLATE/*.yml'
-#            - '.github/PULL_REQUEST_TEMPLATE/*.md'
-#
-#          workflow:
-#            - '.github/workflows/**'
-#            - '!.github/workflows/**/README.md'
-#
-#          github-config:
-#            - '.github/*.yaml'
-#            - '.github/*.yml'
-#
-#          data:
-#            - 'data/**'
-#            - '!data/**/README.md'
-#
-#          dev:
-#            - 'dev/**'
-#            - '!dev/build/conda/**'
-#            - '!dev/build/pypi/**'
-#            - '!dev/**/README.md'
-#
-#          dev-build-conda:
-#            - 'dev/build/conda/**'
-#            - '!dev/build/conda/**/README.md'
-#
-#          dev-build-pypi:
-#            - 'dev/build/pypi/**'
-#            - '!dev/build/pypi/**/README.md'
-#
-#          docs:
-#            - 'docs/**'
-#            - '!docs/website/**'
-#            - '!docs/articles/**'
-#            - '!docs/**/README.md'
-#
-#          docs-articles:
-#            - 'docs/articles/**'
-#            - '!docs/articles/**/README.md'
-#
-#          docs-website:
-#            - 'docs/website/**'
-#            - '!docs/website/**/README.md'
-#
-#          meta:
-#            - 'meta/**'
-#            - '!meta/**/README.md'
-#          meta-out:
-#            - 'meta/.out/**'
-#            - '!meta/.out/**/README.md'
-#          meta-data:
-#            - 'meta/data/**'
-#            - '!meta/data/**/README.md'
-#          meta-media:
-#            - 'meta/media/**'
-#            - '!meta/media/**/README.md'
-#          meta-template-health-file:
-#            - 'meta/template/health_file/**'
-#            - '!meta/template/health_file/**/README.md'
-#          meta-template-license:
-#            - 'meta/template/license/**'
-#            - '!meta/template/license/**/README.md'
-#          meta-template-issue-form:
-#              - 'meta/template/issue_form/**'
-#              - '!meta/template/issue_form/**/README.md'
-#
-#          src:
-#            - 'src/**'
-#            - '!src/**/*README.md'
-#
-#          tests:
-#            - 'tests/**'
-#            - '!**/*README.md'
-#
-#          setup-files:
-#            - 'pyproject.toml'
-#            - 'setup.py'
-#            - 'MANIFEST.in'
-#            - 'dev/build/pypi/readme_pypi.md'
-#            - 'requirements.txt'
-#
-#          license:
-#            - 'LICENSE'
-#
-#          health-files:
-#            - 'CODE_OF_CONDUCT.md'
-#            - 'CODEOWNERS'
-#            - 'CONTRIBUTING.md'
-#            - 'GOVERNANCE.md'
-#            - 'SECURITY.md'
-#            - 'SUPPORT.md'
-#            - '.github/CODE_OF_CONDUCT.md'
-#            - '.github/CODEOWNERS'
-#            - '.github/CONTRIBUTING.md'
-#            - '.github/GOVERNANCE.md'
-#            - '.github/SECURITY.md'
-#            - '.github/SUPPORT.md'
-#            - 'docs/CODE_OF_CONDUCT.md'
-#            - 'docs/CODEOWNERS'
-#            - 'docs/CONTRIBUTING.md'
-#            - 'docs/GOVERNANCE.md'
-#            - 'docs/SECURITY.md'
-#            - 'docs/SUPPORT.md'
-#
-#          readme-files:
-#            - '**/*README.md'
-#
-#          git-files:
-#            - '.gitignore'
-#            - '.gitattributes'
 
     - name: 'Run'
       id: meta
@@ -276,44 +143,33 @@ runs:
       shell: bash
       run: |
         # Run Action
-        rd-print "h1" "Run Action"
+        rd-print "h1" "Initialize RepoDynamics"
         python -m repodynamics.actions init
+
+    - name: 'Checkout Repository'
+      if: fromJSON(steps.meta.outputs.internal).finit
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ fromJSON(steps.meta.outputs.internal).repository }}
+        ref: ${{ fromJSON(steps.meta.outputs.internal).ref }}
+        fetch-depth: 0
+
+    - name: 'Run'
+      if: fromJSON(steps.meta.outputs.internal).finit
+      id: finit
+      env:
+        RD_INIT__CONTEXT: ${{ toJson(github) }}
+        RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
+      shell: bash
+      run: |
+        # Run Action
+        rd-print "h1" "Finalize RepoDynamics"
+        python -m repodynamics.actions finit
 
     - name: 'Upload log as artifact'
       uses: actions/upload-artifact@v3
       with:
-        path: ${{ steps.meta.outputs.path-log }}
+        path: |
+          ${{ steps.meta.outputs.path-log }}
         name: Workflow Details
 
-#    - name: 'Pull'
-#      if: steps.meta.outputs.pull == 'true'
-#      id: pull
-#      uses: peter-evans/create-pull-request@v5
-#      # https://github.com/marketplace/actions/create-pull-request
-#      with:
-#        committer: 'RepoDynamics-Meta[bot] <action_meta@repodynamics.org>'
-#        branch: 'maint/meta'
-#        branch-suffix: timestamp
-#        title: 'chore: sync dynamic files and reinforce hooks'
-#        body-path: .local/temp/repodynamics/init/pr_body.md
-
-#    - name: 'Upload Release Notes'
-#      uses: actions/upload-artifact@v3
-#      if: steps.meta.outputs.publish == 'true'
-#      with:
-#        path: .local/temp/repodynamics/release_notes.md
-#        name: release_notes
-
-#    - name: 'Create Summary'
-#      id: final
-#      env:
-#        RD_INIT__CONTEXT: ${{ toJson(github) }}
-#        RD_INIT__CHANGES: ${{ toJson(steps.changes.outputs) }}
-#        RD_INIT__META: ${{ toJson(steps.meta.outputs) }}
-#        RD_INIT__HOOKS: ${{ toJson(steps.hooks.outputs) }}
-#        RD_INIT__PULL: ${{ toJson(steps.pull.outputs) }}
-#      shell: bash
-#      run: |
-#        # Create Summary
-#        rd-print "Finalize" heading init
-#        python -m repodynamics.actions init finalize
