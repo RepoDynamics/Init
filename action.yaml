@@ -82,10 +82,31 @@ runs:
     - name: 'Checkout Repository'
       uses: actions/checkout@v3
       with:
-        repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
-        ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.ref) || github.ref }}
+        repository: ${{ github.repository }}
+        ref: ${{ github.event.repository.default_branch }}
+#        ref: >-
+#          ${{
+#            (
+#              github.event_name == 'pull_request' && (
+#                (
+#                  github.event.pull_request.head.repo.full_name == github.repository
+#                  && github.event.pull_request.head.ref
+#                ) ||
+#              )
+#              && github.event.pull_request.head.ref
+#            ) || github.ref
+#          }}
         fetch-depth: 0
-        path: repo1
+        path: repo_self
+
+    - name: 'Checkout Fork Repository'
+      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ github.event.pull_request.head.repo.full_name }}
+        ref: ${{ github.event.pull_request.head.ref }}
+        fetch-depth: 0
+        path: repo_fork
 
     - id: setup_env
       shell: bash
@@ -93,21 +114,25 @@ runs:
         # Setup Environment
         python "${{ github.action_path }}/heading.py" "1" "Setup Environment"
         echo "::group::Load requirements file"
-        python "${{ github.action_path }}/pathfinder.py" "${{ github.action_path }}"
+        cp "${{ github.action_path }}/requirements.txt" .
+        echo "::endgroup::"
+        echo "::group::Display working directory"
+        pwd
+        ls -a
         echo "::endgroup::"
 
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
-        cache-dependency-path: ${{ steps.setup_env.outputs.path_requirements }}
+        cache-dependency-path: requirements.txt
 
     - shell: bash
       run: |
         # Install RepoDynamics
         python "${{ github.action_path }}/heading.py" "2" "Install RepoDynamics"
         echo "::group::Install Dependencies"
-        python -m pip install -r ${{ steps.setup_env.outputs.path_requirements }}
+        python -m pip install -r requirements.txt
         echo "::endgroup::"
         echo "::group::Display pip environment"
         python -m pip list
@@ -122,8 +147,8 @@ runs:
             -${{ env.pythonLocation }}
             -${{ 
               hashFiles(
-                '.github/.pre-commit-config.yaml', 
-                '${{ steps.setup_env.outputs.path_requirements }}'
+                'repo_self/.github/.pre-commit-config.yaml', 
+                'requirements.txt'
               ) 
             }}
 
@@ -146,30 +171,9 @@ runs:
         rd-print "h1" "Initialize RepoDynamics"
         python -m repodynamics.actions init
 
-    - name: 'Checkout Repository'
-      if: fromJSON(steps.meta.outputs.internal).finit
-      uses: actions/checkout@v3
-      with:
-        repository: ${{ fromJSON(steps.meta.outputs.internal).repository }}
-        ref: ${{ fromJSON(steps.meta.outputs.internal).ref }}
-        fetch-depth: 0
-
-    - name: 'Run'
-      if: fromJSON(steps.meta.outputs.internal).finit
-      id: finit
-      env:
-        RD_INIT__CONTEXT: ${{ toJson(github) }}
-        RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
-      shell: bash
-      run: |
-        # Run Action
-        rd-print "h1" "Finalize RepoDynamics"
-        python -m repodynamics.actions finit
-
     - name: 'Upload log as artifact'
       uses: actions/upload-artifact@v3
       with:
         path: |
           ${{ steps.meta.outputs.path-log }}
         name: Workflow Details
-
