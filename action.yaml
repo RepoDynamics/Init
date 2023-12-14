@@ -7,6 +7,11 @@ branding:
 
 inputs:
 
+  template:
+    description: |
+      Name of the template used for the repository.
+      Available templates: PyPackIT
+    required: true
   admin-token:
     description: A personal access token with administration access to the repository.
     required: false
@@ -155,6 +160,7 @@ runs:
     - name: 'Run'
       id: meta
       env:
+        RD_INIT__TEMPLATE: ${{ inputs.template }}
         RD_INIT__CONTEXT: ${{ toJson(github) }}
         RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
         RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}
@@ -165,6 +171,8 @@ runs:
         RD_INIT__HOOKS: ${{ inputs.hooks }}
         RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
         RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
+        RD_INIT__PATH_ROOT_SELF: repo_self
+        RD_INIT__PATH_ROOT_FORK: repo_fork
       shell: bash
       run: |
         # Run Action
