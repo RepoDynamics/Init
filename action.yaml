@@ -84,11 +84,14 @@ runs:
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
         python "${{ github.action_path }}/heading.py" "1" "Checkout Repository"
 
-    - name: 'Checkout Repository'
-      uses: actions/checkout@v3
+    - name: 'Checkout Repository (Base)'
+      uses: actions/checkout@v4
       with:
+        token: ${{ inputs.admin-token || github.token }}
         repository: ${{ github.repository }}
         ref: ${{ github.event.repository.default_branch }}
+        fetch-depth: 0
+        path: repo_base
 #        ref: >-
 #          ${{
 #            (
@@ -101,17 +104,14 @@ runs:
 #              && github.event.pull_request.head.ref
 #            ) || github.ref
 #          }}
-        fetch-depth: 0
-        path: repo_self
 
-    - name: 'Checkout Fork Repository'
-      if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-      uses: actions/checkout@v3
+    - name: 'Checkout Repository (Head)'
+      uses: actions/checkout@v4
       with:
-        repository: ${{ github.event.pull_request.head.repo.full_name }}
-        ref: ${{ github.event.pull_request.head.ref }}
+        repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
+        ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.ref) || github.ref }}
         fetch-depth: 0
-        path: repo_fork
+        path: repo_head
 
     - id: setup_env
       shell: bash
@@ -135,12 +135,12 @@ runs:
     - shell: bash
       run: |
         # Install RepoDynamics
-        python "${{ github.action_path }}/heading.py" "2" "Install RepoDynamics"
+        python3 "${{ github.action_path }}/heading.py" "2" "Install RepoDynamics"
         echo "::group::Install Dependencies"
-        python -m pip install -r requirements.txt
+        python3 -m pip install -r requirements.txt
         echo "::endgroup::"
         echo "::group::Display pip environment"
-        python -m pip list
+        python3 -m pip list
         echo "::endgroup::"
         rd-print "h2" "Load Cache"
 
@@ -152,7 +152,7 @@ runs:
             -${{ env.pythonLocation }}
             -${{ 
               hashFiles(
-                'repo_self/.github/.pre-commit-config.yaml', 
+                'repo_base/.github/.pre-commit-config.yaml', 
                 'requirements.txt'
               ) 
             }}
@@ -171,13 +171,13 @@ runs:
         RD_INIT__HOOKS: ${{ inputs.hooks }}
         RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
         RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
-        RD_INIT__PATH_ROOT_SELF: repo_self
-        RD_INIT__PATH_ROOT_FORK: repo_fork
+        RD_INIT__PATH_ROOT_BASE: repo_base
+        RD_INIT__PATH_ROOT_HEAD: repo_head
       shell: bash
       run: |
         # Run Action
         rd-print "h1" "Initialize RepoDynamics"
-        python -m repodynamics.actions init
+        python3 -m repodynamics.actions init
 
     - name: 'Upload log as artifact'
       uses: actions/upload-artifact@v3
