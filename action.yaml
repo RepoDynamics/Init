@@ -63,15 +63,36 @@ inputs:
       for the announcement commit and changelog entry.
 
 outputs:
-
-  config:
-    description: Configurations for subsequent workflow jobs.
-    value: ${{ steps.meta.outputs.config }}
-
-  metadata-ci:
-    description: Metadata for subsequent workflow jobs.
-    value: ${{ steps.meta.outputs.metadata-ci }}
-
+  run:
+    value: ${{ steps.meta.outputs.run }}
+    description: Whether to run subsequent jobs.
+  website:
+    value: ${{ steps.meta.outputs.website }}
+    description: Configurations for website job.
+  lint:
+    value: ${{ steps.meta.outputs.lint }}
+    description: Configurations for lint job.
+  test:
+    value: ${{ steps.meta.outputs.test }}
+    description: Configurations for test job.
+  build:
+    value: ${{ steps.meta.outputs.build }}
+    description: Configurations for build job.
+  publish-testpypi:
+    value: ${{ steps.meta.outputs.publish-testpypi }}
+    description: Configurations for publish-testpypi job.
+  test-testpypi:
+    value: ${{ steps.meta.outputs.test-testpypi }}
+    description: Configurations for test-testpypi job.
+  publish-pypi:
+    value: ${{ steps.meta.outputs.publish-pypi }}
+    description: Configurations for publish-pypi job.
+  test-pypi:
+    value: ${{ steps.meta.outputs.test-pypi }}
+    description: Configurations for test-pypi job.
+  finalize:
+    value: ${{ steps.meta.outputs.finalize }}
+    description: Configurations for finalize job.
 
 runs:
   using: "composite"
