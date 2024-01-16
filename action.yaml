@@ -61,6 +61,11 @@ inputs:
     description: |
       Commit description (i.e. without type and title) 
       for the announcement commit and changelog entry.
+  first-major-release:
+    required: false
+    default: 'false'
+    description: |
+      Release the current 0.X.Y version as the first major release.
 
 outputs:
   run:
@@ -192,6 +197,7 @@ runs:
         RD_INIT__HOOKS: ${{ inputs.hooks }}
         RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
         RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
+        RD_INIT__FIRST_MAJOR_RELEASE: ${{ inputs.first-major-release }}
         RD_INIT__PATH_ROOT_BASE: repo_base
         RD_INIT__PATH_ROOT_HEAD: repo_head
       shell: bash
