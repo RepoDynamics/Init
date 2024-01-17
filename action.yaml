@@ -68,6 +68,9 @@ inputs:
       Release the current 0.X.Y version as the first major release.
 
 outputs:
+  fail:
+    value: ${{ steps.meta.outputs.fail }}
+    description: Whether the workflow failed.
   run:
     value: ${{ steps.meta.outputs.run }}
     description: Whether to run subsequent jobs.
