@@ -110,13 +110,10 @@ runs:
       shell: bash
       run: |
         # Initialization
-        printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-        echo "::group::Install Action Requirements"
-        python -m pip install -r "${{ github.action_path }}/requirements_pre.txt"
-        echo "::endgroup::"
-        am-print-h1 "Initialization" --margin-top 0
+        printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n"
+        python "${{ github.action_path }}/heading.py" 1 "Initialization"
         cp "${{ github.action_path }}/requirements.txt" .
-        am-print-h2 "Repository Checkout (Base)"
+        python "${{ github.action_path }}/heading.py" 2 "Repository Checkout (Base)"
 
     - name: 'Repository Checkout (Base)'
       uses: actions/checkout@v4
@@ -143,7 +140,7 @@ runs:
       shell: bash
       run: |
         # Python Setup
-        am-print-h2 "Repository Checkout (Head)"
+        python "${{ github.action_path }}/heading.py" 2 "Repository Checkout (Head)"
     - uses: actions/checkout@v4
       with:
         repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
@@ -168,7 +165,7 @@ runs:
       shell: bash
       run: |
         # Python Setup
-        am-print-h2 "Python Setup"
+        python "${{ github.action_path }}/heading.py" 2 "Python Setup"
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
@@ -179,7 +176,7 @@ runs:
       shell: bash
       run: |
         # Environment Setup
-        am-print-h2 "Environment Setup"
+        python "${{ github.action_path }}/heading.py" 2 "Environment Setup"
         echo "::group::Install Dependencies"
         python -m pip install -r requirements.txt
         echo "::endgroup::"
@@ -190,8 +187,8 @@ runs:
     - name: 'Pre-commit Cache'
       shell: bash
       run: |
-          # Pre-commit Cache
-          am-print-h2 "Pre-commit Cache"
+        # Pre-commit Cache
+        python "${{ github.action_path }}/heading.py" 2 "Pre-commit Cache"
     - uses: actions/cache@v3
       with:
         path: ~/.cache/pre-commit
@@ -231,8 +228,8 @@ runs:
       shell: bash
       run: |
         # Finalization
-        am-print-h1 "Finalization"
-        am-print-h2 "Artifact Upload"
+        python "${{ github.action_path }}/heading.py" 1 "Finalization"
+        python "${{ github.action_path }}/heading.py" 2 "Artifact Upload"
 
     - name: 'Artifact Upload'
       uses: actions/upload-artifact@v3
