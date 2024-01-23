@@ -16,56 +16,56 @@ inputs:
     description: A personal access token with administration access to the repository.
     required: false
     default: ""
-  package-build:
-    required: false
-    default: 'false'
-    description: |
-      Build the package and upload the builds as artifacts.
-  package-lint:
-    required: false
-    default: 'false'
-    description: |
-      Run the linting workflow.
-  package-test:
-    required: false
-    default: 'false'
-    description: |
-      Run the test workflow on package.
-  website-build:
-    required: false
-    default: ""
-    description: |
-      Whether to build the website; either 'true' or 'false'.
-  meta-sync:
-    default: report
-    required: false
-    description: |
-      The action to take when the dynamic files are out of sync with the repository meta content.
-      Selecting 'none' will disable this action.
-  hooks:
-    default: report
-    required: false
-    description: |
-      The action to take when running the workflow hooks.
-      Selecting 'none' will disable this action.
-  website-announcement:
-    required: false
-    default: ""
-    description: |
-      New announcement message to show on the website; 
-      supports HTML syntax (don't forget to escape with \).
-      Set to 'null' to remove announcement.
-  website-announcement-description:
-    required: false
-    default: ""
-    description: |
-      Commit description (i.e. without type and title) 
-      for the announcement commit and changelog entry.
-  first-major-release:
-    required: false
-    default: 'false'
-    description: |
-      Release the current 0.X.Y version as the first major release.
+#  package-build:
+#    required: false
+#    default: 'false'
+#    description: |
+#      Build the package and upload the builds as artifacts.
+#  package-lint:
+#    required: false
+#    default: 'false'
+#    description: |
+#      Run the linting workflow.
+#  package-test:
+#    required: false
+#    default: 'false'
+#    description: |
+#      Run the test workflow on package.
+#  website-build:
+#    required: false
+#    default: ""
+#    description: |
+#      Whether to build the website; either 'true' or 'false'.
+#  meta-sync:
+#    default: report
+#    required: false
+#    description: |
+#      The action to take when the dynamic files are out of sync with the repository meta content.
+#      Selecting 'none' will disable this action.
+#  hooks:
+#    default: report
+#    required: false
+#    description: |
+#      The action to take when running the workflow hooks.
+#      Selecting 'none' will disable this action.
+#  website-announcement:
+#    required: false
+#    default: ""
+#    description: |
+#      New announcement message to show on the website;
+#      supports HTML syntax (don't forget to escape with \).
+#      Set to 'null' to remove announcement.
+#  website-announcement-description:
+#    required: false
+#    default: ""
+#    description: |
+#      Commit description (i.e. without type and title)
+#      for the announcement commit and changelog entry.
+#  first-major-release:
+#    required: false
+#    default: 'false'
+#    description: |
+#      Release the current 0.X.Y version as the first major release.
 
 outputs:
   fail:
@@ -106,14 +106,21 @@ runs:
   using: "composite"
   steps:
 
-    - name: 'Initialize'
+    - name: 'Initialization'
       shell: bash
       run: |
-        # Initialize
-        printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n\n\n"
-        python "${{ github.action_path }}/heading.py" "1" "Checkout Repository"
+        # Initialization
+        
+        echo "::group::Install Action Requirements"
+        python -m pip install -r "${{ github.action_path }}/requirements_pre.txt"
+        python -m pip list
+        echo "::endgroup::"
+        cp "${{ github.action_path }}/requirements.txt" .
+        am-print-file "${{github.action_path}}/logo.txt"
+        am-print-h1 "Initialization" --margin-top 0
+        am-print-h2 "Repository Checkout (Base)"
 
-    - name: 'Checkout Repository (Base)'
+    - name: 'Repository Checkout (Base)'
       uses: actions/checkout@v4
       with:
         token: ${{ inputs.admin-token || github.token }}
@@ -134,45 +141,59 @@ runs:
 #            ) || github.ref
 #          }}
 
-    - name: 'Checkout Repository (Head)'
-      uses: actions/checkout@v4
+    - name: 'Repository Checkout (Head)'
+      shell: bash
+      run: |
+        # Python Setup
+        am-print-h2 "Repository Checkout (Head)"
+    - uses: actions/checkout@v4
       with:
         repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
         ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.ref) || github.ref }}
         fetch-depth: 0
         path: repo_head
 
-    - id: setup_env
+#    - name: 'Environment Setup'
+#      shell: bash
+#      run: |
+#        # Environment Setup
+#        am-print-h2 "Environment Setup"
+#        echo "::group::Load requirements file"
+#        cp "${{ github.action_path }}/requirements.txt" .
+#        echo "::endgroup::"
+#        echo "::group::Display working directory"
+#        pwd
+#        ls -a
+#        echo "::endgroup::"
+
+    - name: 'Python Setup'
       shell: bash
       run: |
-        # Setup Environment
-        python "${{ github.action_path }}/heading.py" "1" "Setup Environment"
-        echo "::group::Load requirements file"
-        cp "${{ github.action_path }}/requirements.txt" .
-        echo "::endgroup::"
-        echo "::group::Display working directory"
-        pwd
-        ls -a
-        echo "::endgroup::"
-
+        # Python Setup
+        am-print-h2 "Python Setup"
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
         cache: 'pip'
         cache-dependency-path: requirements.txt
 
-    - shell: bash
+    - name: 'Environment Setup'
+      shell: bash
       run: |
-        # Install RepoDynamics
-        python3 "${{ github.action_path }}/heading.py" "2" "Install RepoDynamics"
+        # Environment Setup
+        am-print-h2 "Environment Setup"
         echo "::group::Install Dependencies"
-        python3 -m pip install -r requirements.txt
+        python -m pip install -r requirements.txt
         echo "::endgroup::"
-        echo "::group::Display pip environment"
-        python3 -m pip list
+        echo "::group::Display Environment"
+        python -m pip list
         echo "::endgroup::"
-        rd-print "h2" "Load Cache"
 
+    - name: 'Pre-commit Cache'
+      shell: bash
+      run: |
+          # Pre-commit Cache
+          am-print-h2 "Pre-commit Cache"
     - uses: actions/cache@v3
       with:
         path: ~/.cache/pre-commit
@@ -186,30 +207,36 @@ runs:
               ) 
             }}
 
-    - name: 'Run'
+    - name: 'Action'
       id: meta
       env:
         RD_INIT__TEMPLATE: ${{ inputs.template }}
         RD_INIT__CONTEXT: ${{ toJson(github) }}
         RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
-        RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}
-        RD_INIT__PACKAGE_LINT: ${{ inputs.package-lint }}
-        RD_INIT__PACKAGE_TEST: ${{ inputs.package-test }}
-        RD_INIT__WEBSITE_BUILD: ${{ inputs.website-build }}
-        RD_INIT__META_SYNC: ${{ inputs.meta-sync }}
-        RD_INIT__HOOKS: ${{ inputs.hooks }}
-        RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
-        RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
-        RD_INIT__FIRST_MAJOR_RELEASE: ${{ inputs.first-major-release }}
+#        RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}
+#        RD_INIT__PACKAGE_LINT: ${{ inputs.package-lint }}
+#        RD_INIT__PACKAGE_TEST: ${{ inputs.package-test }}
+#        RD_INIT__WEBSITE_BUILD: ${{ inputs.website-build }}
+#        RD_INIT__META_SYNC: ${{ inputs.meta-sync }}
+#        RD_INIT__HOOKS: ${{ inputs.hooks }}
+#        RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
+#        RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
+#        RD_INIT__FIRST_MAJOR_RELEASE: ${{ inputs.first-major-release }}
         RD_INIT__PATH_ROOT_BASE: repo_base
         RD_INIT__PATH_ROOT_HEAD: repo_head
       shell: bash
       run: |
-        # Run Action
-        rd-print "h1" "Initialize RepoDynamics"
-        python3 -m repodynamics.actions init
+        # Action
+        python -m repodynamics.actions init
 
-    - name: 'Upload log as artifact'
+    - name: 'Finalization'
+      shell: bash
+      run: |
+        # Finalization
+        am-print-h1 "Finalization"
+        am-print-h2 "Artifact Upload"
+
+    - name: 'Artifact Upload'
       uses: actions/upload-artifact@v3
       with:
         path: repodynamics
