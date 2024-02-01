@@ -17,24 +17,17 @@ from proman.events.workflow_dispatch import WorkflowDispatchEventHandler
 
 
 def run():
-
     try:
+        event_handler = _init_handler()
         outputs, env_vars, summary = event_handler.run()
-    except Exception as e:
-        logger.critical(title=f"An unexpected error occurred", message=str(e))
-        raise e  # This will never be reached, but is required to satisfy the type checker and IDE
-    logger.section("Write Outputs and Summary")
-    if outputs:
-        actionman.io.write_github_outputs(outputs, logger=logger)
-    if env_vars:
-        actionman.io.write_github_outputs(env_vars, to_env=True, logger=logger)
-    if summary:
-        actionman.io.write_github_summary(content=summary, logger=logger)
+        _write_outputs_and_summary(outputs, env_vars, summary)
+    except Exception:
+        logger.critical(f"An unexpected error occurred")
     return
 
 
 @logger.sectioner("Initialize", group=False)
-def _init():
+def _init_handler():
     inputs = actionman.io.read_environment_variables(
         ("TEMPLATE_TYPE", str, True, False),
         ("GITHUB_CONTEXT", dict, True, False),
@@ -56,6 +49,17 @@ def _init():
         path_repo_head=inputs["PATH_REPO_HEAD"],
     )
     return event_handler
+
+
+@logger.sectioner("Write Outputs and Summary", group=False)
+def _write_outputs_and_summary(outputs, env_vars, summary):
+    if outputs:
+        actionman.io.write_github_outputs(outputs, logger=logger)
+    if env_vars:
+        actionman.io.write_github_outputs(env_vars, to_env=True, logger=logger)
+    if summary:
+        actionman.io.write_github_summary(content=summary, logger=logger)
+    return
 
 
 @logger.sectioner("Verify Template Type")
@@ -94,4 +98,3 @@ def _get_event_handler(event: EventType):
         )
     logger.info("Event handler", handler.__name__)
     return handler
-
