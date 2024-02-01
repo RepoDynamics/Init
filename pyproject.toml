@@ -1,0 +1,34 @@
+
+[build-system]
+requires = ["setuptools>=61.0", "versioningit"]
+build-backend = "setuptools.build_meta"
+
+
+# ----------------------------------------- setuptools -------------------------------------------
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+
+# ----------------------------------------- Project Metadata -------------------------------------
+#
+[project]
+version = "0.0.0.dev0"
+name = "ProMan"
+dependencies = [
+    "repodynamics",
+    "loggerman",
+    "actionman",
+]
+requires-python = ">=3.10"
+
+
+#[project.scripts]
+#rd-print = "repodynamics.actions._print:main"
+#repodynamics-get-metadata = "pypackit.metadata:__main__"
+#repodynamics-sync-files = "pypackit.templates:__main__"
+#repodynamics-deploy = "pypackit.cd:__main__"

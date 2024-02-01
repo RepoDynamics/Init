@@ -1,5 +1,5 @@
-name: 'RepoDynamics Init'
-description: 'Initialize workflow runs.'
+name: 'RepoDynamics ProMan'
+description: 'Fully automated repository and project manager for GitHub'
 author: 'Armin Ariamajd'
 branding:
   icon: file-text
@@ -139,7 +139,7 @@ runs:
     - name: 'Repository Checkout (Head)'
       shell: bash
       run: |
-        # Python Setup
+        # Repository Checkout (Head)
         python "${{ github.action_path }}/heading.py" 2 "Repository Checkout (Head)"
     - uses: actions/checkout@v4
       with:
@@ -177,7 +177,7 @@ runs:
       run: |
         # Environment Setup
         python "${{ github.action_path }}/heading.py" 2 "Environment Setup"
-        echo "::group::Install Dependencies"
+        echo "::group::Install Action Requirements"
         python -m pip install -r requirements.txt
         echo "::endgroup::"
         echo "::group::Display Environment"
@@ -205,9 +205,9 @@ runs:
     - name: 'Action'
       id: meta
       env:
-        RD_INIT__TEMPLATE: ${{ inputs.template }}
-        RD_INIT__CONTEXT: ${{ toJson(github) }}
-        RD_INIT__ADMIN_TOKEN: ${{ inputs.admin-token }}
+        RD_PROMAN__TEMPLATE_TYPE: ${{ inputs.template }}
+        RD_PROMAN__GITHUB_CONTEXT: ${{ toJson(github) }}
+        RD_PROMAN__ADMIN_TOKEN: ${{ inputs.admin-token }}
 #        RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}
 #        RD_INIT__PACKAGE_LINT: ${{ inputs.package-lint }}
 #        RD_INIT__PACKAGE_TEST: ${{ inputs.package-test }}
@@ -217,17 +217,12 @@ runs:
 #        RD_INIT__WEBSITE_ANNOUNCEMENT: ${{ inputs.website-announcement }}
 #        RD_INIT__WEBSITE_ANNOUNCEMENT_MSG: ${{ inputs.website-announcement-description }}
 #        RD_INIT__FIRST_MAJOR_RELEASE: ${{ inputs.first-major-release }}
-        RD_INIT__PATH_ROOT_BASE: repo_base
-        RD_INIT__PATH_ROOT_HEAD: repo_head
+        RD_PROMAN__PATH_REPO_BASE: repo_base
+        RD_PROMAN__PATH_REPO_HEAD: repo_head
       shell: bash
       run: |
         # Action
         python -m repodynamics.actions init
-
-    - name: 'Finalization'
-      shell: bash
-      run: |
-        # Finalization
         python "${{ github.action_path }}/heading.py" 1 "Finalization"
         python "${{ github.action_path }}/heading.py" 2 "Artifact Upload"
 
