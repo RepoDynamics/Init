@@ -4,7 +4,7 @@ from typing import Literal
 import re
 import datetime
 
-from actionman.logger import logger
+from loggerman import logger
 from markitup import html, md
 import pylinks
 from pylinks.exceptions import WebAPIError
