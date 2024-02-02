@@ -108,16 +108,16 @@ class EventHandler:
         return
 
     @logger.sectioner("Execute Event Handler", group=False)
-    def run(self):
+    def run(self) -> tuple[dict, str]:
         self._run_event()
         output, summary = self._generate_output()
-        return output, None, summary
+        return output, summary
 
     def _run_event(self) -> None:
         ...
 
     @logger.sectioner("Generate Outputs and Summary")
-    def _generate_output(self):
+    def _generate_output(self) -> tuple[dict, str]:
         if self._failed:
             # Just to be safe, disable publish/deploy/release jobs if fail is True
             if self._output_website:
