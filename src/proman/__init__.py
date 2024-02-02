@@ -1,12 +1,11 @@
+import actionman
 import github_contexts
 from github_contexts.github.enums import EventType
-import actionman
 from loggerman import logger
-
 from repodynamics.datatype import TemplateType
 from repodynamics.exception import RepoDynamicsError
 
-from proman.exception import ProManError
+from proman.exception import ProManInternalError
 from proman.events.issue_comment import IssueCommentEventHandler
 from proman.events.issues import IssuesEventHandler
 from proman.events.pull_request import PullRequestEventHandler
@@ -19,8 +18,8 @@ from proman.events.workflow_dispatch import WorkflowDispatchEventHandler
 def run():
     try:
         event_handler = _init_handler()
-        outputs, env_vars, summary = event_handler.run()
-        _write_outputs_and_summary(outputs, env_vars, summary)
+        outputs, summary = event_handler.run()
+        _write_outputs_and_summary(outputs, summary)
     except Exception:
         logger.critical(f"An unexpected error occurred")
     return
@@ -28,16 +27,7 @@ def run():
 
 @logger.sectioner("Initialize", group=False)
 def _init_handler():
-    inputs = actionman.io.read_environment_variables(
-        ("TEMPLATE_TYPE", str, True, False),
-        ("GITHUB_CONTEXT", dict, True, False),
-        ("PATH_REPO_BASE", str, True, False),
-        ("PATH_REPO_HEAD", str, True, False),
-        ("ADMIN_TOKEN", str, False, True),
-        name_prefix="RD_PROMAN__",
-        logger=logger,
-        log_section_name="Read Inputs"
-    )
+    inputs = _read_inputs()
     template_type = _get_template_type(input_template_type=inputs.pop("TEMPLATE_TYPE"))
     context_manager = github_contexts.context_github(context=inputs.pop("GITHUB_CONTEXT"))
     event_handler_class = _get_event_handler(event=context_manager.event_name)
@@ -51,15 +41,45 @@ def _init_handler():
     return event_handler
 
 
-@logger.sectioner("Write Outputs and Summary", group=False)
-def _write_outputs_and_summary(outputs, env_vars, summary):
-    if outputs:
-        actionman.io.write_github_outputs(outputs, logger=logger)
-    if env_vars:
-        actionman.io.write_github_outputs(env_vars, to_env=True, logger=logger)
-    if summary:
-        actionman.io.write_github_summary(content=summary, logger=logger)
-    return
+@logger.sectioner("Read Inputs")
+def _read_inputs():
+    parsed_inputs = {}
+
+    logger.section("GitHub Context")
+    env_var_name = "RD_PROMAN__GITHUB_CONTEXT"
+    context = actionman.environment_variable.read(name=env_var_name, typ=dict)
+    logger.info("Success", f"Read GitHub context from environment variable '{env_var_name}'.")
+    parsed_inputs["github_context"] = context
+    context_redacted = {k: v for k, v in context.items() if k != "token"}
+    logger.debug(code_title="Context", code=context_redacted)
+    logger.section_end()
+
+    logger.section("Admin Token")
+    env_var_name = "RD_PROMAN__ADMIN_TOKEN"
+    admin_token = actionman.environment_variable.read(name=env_var_name, typ=str)
+    logger.info(
+        "Success",
+        f"Read admin token from environment variable '{env_var_name}'. "
+        f"Token was{' not ' if not admin_token else ' '}provided."
+    )
+    parsed_inputs["admin_token"] = admin_token
+    logger.section_end()
+
+    for section_title, env_var_name, env_var_type in (
+        ("Template Type", "TEMPLATE_TYPE", str,),
+        ("Base Repository Path", "PATH_REPO_BASE", str),
+        ("Head Repository Path", "PATH_REPO_HEAD", str),
+    ):
+        logger.section(section_title)
+        value = actionman.environment_variable.read(name=f"RD_PROMAN__{env_var_name}", typ=env_var_type)
+        logger.info(
+            "Success",
+            f"Read {section_title.lower()} from environment variable '{env_var_name}'.",
+        )
+        logger.debug(code_title="Value", code=value)
+        parsed_inputs[env_var_name.lower()] = value
+        logger.section_end()
+    return parsed_inputs
 
 
 @logger.sectioner("Verify Template Type")
@@ -98,3 +118,39 @@ def _get_event_handler(event: EventType):
         )
     logger.info("Event handler", handler.__name__)
     return handler
+
+
+@logger.sectioner("Write Outputs and Summary", group=False)
+def _write_outputs_and_summary(outputs: dict, summary: str) -> None:
+    _write_step_outputs(kwargs=outputs)
+    _write_step_summary(content=summary)
+    return
+
+
+@logger.sectioner("Write Step Outputs")
+def _write_step_outputs(kwargs: dict) -> None:
+    for name, value in kwargs.items():
+        output_name = name.lower().replace("_", "-")
+        logger.section(f"{output_name} [{type(value).__name__}]")
+        logger.debug(code_title="Value", code=value)
+        try:
+            written_output = actionman.step_output.write(name=output_name, value=value)
+        except (
+            actionman.exception.ActionManOutputVariableTypeError,
+            actionman.exception.ActionManOutputVariableSerializationError,
+        ) as e:
+            raise ProManInternalError(
+                f"Failed to write step output variable '{output_name}'."
+            ) from e
+        logger.info("Success", f"Wrote step output variable '{output_name}'.")
+        logger.debug(code_title="Output", code=written_output)
+        logger.section_end()
+    return
+
+
+@logger.sectioner("Write Step Summary")
+def _write_step_summary(content: str) -> None:
+    logger.debug(code_title="Content", code=content)
+    actionman.step_summary.write(content)
+    logger.info("Success", f"Wrote step summary ({len(content)} characters).")
+    return
