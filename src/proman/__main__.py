@@ -1,5 +1,4 @@
 import loggerman
-
 from repodynamics.exception import RepoDynamicsError
 
 import proman
