@@ -20,9 +20,14 @@ namespaces = true
 version = "0.0.0.dev0"
 name = "ProMan"
 dependencies = [
-    "repodynamics",
-    "loggerman",
-    "actionman",
+    "ActionMan",
+    "ControlMan",
+    "ConventionalCommits",
+    "GitHub-Contexts",
+    "LoggerMan",
+    "MarkItUp",
+    "PyLinks",
+    "VersionMan",
 ]
 requires-python = ">=3.10"
 
