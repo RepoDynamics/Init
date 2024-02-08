@@ -4,15 +4,17 @@ import datetime
 from github_contexts import GitHubContext
 from github_contexts.github.payloads.issues import IssuesPayload
 from github_contexts.github.enums import ActionType
-from actionman.logger import logger
-
-from repodynamics.datatype import IssueStatus, TemplateType, LabelType, Label
-from repodynamics.action.events._base import EventHandler
+from loggerman import logger
+from repodynamics.datatype import IssueStatus, LabelType, Label
 from repodynamics.control.files.generator import forms
+
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
 
 
 class IssuesEventHandler(EventHandler):
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,

@@ -6,18 +6,14 @@ from github_contexts import GitHubContext
 from github_contexts.github.payloads.pull_request import PullRequestPayload
 from github_contexts.github.enums import ActionType
 import conventional_commits
-from actionman.logger import Logger, LogLevel
-
+from loggerman import logger
 import repodynamics.control.content
 import repodynamics.control.content
 import repodynamics.control.content.manager
-from repodynamics import control
 from repodynamics.control.manager import ControlCenterManager
-from repodynamics.action.events._base import EventHandler
 from repodynamics.path import RelativePath
 from repodynamics.version import PEP440SemVer
 from repodynamics.datatype import (
-    EventType,
     Label,
     PrimaryActionCommit,
     PrimaryCustomCommit,
@@ -25,18 +21,20 @@ from repodynamics.datatype import (
     CommitGroup,
     BranchType,
     IssueStatus,
-    TemplateType,
     RepoFileType,
     InitCheckAction,
     LabelType,
 )
 from repodynamics.control.content import from_json_file
-from repodynamics.control import ControlCenterContentManager
-from repodynamics.action._changelog import ChangelogManager
+
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
+from proman.changelog_manager import ChangelogManager
 
 
 class PullRequestEventHandler(EventHandler):
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -44,7 +42,6 @@ class PullRequestEventHandler(EventHandler):
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str,
-        logger: Logger,
     ):
         super().__init__(
             template_type=template_type,
@@ -52,7 +49,6 @@ class PullRequestEventHandler(EventHandler):
             admin_token=admin_token,
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
-            logger=logger
         )
         self._payload: PullRequestPayload = self._context.event
         self._pull = self._payload.pull_request
@@ -114,7 +110,7 @@ class PullRequestEventHandler(EventHandler):
         )
         meta_and_hooks_action_type = InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL
         meta = ControlCenterManager(
-            path_repo=self._path_root_head,
+            path_repo=self._path_repo_head,
             github_token=self._context.token,
             ccm_before=self._ccm_main,
             logger=self._logger,
@@ -136,7 +132,7 @@ class PullRequestEventHandler(EventHandler):
         else:
             hash_meta = None
             ccm_branch = from_json_file(
-                path_repo=self._path_root_base, git=self._git_head, logger=self._logger
+                path_repo=self._path_repo_base, git=self._git_head, logger=self._logger
             )
         latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
 
@@ -288,7 +284,7 @@ class PullRequestEventHandler(EventHandler):
         if next_ver:
             if self._branch_base.type is BranchType.MAIN:
                 meta_gen = ControlCenterManager(
-                    path_repo=self._path_root_head,
+                    path_repo=self._path_repo_head,
                     github_token=self._context.token,
                     ccm_before=self._ccm_main,
                     future_versions={self._branch_base.name: next_ver},
@@ -300,7 +296,7 @@ class PullRequestEventHandler(EventHandler):
             else:
                 self._git_base.checkout(branch=self._payload.repository.default_branch)
                 meta_gen = ControlCenterManager(
-                    path_repo=self._path_root_base,
+                    path_repo=self._path_repo_base,
                     github_token=self._context.token,
                     future_versions={self._branch_base.name: next_ver},
                     logger=self._logger,
@@ -320,7 +316,7 @@ class PullRequestEventHandler(EventHandler):
             return
 
         ccm_branch = repodynamics.control.content.from_json_file(
-            path_repo=self._path_root_head, logger=self._logger
+            path_repo=self._path_repo_head, logger=self._logger
         )
         hash_latest = merge_response["sha"]
         if not next_ver:
@@ -416,7 +412,7 @@ class PullRequestEventHandler(EventHandler):
             return
         tag = self._tag_version(ver=next_ver_pre, base=True)
         ccm_branch = repodynamics.control.content.from_json_file(
-            path_repo=self._path_root_head, logger=self._logger
+            path_repo=self._path_repo_head, logger=self._logger
         )
         self._set_output(
             ccm_branch=ccm_branch,
@@ -522,7 +518,7 @@ class PullRequestEventHandler(EventHandler):
             commit_title=commit_title,
             parent_commit_hash=hash_base,
             parent_commit_url=self._gh_link.commit(hash_base),
-            path_root=self._path_root_head,
+            path_root=self._path_repo_head,
             logger=self._logger,
         )
         tasklist = self._extract_tasklist(body=self._pull.body)
@@ -686,7 +682,7 @@ class PullRequestEventHandler(EventHandler):
         return self._add_to_timeline(entry=entry, body=self._pull.body, issue_nr=self._pull.number)
 
     def _write_prerelease_dev_protocol(self, ver: str):
-        filepath = self._path_root_head / self._ccm_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+        filepath = self._path_repo_head / self._ccm_main["issue"]["dev_protocol"]["prerelease_temp_path"]
         filepath.parent.mkdir(parents=True, exist_ok=True)
         old_title = f'# {self._ccm_main["issue"]["dev_protocol"]["template"]["title"]}'
         new_title = f"{old_title} (v{ver})"
@@ -696,7 +692,7 @@ class PullRequestEventHandler(EventHandler):
         return
 
     def _read_prerelease_dev_protocols(self) -> tuple[str, str]:
-        filepath = self._path_root_head / self._ccm_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+        filepath = self._path_repo_head / self._ccm_main["issue"]["dev_protocol"]["prerelease_temp_path"]
         protocols = filepath.read_text().strip()
         main_protocol, sub_protocols = protocols.split("\n# ", 1)
         return main_protocol.strip(), f"# {sub_protocols.strip()}"

@@ -1,18 +1,19 @@
 import conventional_commits.message
-from markitup import html, md
 from github_contexts import GitHubContext
 from github_contexts.github.payloads.schedule import SchedulePayload
-
-from repodynamics.action.events._base import EventHandler
-from repodynamics.datatype import TemplateType
-from repodynamics import _util
-from repodynamics.logger import Logger
+from loggerman import logger
+from markitup import html, md
+import pyshellman
 from repodynamics.datatype import InitCheckAction
 from repodynamics.control.manager import ControlCenterManager
+
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
 
 
 class ScheduleEventHandler(EventHandler):
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -20,7 +21,6 @@ class ScheduleEventHandler(EventHandler):
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str | None = None,
-        logger: Logger | None = None,
     ):
         super().__init__(
             template_type=template_type,
@@ -28,7 +28,6 @@ class ScheduleEventHandler(EventHandler):
             admin_token=admin_token,
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
-            logger=logger
         )
         self._payload: SchedulePayload = self._context.event
         return
@@ -49,7 +48,7 @@ class ScheduleEventHandler(EventHandler):
     def _run_sync(self):
         commit_hash_announce = self._web_announcement_expiry_check()
         meta = ControlCenterManager(
-            path_repo=self._path_root_base,
+            path_repo=self._path_repo_base,
             github_token=self._context.token,
             logger=self._logger,
         )
@@ -116,7 +115,7 @@ class ScheduleEventHandler(EventHandler):
                 ),
             )
             return
-        current_date_epoch = int(_util.shell.run_command(["date", "-u", "+%s"], logger=self._logger)[0])
+        current_date_epoch = int(pyshellman.run(["date", "-u", "+%s"]).output)
         elapsed_seconds = current_date_epoch - int(commit_date_epoch)
         elapsed_days = elapsed_seconds / (24 * 60 * 60)
         retention_days = self._ccm_main.web["announcement_retention_days"]

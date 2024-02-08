@@ -2,8 +2,6 @@ from pathlib import Path
 import re
 import datetime
 
-from repodynamics.logger import Logger
-
 
 class ChangelogManager:
     def __init__(
@@ -15,7 +13,6 @@ class ChangelogManager:
         commit_title: str,
         parent_commit_hash: str,
         parent_commit_url: str,
-        logger: Logger = None,
     ):
         self._meta = changelog_metadata
         self._vars = {

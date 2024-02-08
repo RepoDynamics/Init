@@ -1,19 +1,33 @@
-from github_contexts import GitHubContext
+from typing import NamedTuple as _NamedTuple
 
-from repodynamics.datatype import WorkflowDispatchInput
-from repodynamics.action.events._base import EventHandler
-from repodynamics.datatype import InitCheckAction, TemplateType
-from repodynamics.logger import Logger
+from github_contexts import GitHubContext
+from loggerman import logger
+from repodynamics.datatype import InitCheckAction
 from repodynamics.datatype import (
     Branch,
     BranchType,
 )
 from repodynamics.control.manager import ControlCenterManager
-from repodynamics.action._changelog import ChangelogManager
+
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
+from proman.changelog_manager import ChangelogManager
+
+
+class WorkflowDispatchInput(_NamedTuple):
+    meta: InitCheckAction
+    hooks: InitCheckAction
+    package_build: bool
+    package_lint: bool
+    package_test: bool
+    website_build: bool
+    website_announcement: str
+    website_announcement_msg: str
 
 
 class WorkflowDispatchEventHandler(EventHandler):
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -30,7 +44,6 @@ class WorkflowDispatchEventHandler(EventHandler):
         # first_major_release: bool,
         path_repo_base: str,
         path_repo_head: str | None = None,
-        logger: Logger | None = None,
     ):
         super().__init__(
             template_type=template_type,
@@ -38,7 +51,6 @@ class WorkflowDispatchEventHandler(EventHandler):
             admin_token=admin_token,
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
-            logger=logger
         )
         # for arg_name, arg in (("meta_sync", meta_sync), ("hooks", hooks)):
         #     if arg not in ["report", "amend", "commit", "pull", "none", ""]:
@@ -79,7 +91,7 @@ class WorkflowDispatchEventHandler(EventHandler):
             self._logger.error("Cannot create first major release: latest version's major is not 0")
             return
         meta_gen = ControlCenterManager(
-            path_repo=self._path_root_base,
+            path_repo=self._path_repo_base,
             github_token=self._context.token,
             future_versions={self._context.ref_name: "1.0.0"},
             logger=self._logger,
@@ -99,7 +111,7 @@ class WorkflowDispatchEventHandler(EventHandler):
             commit_title="Release public API",
             parent_commit_hash=hash_base,
             parent_commit_url=self._gh_link.commit(hash_base),
-            path_root=self._path_root_base,
+            path_root=self._path_repo_base,
             logger=self._logger,
         )
         release_body = (

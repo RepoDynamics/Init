@@ -1,16 +1,17 @@
 """Event handler for comments on issues and pull requests."""
 
-from typing import Any, Callable
+from typing import Callable
 from functools import partial
-import ast
 
-from actionman.logger import logger
 from github_contexts import GitHubContext
 from github_contexts.github.payloads.issue_comment import IssueCommentPayload
 from github_contexts.github.enums import ActionType
+from loggerman import logger
+from controlman.datatype import BranchType
+import pysyntax
 
-from repodynamics.action.events._base import EventHandler
-from repodynamics.datatype import TemplateType, RepoDynamicsBotCommand, BranchType
+from proman.datatype import TemplateType, RepoDynamicsBotCommand
+from proman.handler.main import EventHandler
 
 
 class IssueCommentEventHandler(EventHandler):
@@ -20,6 +21,7 @@ class IssueCommentEventHandler(EventHandler):
     is created, edited, or deleted.
     """
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -129,7 +131,7 @@ class IssueCommentEventHandler(EventHandler):
             return
         command_str = body.removeprefix("@RepoDynamicsBot").strip()
         try:
-            command_name, kwargs = self.parse_function_call(command_str)
+            command_name, kwargs = pysyntax.parse.function_call(command_str)
         except Exception as e:
             logger.error("Failed to parse command.", str(e))
             return
@@ -151,38 +153,3 @@ class IssueCommentEventHandler(EventHandler):
         logger.debug(message="Arguments:", code=str(kwargs))
         return partial(command_runner_map[command_type], kwargs)
 
-    @staticmethod
-    def parse_function_call(code: str) -> tuple[str, dict[str, Any]]:
-        """
-        Parse a Python function call from a string.
-
-        Parameters
-        ----------
-        code : str
-            The code to parse.
-
-        Returns
-        -------
-        tuple[str, dict[str, Any]]
-            A tuple containing the function name and a dictionary of keyword arguments.
-        """
-
-        class CallVisitor(ast.NodeVisitor):
-
-            def visit_Call(self, node):
-                # Function name
-                self.func_name = getattr(node.func, 'id', None)
-                # Keyword arguments
-                self.args = {arg.arg: self._arg_value(arg.value) for arg in node.keywords}
-
-            def _arg_value(self, node):
-                if isinstance(node, ast.Constant):
-                    return node.value
-                elif isinstance(node, (ast.List, ast.Tuple, ast.Dict)):
-                    return ast.literal_eval(node)
-                return "Complex value"  # Placeholder for complex expressions
-
-        tree = ast.parse(code)
-        visitor = CallVisitor()
-        visitor.visit(tree)
-        return visitor.func_name, visitor.args

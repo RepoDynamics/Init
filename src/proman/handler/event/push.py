@@ -1,26 +1,27 @@
 import shutil
 
+import conventional_commits
 from github_contexts import GitHubContext
 from github_contexts.github.payloads.push import PushPayload
 from github_contexts.github.enums import RefType, ActionType
-import conventional_commits
-
-from repodynamics.action.events._base import EventHandler
+from loggerman import logger
 from repodynamics.control.content import from_json_file
 from repodynamics.control import ControlCenterContentManager
-from repodynamics.logger import Logger
 from repodynamics.datatype import (
-    EventType,
     BranchType,
     Branch,
     InitCheckAction,
-    TemplateType,
 )
 from repodynamics.control.manager import ControlCenterManager
 from repodynamics.version import PEP440SemVer
 
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
+
 
 class PushEventHandler(EventHandler):
+
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -28,7 +29,6 @@ class PushEventHandler(EventHandler):
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str | None = None,
-        logger: Logger | None = None,
     ):
         super().__init__(
             template_type=template_type,
@@ -36,7 +36,6 @@ class PushEventHandler(EventHandler):
             admin_token=admin_token,
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
-            logger=logger
         )
         self._payload: PushPayload = self._context.event
 
@@ -89,7 +88,7 @@ class PushEventHandler(EventHandler):
 
     def _run_repository_created(self):
         self._logger.info("Detected event: repository creation")
-        meta = ControlCenterManager(path_repo=self._path_root_head, logger=self._logger)
+        meta = ControlCenterManager(path_repo=self._path_repo_head, logger=self._logger)
         shutil.rmtree(meta.path_manager.dir_meta)
         shutil.rmtree(meta.path_manager.dir_website)
         (meta.path_manager.dir_docs / "website_template").rename(meta.path_manager.dir_website)
@@ -150,7 +149,7 @@ class PushEventHandler(EventHandler):
             # User is still setting up the repository (still in initialization phase)
             return self._run_init_phase()
         self._ccm_main_before = from_json_file(
-            path_repo=self._path_root_base,
+            path_repo=self._path_repo_base,
             commit_hash=self._context.hash_before,
             git=self._git_base,
             logger=self._logger,
@@ -161,7 +160,7 @@ class PushEventHandler(EventHandler):
 
     def _run_init_phase(self, version: str = "0.0.0", finish: bool = True):
         meta = ControlCenterManager(
-            path_repo=self._path_root_head,
+            path_repo=self._path_repo_head,
             github_token=self._context.token,
             future_versions={self._context.ref_name: version},
             logger=self._logger,
@@ -187,7 +186,7 @@ class PushEventHandler(EventHandler):
             self._config_repo_branch_names(
                 ccs_new=self._ccm_main.settings,
                 ccs_old=from_json_file(
-                    path_repo=self._path_root_head,
+                    path_repo=self._path_repo_head,
                     commit_hash=self._context.hash_before,
                     git=self._git_head,
                     logger=self._logger,
@@ -249,7 +248,7 @@ class PushEventHandler(EventHandler):
         self._config_repo_branch_names(
             ccs_new=self._ccm_main.settings,
             ccs_old=from_json_file(
-                path_repo=self._path_root_head,
+                path_repo=self._path_repo_head,
                 commit_hash=self._context.hash_before,
                 git=self._git_head,
                 logger=self._logger,

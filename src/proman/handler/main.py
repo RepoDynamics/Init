@@ -38,8 +38,9 @@ from repodynamics.datatype import (
     FileChangeType,
     Emoji,
     InitCheckAction,
-    TemplateType,
 )
+
+from proman.datatype import TemplateType
 
 
 class EventHandler:
@@ -65,11 +66,11 @@ class EventHandler:
     ):
         self._template_type = template_type
         self._context = context_manager
-        self._path_root_base = Path(path_repo_base)
-        self._path_root_head = Path(path_repo_head)
+        self._path_repo_base = Path(path_repo_base)
+        self._path_repo_head = Path(path_repo_head)
 
         self._ccm_main: ControlCenterContentManager | None = repodynamics.control.content.from_json_file(
-            path_repo=self._path_root_base,
+            path_repo=self._path_repo_base,
             logger=logger,
             log_section_title="Read Main Control Center Contents"
         )
@@ -80,14 +81,20 @@ class EventHandler:
         self._gh_api = pylinks.api.github(token=self._context.token).user(repo_user).repo(repo_name)
         self._gh_link = pylinks.site.github.user(repo_user).repo(repo_name)
         self._git_base: Git = Git(
-            path_repo=self._path_root_base,
+            path=self._path_repo_base,
             user=(self._context.event.sender.login, self._context.event.sender.github_email),
-            logger=logger,
+            user_scope="global",
+            committer=("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com"),
+            committer_scope="local",
+            committer_persistent=True,
         )
         self._git_head: Git = Git(
-            path_repo=self._path_root_head,
+            path=self._path_repo_head,
             user=(self._context.event.sender.login, self._context.event.sender.github_email),
-            logger=logger,
+            user_scope="global",
+            committer=("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com"),
+            committer_scope="local",
+            committer_persistent=True,
         )
         self._template_name_ver = f"{self._template_type.value} v{repodynamics.__version__}"
         self._is_pypackit = self._template_type is TemplateType.PYPACKIT
@@ -286,13 +293,11 @@ class EventHandler:
         if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
         hooks_output = hook.run(
+            git=git,
             ref_range=ref_range,
             action=input_action.value,
             commit_message=str(commit_msg),
-            path_root=self._path_root_base if base else self._path_root_head,
             config=config,
-            git=git,
-            logger=logger,
         )
         passed = hooks_output["passed"]
         modified = hooks_output["modified"]
@@ -370,6 +375,25 @@ class EventHandler:
         if not latest_version and not dev_only:
             logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
         return latest_version, distance
+
+    def get_latest_version(self, tag_prefix: str, dev_only: bool = False) -> PEP440SemVer | None:
+        tags_lists = self.get_tags()
+        if not tags_lists:
+            return
+        for tags_list in tags_lists:
+            ver_tags = []
+            for tag in tags_list:
+                if tag.startswith(tag_prefix):
+                    ver_tags.append(PEP440SemVer(tag.removeprefix(tag_prefix)))
+            if ver_tags:
+                if dev_only:
+                    ver_tags = sorted(ver_tags, reverse=True)
+                    for ver_tag in ver_tags:
+                        if ver_tag.release_type == "dev":
+                            return ver_tag
+                else:
+                    return max(ver_tags)
+        return
 
     def _tag_version(self, ver: str | PEP440SemVer, base: bool, msg: str = "") -> str:
         tag_prefix = self._ccm_main["tag"]["group"]["version"]["prefix"]
@@ -1224,14 +1248,14 @@ class EventHandler:
         return f"{dev_branch_prefix}{issue_nr}/{base_branch_name}/{task_nr}"
 
     def _read_web_announcement_file(self, base: bool, ccm: ControlCenterContentManager) -> str | None:
-        path_root = self._path_root_base if base else self._path_root_head
+        path_root = self._path_repo_base if base else self._path_repo_head
         path = path_root / ccm["path"]["file"]["website_announcement"]
         return path.read_text() if path.is_file() else None
 
     def _write_web_announcement_file(self, announcement: str, base: bool, ccm: ControlCenterContentManager) -> None:
         if announcement:
             announcement = f"{announcement.strip()}\n"
-        path_root = self._path_root_base if base else self._path_root_head
+        path_root = self._path_repo_base if base else self._path_repo_head
         with open(path_root / ccm["path"]["file"]["website_announcement"], "w") as f:
             f.write(announcement)
         return

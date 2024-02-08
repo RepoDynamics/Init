@@ -1,14 +1,15 @@
 from github_contexts import GitHubContext
 from github_contexts.github.payloads.pull_request import PullRequestPayload
 from github_contexts.github.enums import ActionType
+from loggerman import logger
 
-from repodynamics.action.events._base import EventHandler
-from repodynamics.logger import Logger
-from repodynamics.datatype import TemplateType
+from proman.datatype import TemplateType
+from proman.handler.main import EventHandler
 
 
 class PullRequestTargetEventHandler(EventHandler):
 
+    @logger.sectioner("Initialize Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -16,7 +17,6 @@ class PullRequestTargetEventHandler(EventHandler):
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str | None = None,
-        logger: Logger | None = None,
     ):
         super().__init__(
             template_type=template_type,
@@ -24,7 +24,6 @@ class PullRequestTargetEventHandler(EventHandler):
             admin_token=admin_token,
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
-            logger=logger
         )
         self._payload: PullRequestPayload = self._context.event
         return
