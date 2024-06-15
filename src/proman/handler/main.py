@@ -10,11 +10,15 @@ import pylinks
 from pylinks.exceptions import WebAPIError
 from github_contexts import GitHubContext
 import conventional_commits
+import pkgdata
+
+import controlman
+import gittidy
 
 import repodynamics
 import repodynamics.control.content
 import repodynamics.control.content.manager
-from repodynamics.git import Git
+
 from repodynamics.control.content import ControlCenterContentManager, ControlCenterContent
 from repodynamics import hook
 from repodynamics.version import PEP440SemVer
@@ -69,9 +73,9 @@ class EventHandler:
         self._path_repo_base = Path(path_repo_base)
         self._path_repo_head = Path(path_repo_head)
 
-        self._ccm_main: ControlCenterContentManager | None = repodynamics.control.content.from_json_file(
+        # TODO: add error handling for when the metadata file doesn't exist or is corrupt
+        self._ccm_main: controlman.ControlCenterContentManager | None = controlman.read_from_json_file(
             path_repo=self._path_repo_base,
-            logger=logger,
             log_section_title="Read Main Control Center Contents"
         )
 
@@ -80,7 +84,9 @@ class EventHandler:
         self._gh_api_admin = pylinks.api.github(token=admin_token).user(repo_user).repo(repo_name)
         self._gh_api = pylinks.api.github(token=self._context.token).user(repo_user).repo(repo_name)
         self._gh_link = pylinks.site.github.user(repo_user).repo(repo_name)
-        self._git_base: Git = Git(
+
+        # TODO: Check again when gittidy is finalized; add section titles
+        self._git_base = gittidy.Git(
             path=self._path_repo_base,
             user=(self._context.event.sender.login, self._context.event.sender.github_email),
             user_scope="global",
@@ -88,7 +94,7 @@ class EventHandler:
             committer_scope="local",
             committer_persistent=True,
         )
-        self._git_head: Git = Git(
+        self._git_head = gittidy.Git(
             path=self._path_repo_head,
             user=(self._context.event.sender.login, self._context.event.sender.github_email),
             user_scope="global",
@@ -96,7 +102,9 @@ class EventHandler:
             committer_scope="local",
             committer_persistent=True,
         )
-        self._template_name_ver = f"{self._template_type.value} v{repodynamics.__version__}"
+
+        proman_version = pkgdata.get_version_from_caller()
+        self._template_name_ver = f"{self._template_type.value} v{proman_version}"
         self._is_pypackit = self._template_type is TemplateType.PYPACKIT
 
         self._failed = False
@@ -114,7 +122,6 @@ class EventHandler:
         self._summary_sections: list[str | html.ElementCollection | html.Element] = []
         return
 
-    @logger.sectioner("Execute Event Handler", group=False)
     def run(self) -> tuple[dict, str]:
         self._run_event()
         output, summary = self._generate_output()
@@ -746,21 +753,23 @@ class EventHandler:
     def error_unsupported_triggering_action(self):
         event_name = self._context.event_name.value
         action_name = self._context.event.action.value
-        action_err_msg = f"Unsupported triggering action for '{event_name}' event."
+        action_err_msg = f"Unsupported triggering action for '{event_name}' event"
         action_err_details_sub = f"but the triggering action '{action_name}' is not supported."
         action_err_details = (
             f"The workflow was triggered by an event of type '{event_name}', {action_err_details_sub}"
         )
-        logger.error(action_err_msg, action_err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
             oneliner=action_err_msg,
             details=action_err_details,
         )
+        logger.critical(action_err_msg, action_err_details)
         return
 
-    def _action_file_change_detector(self, meta: ControlCenterManager) -> dict[RepoFileType, list[str]]:
+    def _action_file_change_detector(
+        self, control_center_manager: ControlCenterManager
+    ) -> dict[RepoFileType, list[str]]:
         name = "File Change Detector"
         logger.h1(name)
         change_type_map = {
@@ -783,7 +792,7 @@ class EventHandler:
             ref_start=self._context.hash_before, ref_end=self._context.hash_after
         )
         logger.success("Detected changed files", json.dumps(changes, indent=3))
-        fixed_paths = [outfile.rel_path for outfile in meta.path_manager.fixed_files]
+        fixed_paths = [outfile.rel_path for outfile in control_center_manager.path_manager.fixed_files]
         for change_type, changed_paths in changes.items():
             # if change_type in ["unknown", "broken"]:
             #     self.logger.warning(
@@ -799,11 +808,11 @@ class EventHandler:
                     typ = RepoFileType.DYNAMIC
                 elif path == ".github/_README.md" or path.endswith("/README.md"):
                     typ = RepoFileType.README
-                elif path.startswith(meta.path_manager.dir_source_rel):
+                elif path.startswith(control_center_manager.path_manager.dir_source_rel):
                     typ = RepoFileType.PACKAGE
-                elif path.startswith(meta.path_manager.dir_website_rel):
+                elif path.startswith(control_center_manager.path_manager.dir_website_rel):
                     typ = RepoFileType.WEBSITE
-                elif path.startswith(meta.path_manager.dir_tests_rel):
+                elif path.startswith(control_center_manager.path_manager.dir_tests_rel):
                     typ = RepoFileType.TEST
                 elif path.startswith(RelativePath.dir_github_workflows):
                     typ = RepoFileType.WORKFLOW
@@ -816,9 +825,9 @@ class EventHandler:
                     typ = RepoFileType.DYNAMIC
                 elif path == RelativePath.file_path_meta:
                     typ = RepoFileType.SUPERMETA
-                elif path == f"{meta.path_manager.dir_meta_rel}path.yaml":
+                elif path == f"{control_center_manager.path_manager.dir_meta_rel}path.yaml":
                     typ = RepoFileType.SUPERMETA
-                elif path.startswith(meta.path_manager.dir_meta_rel):
+                elif path.startswith(control_center_manager.path_manager.dir_meta_rel):
                     typ = RepoFileType.META
                 else:
                     typ = RepoFileType.OTHER
@@ -1297,55 +1306,3 @@ class EventHandler:
 
         write(entries)
         return "".join(string).rstrip()
-
-    # @property
-    # def hash_latest(self) -> str:
-    #     """The SHA hash of the most recent commit on the branch,
-    #     including commits made during the workflow run.
-    #     """
-    #     return self._hash_latest if self._hash_latest else self._context.hash_after
-
-    # def commit(
-    #     self,
-    #     message: str = "",
-    #     stage: Literal["all", "staged", "unstaged"] = "all",
-    #     amend: bool = False,
-    #     push: bool = False,
-    #     set_upstream: bool = False,
-    # ):
-    #     commit_hash = self._git_head.commit(message=message, stage=stage, amend=amend)
-    #     if amend:
-    #         self._amended = True
-    #     if push:
-    #         commit_hash = self.push(set_upstream=set_upstream)
-    #     return commit_hash
-    #
-    # def push(self, amend: bool = False, set_upstream: bool = False):
-    #     new_hash = self._git_head.push(
-    #         target="origin", set_upstream=set_upstream, force_with_lease=self._amended or amend
-    #     )
-    #     self._amended = False
-    #     if new_hash and self._git_head.current_branch_name() == self._context.ref_name:
-    #         self._hash_latest = new_hash
-    #     return new_hash
-
-    # def _set_job_run(
-    #     self,
-    #     package_build: bool | None = None,
-    #     package_lint: bool | None = None,
-    #     package_test_local: bool | None = None,
-    #     website_build: bool | None = None,
-    #     website_deploy: bool | None = None,
-    #     website_rtd_preview: bool | None = None,
-    #     package_publish_testpypi: bool | None = None,
-    #     package_publish_pypi: bool | None = None,
-    #     package_test_testpypi: bool | None = None,
-    #     package_test_pypi: bool | None = None,
-    #     github_release: bool | None = None,
-    # ) -> None:
-    #     data = locals()
-    #     data.pop("self")
-    #     for key, val in data.items():
-    #         if val is not None:
-    #             self._job_run_flag[key] = val
-    #     return

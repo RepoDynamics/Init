@@ -1,6 +1,5 @@
 import actionman as _actionman
 import github_contexts as _github_contexts
-from github_contexts.github.enums import EventType as _EventType
 from loggerman import logger as _logger
 
 from proman.datatype import TemplateType as _TemplateType
@@ -22,7 +21,7 @@ def run():
 def _init_handler():
     inputs = _read_inputs()
     template_type = _get_template_type(input_template_type=inputs.pop("TEMPLATE_TYPE"))
-    context_manager = _github_contexts.context_github(context=inputs.pop("GITHUB_CONTEXT"))
+    context_manager = _github_contexts.GitHubContext(context=inputs.pop("GITHUB_CONTEXT"))
     event_handler_class = _get_event_handler(event=context_manager.event_name)
     event_handler = event_handler_class(
         template_type=template_type,
@@ -92,16 +91,17 @@ def _get_template_type(input_template_type: str) -> _TemplateType:
 
 
 @_logger.sectioner("Verify Triggering Event")
-def _get_event_handler(event: _EventType):
+def _get_event_handler(event: _github_contexts.github.enums.EventType):
     _logger.info("Triggering event", event.value)
+    event_type = _github_contexts.github.enums.EventType
     event_to_handler = {
-        _EventType.ISSUES: _handler.event.IssuesEventHandler,
-        _EventType.ISSUE_COMMENT: _handler.event.IssueCommentEventHandler,
-        _EventType.PULL_REQUEST: _handler.event.PullRequestEventHandler,
-        _EventType.PULL_REQUEST_TARGET: _handler.event.PullRequestTargetEventHandler,
-        _EventType.PUSH: _handler.event.PushEventHandler,
-        _EventType.SCHEDULE: _handler.event.ScheduleEventHandler,
-        _EventType.WORKFLOW_DISPATCH: _handler.event.WorkflowDispatchEventHandler,
+        event_type.ISSUES: _handler.event.IssuesEventHandler,
+        event_type.ISSUE_COMMENT: _handler.event.IssueCommentEventHandler,
+        event_type.PULL_REQUEST: _handler.event.PullRequestEventHandler,
+        event_type.PULL_REQUEST_TARGET: _handler.event.PullRequestTargetEventHandler,
+        event_type.PUSH: _handler.event.PushEventHandler,
+        event_type.SCHEDULE: _handler.event.ScheduleEventHandler,
+        event_type.WORKFLOW_DISPATCH: _handler.event.WorkflowDispatchEventHandler,
     }
     handler = event_to_handler.get(event)
     if not handler:

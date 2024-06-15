@@ -1,12 +1,9 @@
 import re
 import datetime
 
-from github_contexts import GitHubContext
-from github_contexts.github.payloads.issues import IssuesPayload
-from github_contexts.github.enums import ActionType
+import github_contexts
 from loggerman import logger
-from repodynamics.datatype import IssueStatus, LabelType, Label
-from repodynamics.control.files.generator import forms
+import controlman
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -18,7 +15,7 @@ class IssuesEventHandler(EventHandler):
     def __init__(
         self,
         template_type: TemplateType,
-        context_manager: GitHubContext,
+        context_manager: github_contexts.GitHubContext,
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str,
@@ -30,18 +27,19 @@ class IssuesEventHandler(EventHandler):
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
         )
-        self._payload: IssuesPayload = self._context.event
+        self._payload: github_contexts.github.payloads.IssuesPayload = self._context.event
         self._issue = self._payload.issue
 
-        self._label_groups: dict[LabelType, list[Label]] = {}
+        self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
         return
 
+    @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         action = self._payload.action
-        logger.info(title="Action", message=action.value)
-        if action == ActionType.OPENED:
+        logger.info("Action", action.value)
+        if action == github_contexts.github.enums.ActionType.OPENED:
             self._run_opened()
-        elif action == ActionType.LABELED:
+        elif action == github_contexts.github.enums.ActionType.LABELED:
             self._run_labeled()
         else:
             self.error_unsupported_triggering_action()
@@ -55,64 +53,70 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled(self):
         label = self._ccm_main.resolve_label(self._payload.label.name)
-        if label.category is LabelType.STATUS:
+        if label.category is controlman.datatype.LabelType.STATUS:
             self._label_groups = self._ccm_main.resolve_labels(self._issue.label_names)
             self._update_issue_status_labels(
                 issue_nr=self._issue.number,
-                labels=self._label_groups[LabelType.STATUS],
+                labels=self._label_groups[controlman.datatype.LabelType.STATUS],
                 current_label=label,
             )
             self._run_labeled_status(label.type)
         return
 
-    def _run_labeled_status(self, status: IssueStatus):
-        if status is IssueStatus.TRIAGE:
-            self._run_labeled_status_triage()
-        elif status is IssueStatus.REJECTED:
+    def _run_labeled_status(self, status: controlman.datatype.IssueStatus):
+        if status is controlman.datatype.IssueStatus.REJECTED:
             self._run_labeled_status_rejected()
-        elif status is IssueStatus.DUPLICATE:
+        elif status is controlman.datatype.IssueStatus.DUPLICATE:
             self._run_labeled_status_duplicate()
-        elif status is IssueStatus.INVALID:
+        elif status is controlman.datatype.IssueStatus.INVALID:
             self._run_labeled_status_invalid()
-        elif status is IssueStatus.PLANNING:
+        elif status is controlman.datatype.IssueStatus.PLANNING:
             self._run_labeled_status_planning()
-        elif status is IssueStatus.REQUIREMENT_ANALYSIS:
+        elif status is controlman.datatype.IssueStatus.REQUIREMENT_ANALYSIS:
             self._run_labeled_status_requirement_analysis()
-        elif status is IssueStatus.DESIGN:
+        elif status is controlman.datatype.IssueStatus.DESIGN:
             self._run_labeled_status_design()
-        elif status is IssueStatus.IMPLEMENTATION:
+        elif status is controlman.datatype.IssueStatus.IMPLEMENTATION:
             self._run_labeled_status_implementation()
         return
 
-    def _run_labeled_status_triage(self):
-        # self._add_to_issue_timeline(entry=f"The issue entered the triage phase (actor: @{self._payload.sender.login}).")
-        return
-
     def _run_labeled_status_rejected(self):
-        self._add_to_issue_timeline(entry=f"The issue was rejected and closed (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue was rejected and closed (actor: @{self._payload.sender.login})."
+        )
         self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
         return
 
     def _run_labeled_status_duplicate(self):
-        self._add_to_issue_timeline(entry=f"The issue was marked as a duplicate and closed (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue was marked as a duplicate and closed (actor: @{self._payload.sender.login})."
+        )
         self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
         return
 
     def _run_labeled_status_invalid(self):
-        self._add_to_issue_timeline(entry=f"The issue was marked as invalid and closed (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue was marked as invalid and closed (actor: @{self._payload.sender.login})."
+        )
         self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
         return
 
     def _run_labeled_status_planning(self):
-        self._add_to_issue_timeline(entry=f"The issue entered the planning phase (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue entered the planning phase (actor: @{self._payload.sender.login})."
+        )
         return
 
     def _run_labeled_status_requirement_analysis(self):
-        self._add_to_issue_timeline(entry=f"The issue entered the requirement analysis phase (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue entered the requirement analysis phase (actor: @{self._payload.sender.login})."
+        )
         return
 
     def _run_labeled_status_design(self):
-        self._add_to_issue_timeline(entry=f"The issue entered the design phase (actor: @{self._payload.sender.login}).")
+        self._add_to_issue_timeline(
+            entry=f"The issue entered the design phase (actor: @{self._payload.sender.login})."
+        )
         return
 
     def _run_labeled_status_implementation(self):
@@ -123,15 +127,17 @@ class IssuesEventHandler(EventHandler):
         base_branches_and_labels: list[tuple[str, list[str]]] = []
         common_labels = []
         for label_group, group_labels in self._label_groups.items():
-            if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
+            if label_group not in [
+                controlman.datatype.LabelType.BRANCH, controlman.datatype.LabelType.VERSION
+            ]:
                 common_labels.extend([label.name for label in group_labels])
-        if self._label_groups.get(LabelType.VERSION):
-            for version_label in self._label_groups[LabelType.VERSION]:
+        if self._label_groups.get(controlman.datatype.LabelType.VERSION):
+            for version_label in self._label_groups[controlman.datatype.LabelType.VERSION]:
                 branch_label = self._ccm_main.create_label_branch(source=version_label)
                 labels = common_labels + [version_label.name, branch_label.name]
                 base_branches_and_labels.append((branch_label.suffix, labels))
         else:
-            for branch_label in self._label_groups[LabelType.BRANCH]:
+            for branch_label in self._label_groups[controlman.datatype.LabelType.BRANCH]:
                 base_branches_and_labels.append((branch_label.suffix, common_labels + [branch_label.name]))
         implementation_branches_info = []
         for base_branch_name, labels in base_branches_and_labels:
@@ -198,11 +204,11 @@ class IssuesEventHandler(EventHandler):
         comment = comments[0]
         return comment
 
-    @logger.sectioner("Process Issue")
+    @logger.sectioner("Post-Process Issue")
     def _post_process_issue(self) -> str:
-        logger.info(title="Issue labels", message=self._issue.label_names)
+        logger.info(code_title="Issue labels", code=self._issue.label_names)
         issue_form = self._ccm_main.get_issue_data_from_labels(self._issue.label_names).form
-        logger.success("Retrieve issue form", issue_form)
+        logger.debug(code_title="Issue form", code=issue_form)
         issue_entries = self._extract_entries_from_issue_body(issue_form["body"])
         labels = []
         branch_label_prefix = self._ccm_main["label"]["auto_group"]["branch"]["prefix"]
@@ -218,14 +224,12 @@ class IssuesEventHandler(EventHandler):
             for branch in branches:
                 labels.append(f"{branch_label_prefix}{branch}")
         else:
-            logger.error(
+            logger.critical(
                 "Could not match branch or version in issue body to pattern defined in metadata.",
             )
         self._gh_api.issue_labels_add(self._issue.number, labels)
         if "post_process" not in issue_form:
-            logger.skip(
-                "No post-process action defined in issue form; skip❗",
-            )
+            logger.info("Skip", "No post-process action defined in issue form.")
             return self._issue.body
         assign_creator = issue_form["post_process"].get("assign_creator")
         if assign_creator:
@@ -235,7 +239,7 @@ class IssuesEventHandler(EventHandler):
                 if checkbox.startswith("- [X]"):
                     checked = True
                 elif not checkbox.startswith("- [ ]"):
-                    logger.error(
+                    logger.critical(
                         "Could not match checkbox in issue body to pattern defined in metadata.",
                     )
                 else:
@@ -251,10 +255,11 @@ class IssuesEventHandler(EventHandler):
             return new_body
         return self._issue.body
 
+    @logger.sectioner("Extract Entries from Issue Body")
     def _extract_entries_from_issue_body(self, body_elems: list[dict]):
-        def create_pattern(parts):
+        def create_pattern(parts_):
             pattern_sections = []
-            for idx, part in enumerate(parts):
+            for idx, part in enumerate(parts_):
                 pattern_content = f"(?P<{part['id']}>.*)" if part["id"] else "(?:.*)"
                 pattern_section = rf"### {re.escape(part['title'])}\n{pattern_content}"
                 if idx != 0:
@@ -269,7 +274,7 @@ class IssuesEventHandler(EventHandler):
             if elem["type"] == "markdown":
                 continue
             pre_process = elem.get("pre_process")
-            if not pre_process or forms.pre_process_existence(pre_process):
+            if not pre_process or controlman.pre_process_existence(pre_process):
                 optional = False
             else:
                 optional = True
@@ -277,15 +282,16 @@ class IssuesEventHandler(EventHandler):
         pattern = create_pattern(parts)
         compiled_pattern = re.compile(pattern, re.S)
         # Search for the pattern in the markdown
-        logger.success("Retrieve issue body", self._issue.body)
+        logger.debug(code_title="Issue body", code=self._issue.body)
         match = re.search(compiled_pattern, self._issue.body)
         if not match:
-            logger.error("Could not match the issue body to pattern defined in metadata.")
+            logger.critical("Could not match the issue body to pattern defined in control center settings.")
         # Create a dictionary with titles as keys and matched content as values
         sections = {
             section_id: content.strip() if content else None
             for section_id, content in match.groupdict().items()
         }
+        logger.debug(code_title="Matched sections", code=sections)
         return sections
 
     def _create_dev_protocol(self, issue_body: str) -> str:

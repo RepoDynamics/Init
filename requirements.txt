@@ -1,4 +1,9 @@
-repodynamics
-loggerman
-actionman
-github-contexts
+ActionMan
+ControlMan
+ConventionalCommits
+GitHub-Contexts
+LoggerMan
+MarkItUp
+PyLinks
+PySyntax
+VersionMan

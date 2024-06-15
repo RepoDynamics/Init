@@ -2,18 +2,20 @@ import time
 import re
 
 from pylinks.exceptions import WebAPIError
-from github_contexts import GitHubContext
-from github_contexts.github.payloads.pull_request import PullRequestPayload
-from github_contexts.github.enums import ActionType
+# from github_contexts import GitHubContext
+# from github_contexts.github.payloads.pull_request import PullRequestPayload
+# from github_contexts.github.enums import ActionType
+import github_contexts
 import conventional_commits
 from loggerman import logger
-import repodynamics.control.content
-import repodynamics.control.content
-import repodynamics.control.content.manager
-from repodynamics.control.manager import ControlCenterManager
-from repodynamics.path import RelativePath
-from repodynamics.version import PEP440SemVer
-from repodynamics.datatype import (
+# import repodynamics.control.content
+# import repodynamics.control.content
+# import repodynamics.control.content.manager
+# from repodynamics.control.manager import ControlCenterManager
+# from repodynamics.path import RelativePath
+# from repodynamics.version import PEP440SemVer
+from versionman import PEP440SemVer
+from controlman.datatype import (
     Label,
     PrimaryActionCommit,
     PrimaryCustomCommit,
@@ -25,7 +27,8 @@ from repodynamics.datatype import (
     InitCheckAction,
     LabelType,
 )
-from repodynamics.control.content import from_json_file
+# from repodynamics.control.content import from_json_file
+import controlman
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -38,7 +41,7 @@ class PullRequestEventHandler(EventHandler):
     def __init__(
         self,
         template_type: TemplateType,
-        context_manager: GitHubContext,
+        context_manager: github_contexts.GitHubContext,
         admin_token: str,
         path_repo_base: str,
         path_repo_head: str,
@@ -50,49 +53,52 @@ class PullRequestEventHandler(EventHandler):
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
         )
-        self._payload: PullRequestPayload = self._context.event
+        self._payload: github_contexts.github.payloads.PullRequestPayload = self._context.event
         self._pull = self._payload.pull_request
         self._branch_base = self.resolve_branch(self._context.base_ref)
-        self._logger.entry(
-            LogStatus.PASS,
+        logger.info(
             "Resolve base branch",
-            f"Resolved base branch as a branch of type '{self._branch_base.type.value}'.",
-            str(self._branch_base),
+            self._branch_base.type.value,
+            code_title="Branch details",
+            code=self._branch_base,
         )
         self._branch_head = self.resolve_branch(self._context.head_ref)
-        self._logger.entry(
-            LogStatus.PASS,
+        logger.info(
             "Resolve head branch",
-            f"Resolved head branch as a branch of type '{self._branch_head.type.value}'.",
-            str(self._branch_head),
+            self._branch_head.type.value,
+            code_title="Branch details",
+            code=self._branch_head,
         )
         self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
         self._git_base.checkout(branch=self._context.base_ref)
-        self._primary_commit_type: PrimaryActionCommit | PrimaryCustomCommit | None = None
+        self._primary_commit_type: (
+            controlman.datatype.PrimaryActionCommit | controlman.datatype.PrimaryCustomCommit | None
+        ) = None
         return
 
+    @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         if not self._head_to_base_allowed():
             return
         action = self._payload.action
-        if action is ActionType.OPENED:
+        if action is github_contexts.github.enums.ActionType.OPENED:
             self._run_action_opened()
-        elif action is ActionType.REOPENED:
+        elif action is github_contexts.github.enums.ActionType.REOPENED:
             self._run_action_reopened()
-        elif action is ActionType.SYNCHRONIZE:
+        elif action is github_contexts.github.enums.ActionType.SYNCHRONIZE:
             self._run_action_synchronize()
-        elif action is ActionType.LABELED:
+        elif action is github_contexts.github.enums.ActionType.LABELED:
             self._run_action_labeled()
-        elif action is ActionType.READY_FOR_REVIEW:
+        elif action is github_contexts.github.enums.ActionType.READY_FOR_REVIEW:
             self._run_action_ready_for_review()
         else:
             self.error_unsupported_triggering_action()
         return
 
     def _run_action_opened(self):
-        if self._branch_head.type is BranchType.PRERELEASE and self._branch_base.type in (
-            BranchType.MAIN,
-            BranchType.RELEASE,
+        if self._branch_head.type is controlman.datatype.BranchType.PRERELEASE and self._branch_base.type in (
+            controlman.datatype.BranchType.MAIN,
+            controlman.datatype.BranchType.RELEASE,
         ):
             return self._run_open_prerelease_to_release()
         return
@@ -109,13 +115,12 @@ class PullRequestEventHandler(EventHandler):
             )
         )
         meta_and_hooks_action_type = InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL
-        meta = ControlCenterManager(
-            path_repo=self._path_repo_head,
+        control_center_manager = controlman.initialize_manager(
+            git_manager=self._git_head,
             github_token=self._context.token,
-            ccm_before=self._ccm_main,
-            logger=self._logger,
+            content_manager=self._ccm_main,
         )
-        changed_file_groups = self._action_file_change_detector(meta=meta)
+        changed_file_groups = self._action_file_change_detector(control_center_manager=control_center_manager)
         hash_hooks = self._action_hooks(
             action=meta_and_hooks_action_type,
             branch=self._branch_head,
@@ -125,15 +130,13 @@ class PullRequestEventHandler(EventHandler):
         for file_type in (RepoFileType.SUPERMETA, RepoFileType.META, RepoFileType.DYNAMIC):
             if changed_file_groups[file_type]:
                 hash_meta = self._action_meta(
-                    action=meta_and_hooks_action_type, meta=meta, base=False, branch=self._branch_head
+                    action=meta_and_hooks_action_type, meta=control_center_manager, base=False, branch=self._branch_head
                 )
-                ccm_branch = meta.generate_data()
+                ccm_branch = control_center_manager.generate_data()
                 break
         else:
             hash_meta = None
-            ccm_branch = from_json_file(
-                path_repo=self._path_repo_base, git=self._git_head, logger=self._logger
-            )
+            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_base)
         latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
 
         tasks_complete = self._update_implementation_tasklist(body=new_body)
@@ -198,7 +201,7 @@ class PullRequestEventHandler(EventHandler):
                 elif self._branch_base.type is BranchType.PRERELEASE:
                     return self._run_merge_implementation_to_prerelease(status=IssueStatus.DEPLOY_FINAL)
                 else:
-                    self._logger.error(
+                    logger.error(
                         "Merge not allowed",
                         f"Merge from a head branch of type '{self._branch_head.type.value}' "
                         f"to a branch of type '{self._branch_base.type.value}' is not allowed.",
@@ -207,7 +210,7 @@ class PullRequestEventHandler(EventHandler):
                 if self._branch_base.type is BranchType.IMPLEMENT:
                     return self._run_merge_fork_to_implementation()
                 else:
-                    self._logger.error(
+                    logger.error(
                         "Merge not allowed",
                         f"Merge from a head branch of type '{self._branch_head.type.value}' "
                         f"to a branch of type '{self._branch_base.type.value}' is not allowed.",
@@ -216,13 +219,13 @@ class PullRequestEventHandler(EventHandler):
             if self._branch_base.type in (BranchType.RELEASE, BranchType.MAIN):
                 return self._run_merge_pre_to_release()
             else:
-                self._logger.error(
+                logger.error(
                     "Merge not allowed",
                     f"Merge from a head branch of type '{self._branch_head.type.value}' "
                     f"to a branch of type '{self._branch_base.type.value}' is not allowed.",
                 )
         else:
-            self._logger.error(
+            logger.error(
                 "Merge not allowed",
                 f"Merge from a head branch of type '{self._branch_head.type.value}' "
                 f"to a branch of type '{self._branch_base.type.value}' is not allowed.",
@@ -283,23 +286,21 @@ class PullRequestEventHandler(EventHandler):
         # Update the metadata in main branch to reflect the new release
         if next_ver:
             if self._branch_base.type is BranchType.MAIN:
-                meta_gen = ControlCenterManager(
-                    path_repo=self._path_repo_head,
+                meta_gen = controlman.initialize_manager(
+                    git_manager=self._git_head,
                     github_token=self._context.token,
-                    ccm_before=self._ccm_main,
+                    content_manager=self._ccm_main,
                     future_versions={self._branch_base.name: next_ver},
-                    logger=self._logger,
                 )
                 self._action_meta(
                     action=InitCheckAction.COMMIT, meta=meta_gen, base=False, branch=self._branch_head
                 )
             else:
                 self._git_base.checkout(branch=self._payload.repository.default_branch)
-                meta_gen = ControlCenterManager(
-                    path_repo=self._path_repo_base,
+                meta_gen = controlman.initialize_manager(
+                    git_manager=self._git_base,
                     github_token=self._context.token,
                     future_versions={self._branch_base.name: next_ver},
-                    logger=self._logger,
                 )
                 self._action_meta(
                     action=InitCheckAction.COMMIT, meta=meta_gen, base=True, branch=self._branch_base
@@ -315,9 +316,7 @@ class PullRequestEventHandler(EventHandler):
         if not merge_response:
             return
 
-        ccm_branch = repodynamics.control.content.from_json_file(
-            path_repo=self._path_repo_head, logger=self._logger
-        )
+        ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
         hash_latest = merge_response["sha"]
         if not next_ver:
             self._set_output(
@@ -337,7 +336,7 @@ class PullRequestEventHandler(EventHandler):
                 break
             time.sleep(5)
         else:
-            self._logger.error("Failed to pull changes from GitHub. Please pull manually.")
+            logger.error("Failed to pull changes from GitHub. Please pull manually.")
             self._failed = True
             return
 
@@ -407,13 +406,11 @@ class PullRequestEventHandler(EventHandler):
                 break
             time.sleep(5)
         else:
-            self._logger.error("Failed to pull changes from GitHub. Please pull manually.")
+            logger.error("Failed to pull changes from GitHub. Please pull manually.")
             self._failed = True
             return
         tag = self._tag_version(ver=next_ver_pre, base=True)
-        ccm_branch = repodynamics.control.content.from_json_file(
-            path_repo=self._path_repo_head, logger=self._logger
-        )
+        ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
         self._set_output(
             ccm_branch=ccm_branch,
             ref=hash_latest,
@@ -439,7 +436,7 @@ class PullRequestEventHandler(EventHandler):
     def _run_merge_development_to_implementation(self):
         tasklist_head = self._extract_tasklist(body=self._pull.body)
         if not tasklist_head or len(tasklist_head) != 1:
-            self._logger.error(
+            logger.error(
                 "Failed to find tasklist",
                 "Failed to find tasklist in pull request body.",
             )
@@ -452,7 +449,7 @@ class PullRequestEventHandler(EventHandler):
             head=f"{self._context.repository_owner}:{self._context.base_ref}",
         )
         if not matching_pulls or len(matching_pulls) != 1:
-            self._logger.error(
+            logger.error(
                 "Failed to find matching pull request",
                 "Failed to find matching pull request for the development branch.",
             )
@@ -498,7 +495,7 @@ class PullRequestEventHandler(EventHandler):
                 number=self._pull.number,
                 title=commit_title,
             )
-            self._logger.error(
+            logger.error(
                 "Failed to merge pull request using GitHub API. Please merge manually.", e, raise_error=False
             )
             self._failed = True
@@ -519,7 +516,6 @@ class PullRequestEventHandler(EventHandler):
             parent_commit_hash=hash_base,
             parent_commit_url=self._gh_link.commit(hash_base),
             path_root=self._path_repo_head,
-            logger=self._logger,
         )
         tasklist = self._extract_tasklist(body=self._pull.body)
         for task in tasklist:
@@ -559,8 +555,8 @@ class PullRequestEventHandler(EventHandler):
         package_setup_files_changed = any(
             filepath in changed_file_groups[RepoFileType.DYNAMIC]
             for filepath in (
-                RelativePath.file_python_pyproject,
-                RelativePath.file_python_manifest,
+                controlman.path.FILE_PYTHON_PYPROJECT,
+                controlman.path.FILE_PYTHON_MANIFEST,
             )
         )
         out = {
@@ -766,7 +762,7 @@ class PullRequestEventHandler(EventHandler):
             f"Pull requests from a head branch of type '{self._branch_head.type.value}' "
             f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -782,7 +778,7 @@ class PullRequestEventHandler(EventHandler):
             f"to a base branch of type '{self._branch_base.type.value}' "
             f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -796,7 +792,7 @@ class PullRequestEventHandler(EventHandler):
         err_details = (
             f"Status label '{self._payload.label.name}' is not supported for pull requests."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -812,7 +808,7 @@ class PullRequestEventHandler(EventHandler):
             f"from a head branch of type '{self._branch_head.type.value}' "
             f"to a base branch of type '{self._branch_base.type.value}'."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -827,7 +823,7 @@ class PullRequestEventHandler(EventHandler):
             f"Status label '{self._payload.label.name}' is not supported for pull requests "
             f"with primary types other than major, minor, or patch releases."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -843,7 +839,7 @@ class PullRequestEventHandler(EventHandler):
             f"from a head branch of type '{self._branch_head.type.value}' "
             f"with a lower pre-release segment than the label."
         )
-        self._logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
         self.add_summary(
             name="Event Handler",
             status="fail",

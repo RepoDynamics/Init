@@ -69,6 +69,7 @@ class WorkflowDispatchEventHandler(EventHandler):
         # self._input_website_announcement_msg = website_announcement_msg
         return
 
+    @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         # if self.context.ref_is_main:
         #     self.state

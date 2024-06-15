@@ -180,6 +180,9 @@ runs:
         echo "::group::Install Action Requirements"
         python -m pip install -r requirements.txt
         echo "::endgroup::"
+        echo "::group::Install Action"
+        python -m pip install ${{ github.action_path }}
+        echo "::endgroup::"
         echo "::group::Display Environment"
         python -m pip list
         echo "::endgroup::"
@@ -222,12 +225,12 @@ runs:
       shell: bash
       run: |
         # Action
-        python -m repodynamics.actions init
+        python -m proman
         python "${{ github.action_path }}/heading.py" 1 "Finalization"
         python "${{ github.action_path }}/heading.py" 2 "Artifact Upload"
 
     - name: 'Artifact Upload'
       uses: actions/upload-artifact@v3
       with:
-        path: repodynamics
-        name: Workflow Details
+        path: proman-artifacts
+        name: Workflow Results

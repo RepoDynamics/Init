@@ -17,7 +17,7 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev0"
+version = "0.0.0.dev1"
 name = "ProMan"
 dependencies = [
     "ActionMan",
@@ -27,6 +27,7 @@ dependencies = [
     "LoggerMan",
     "MarkItUp",
     "PyLinks",
+    "PySyntax",
     "VersionMan",
 ]
 requires-python = ">=3.10"

@@ -42,6 +42,7 @@ class PushEventHandler(EventHandler):
         self._ccm_main_before: ControlCenterContentManager | None = None
         return
 
+    @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         ref_type = self._context.ref_type
         action = self._payload.action

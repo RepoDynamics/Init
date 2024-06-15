@@ -28,6 +28,7 @@ class PullRequestTargetEventHandler(EventHandler):
         self._payload: PullRequestPayload = self._context.event
         return
 
+    @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         action = self._payload.action
         if action == ActionType.OPENED:
