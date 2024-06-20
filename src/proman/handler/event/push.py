@@ -1,3 +1,5 @@
+"""Event handler for pushing commits, branch/tag creation/deletion, repository creation."""
+
 import shutil
 
 import conventional_commits
@@ -5,15 +7,18 @@ from github_contexts import GitHubContext
 from github_contexts.github.payloads.push import PushPayload
 from github_contexts.github.enums import RefType, ActionType
 from loggerman import logger
-from repodynamics.control.content import from_json_file
-from repodynamics.control import ControlCenterContentManager
-from repodynamics.datatype import (
-    BranchType,
-    Branch,
-    InitCheckAction,
-)
-from repodynamics.control.manager import ControlCenterManager
-from repodynamics.version import PEP440SemVer
+import controlman
+import versionman
+
+# from repodynamics.control.content import from_json_file
+# from repodynamics.control import ControlCenterContentManager
+# from repodynamics.datatype import (
+#     BranchType,
+#     Branch,
+#     InitCheckAction,
+# )
+# from repodynamics.control.manager import ControlCenterManager
+# from repodynamics.version import PEP440SemVer
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -39,7 +44,7 @@ class PushEventHandler(EventHandler):
         )
         self._payload: PushPayload = self._context.event
 
-        self._ccm_main_before: ControlCenterContentManager | None = None
+        self._ccm_main_before: controlman.ControlCenterContentManager | None = None
         return
 
     @logger.sectioner("Execute Event Handler", group=False)
@@ -65,7 +70,7 @@ class PushEventHandler(EventHandler):
             else:
                 self.error_unsupported_triggering_action()
         else:
-            self._logger.error(
+            logger.critical(
                 f"Unsupported reference type for 'push' event.",
                 "The workflow was triggered by a 'push' event, "
                 f"but the reference type '{ref_type}' is not supported.",
@@ -77,19 +82,19 @@ class PushEventHandler(EventHandler):
             if not self._git_head.get_tags():
                 self._run_repository_created()
             else:
-                self._logger.skip(
+                logger.notice(
                     "Creation of default branch detected while a version tag is present; skipping.",
                     "This is likely a result of a repository transfer, or renaming of the default branch.",
                 )
         else:
-            self._logger.skip(
+            logger.notice(
                 "Creation of non-default branch detected; skipping.",
             )
         return
 
     def _run_repository_created(self):
-        self._logger.info("Detected event: repository creation")
-        meta = ControlCenterManager(path_repo=self._path_repo_head, logger=self._logger)
+        logger.info("Detected event", "repository creation")
+        meta = controlman.initialize_manager(git_manager=self._git_head)
         shutil.rmtree(meta.path_manager.dir_meta)
         shutil.rmtree(meta.path_manager.dir_website)
         (meta.path_manager.dir_docs / "website_template").rename(meta.path_manager.dir_website)
@@ -118,7 +123,9 @@ class PushEventHandler(EventHandler):
 
     def _run_branch_edited(self):
         if self._context.ref_is_main:
-            self._branch = Branch(type=BranchType.MAIN, name=self._context.ref_name)
+            self._branch = controlman.datatype.Branch(
+                type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name
+            )
             return self._run_branch_edited_main()
         # self._branch = self._ccm_main.get_branch_info_from_name(branch_name=self._context.ref_name)
         # self._git_head.fetch_remote_branches_by_name(branch_names=self._context.ref_name)
@@ -149,35 +156,32 @@ class PushEventHandler(EventHandler):
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
             return self._run_init_phase()
-        self._ccm_main_before = from_json_file(
-            path_repo=self._path_repo_base,
+        self._ccm_main_before = controlman.read_from_json_file_at_commit(
             commit_hash=self._context.hash_before,
-            git=self._git_base,
-            logger=self._logger,
+            git_manager=self._git_base,
         )
         if not self._ccm_main_before:
             return self._run_existing_repository_initialized()
         return self._run_branch_edited_main_normal()
 
     def _run_init_phase(self, version: str = "0.0.0", finish: bool = True):
-        meta = ControlCenterManager(
-            path_repo=self._path_repo_head,
+        meta = controlman.initialize_manager(
+            git_manager=self._git_head,
             github_token=self._context.token,
             future_versions={self._context.ref_name: version},
-            logger=self._logger,
         )
         self._ccm_main = meta.generate_data()
         self._config_repo()
         self._config_repo_pages()
         self._config_repo_labels_reset()
         hash_hooks = self._action_hooks(
-            action=InitCheckAction.COMMIT,
+            action=controlman.datatype.InitCheckAction.COMMIT,
             branch=self._branch,
             base=False,
             ref_range=(self._context.hash_before, self._context.hash_after),
         ) if self._ccm_main["workflow"].get("pre_commit", {}).get("main") else None
         hash_meta = self._action_meta(
-            action=InitCheckAction.COMMIT,
+            action=controlman.datatype.InitCheckAction.COMMIT,
             meta=meta,
             base=False,
             branch=self._branch
@@ -185,13 +189,11 @@ class PushEventHandler(EventHandler):
         if finish:
             latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
             self._config_repo_branch_names(
-                ccs_new=self._ccm_main.settings,
-                ccs_old=from_json_file(
-                    path_repo=self._path_repo_head,
+                ccs_new=self._ccm_main.content,
+                ccs_old=controlman.read_from_json_file_at_commit(
                     commit_hash=self._context.hash_before,
-                    git=self._git_head,
-                    logger=self._logger,
-                ).settings
+                    git_manager=self._git_head,
+                ).content
             )
             self._set_output(
                 ccm_branch=self._ccm_main,
@@ -219,11 +221,10 @@ class PushEventHandler(EventHandler):
         if commit_msg.footer.get("version"):
             version_input = commit_msg.footer["version"]
             try:
-                version = str(PEP440SemVer(version_input))
+                version = str(versionman.PEP440SemVer(version_input))
             except ValueError:
-                self._logger.error(
+                logger.error(
                     f"Invalid version string in commit footer: {version_input}",
-                    raise_error=False,
                 )
                 self._failed = True
                 return
@@ -247,15 +248,13 @@ class PushEventHandler(EventHandler):
             latest_hash = self._git_head.push() or self._context.hash_after
         self._tag_version(ver=version, msg=f"Release version {version}", base=False)
         self._config_repo_branch_names(
-            ccs_new=self._ccm_main.settings,
-            ccs_old=from_json_file(
-                path_repo=self._path_repo_head,
+            ccs_new=self._ccm_main.content,
+            ccs_old=controlman.read_from_json_file_at_commit(
                 commit_hash=self._context.hash_before,
-                git=self._git_head,
-                logger=self._logger,
-            ).settings
+                git_manager=self._git_head,
+            ).content
         )
-        self._config_rulesets(ccs_new=self._ccm_main.settings)
+        self._config_rulesets(ccs_new=self._ccm_main.content)
         self._set_output(
             ccm_branch=self._ccm_main,
             ref=latest_hash,
@@ -271,12 +270,12 @@ class PushEventHandler(EventHandler):
 
     def _run_branch_edited_main_normal(self):
         self._config_repo_labels_update(
-            ccs_new=self._ccm_main.settings,
-            ccs_old=self._ccm_main_before.settings,
+            ccs_new=self._ccm_main.content,
+            ccs_old=self._ccm_main_before.content,
         )
         self._config_rulesets(
-            ccs_new=self._ccm_main.settings,
-            ccs_old=self._ccm_main_before.settings,
+            ccs_new=self._ccm_main.content,
+            ccs_old=self._ccm_main_before.content,
         )
         if self._ccm_main.repo__config != self._ccm_main_before.repo__config:
             self._config_repo()

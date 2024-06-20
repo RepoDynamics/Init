@@ -7,3 +7,6 @@ MarkItUp
 PyLinks
 PySyntax
 VersionMan
+GitTidy
+FixMan
+PkgData

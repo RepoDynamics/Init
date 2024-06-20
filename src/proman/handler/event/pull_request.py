@@ -496,7 +496,7 @@ class PullRequestEventHandler(EventHandler):
                 title=commit_title,
             )
             logger.error(
-                "Failed to merge pull request using GitHub API. Please merge manually.", e, raise_error=False
+                "Failed to merge pull request using GitHub API. Please merge manually.", e
             )
             self._failed = True
             return
@@ -762,7 +762,7 @@ class PullRequestEventHandler(EventHandler):
             f"Pull requests from a head branch of type '{self._branch_head.type.value}' "
             f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -778,7 +778,7 @@ class PullRequestEventHandler(EventHandler):
             f"to a base branch of type '{self._branch_base.type.value}' "
             f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -792,7 +792,7 @@ class PullRequestEventHandler(EventHandler):
         err_details = (
             f"Status label '{self._payload.label.name}' is not supported for pull requests."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -808,7 +808,7 @@ class PullRequestEventHandler(EventHandler):
             f"from a head branch of type '{self._branch_head.type.value}' "
             f"to a base branch of type '{self._branch_base.type.value}'."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -823,7 +823,7 @@ class PullRequestEventHandler(EventHandler):
             f"Status label '{self._payload.label.name}' is not supported for pull requests "
             f"with primary types other than major, minor, or patch releases."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
@@ -839,7 +839,7 @@ class PullRequestEventHandler(EventHandler):
             f"from a head branch of type '{self._branch_head.type.value}' "
             f"with a lower pre-release segment than the label."
         )
-        logger.error(f"Pull Request Event Handler: {err_msg}", err_details, raise_error=False)
+        logger.error(f"Pull Request Event Handler: {err_msg}", err_details)
         self.add_summary(
             name="Event Handler",
             status="fail",
