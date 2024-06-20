@@ -4,8 +4,9 @@ from github_contexts.github.payloads.schedule import SchedulePayload
 from loggerman import logger
 from markitup import html, md
 import pyshellman
-from repodynamics.datatype import InitCheckAction
-from repodynamics.control.manager import ControlCenterManager
+import controlman
+# from repodynamics.datatype import InitCheckAction
+# from repodynamics.control.manager import ControlCenterManager
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -48,7 +49,7 @@ class ScheduleEventHandler(EventHandler):
 
     def _run_sync(self):
         commit_hash_announce = self._web_announcement_expiry_check()
-        meta = ControlCenterManager(
+        meta = controlman.ControlCenterManager(
             path_repo=self._path_repo_base,
             github_token=self._context.token,
             logger=self._logger,

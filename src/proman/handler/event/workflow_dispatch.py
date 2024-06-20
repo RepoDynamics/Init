@@ -2,12 +2,12 @@ from typing import NamedTuple as _NamedTuple
 
 from github_contexts import GitHubContext
 from loggerman import logger
-from repodynamics.datatype import InitCheckAction
-from repodynamics.datatype import (
-    Branch,
-    BranchType,
-)
-from repodynamics.control.manager import ControlCenterManager
+# from repodynamics.datatype import InitCheckAction
+# from repodynamics.datatype import (
+#     Branch,
+#     BranchType,
+# )
+# from repodynamics.control.manager import ControlCenterManager
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -15,8 +15,8 @@ from proman.changelog_manager import ChangelogManager
 
 
 class WorkflowDispatchInput(_NamedTuple):
-    meta: InitCheckAction
-    hooks: InitCheckAction
+    # meta: InitCheckAction
+    # hooks: InitCheckAction
     package_build: bool
     package_lint: bool
     package_test: bool
