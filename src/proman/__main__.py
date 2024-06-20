@@ -6,8 +6,7 @@ from proman.exception import ProManException
 
 
 if __name__ == "__main__":
-    loggerman.create(
-        global_=True,
+    loggerman.logger.initialize(
         realtime=True,
         github=True,
         init_section_number=2,
