@@ -20,15 +20,15 @@ def run():
 @_logger.sectioner("Initialize", group=False)
 def _init_handler():
     inputs = _read_inputs()
-    template_type = _get_template_type(input_template_type=inputs.pop("TEMPLATE_TYPE"))
-    context_manager = _github_contexts.GitHubContext(context=inputs.pop("GITHUB_CONTEXT"))
+    template_type = _get_template_type(input_template_type=inputs.pop("template_type"))
+    context_manager = _github_contexts.GitHubContext(context=inputs.pop("github_context"))
     event_handler_class = _get_event_handler(event=context_manager.event_name)
     event_handler = event_handler_class(
         template_type=template_type,
         context_manager=context_manager,
-        admin_token=inputs["ADMIN_TOKEN"] or "",
-        path_repo_base=inputs["PATH_REPO_BASE"],
-        path_repo_head=inputs["PATH_REPO_HEAD"],
+        admin_token=inputs["admin_token"] or "",
+        path_repo_base=inputs["path_repo_base"],
+        path_repo_head=inputs["path_repo_head"],
     )
     return event_handler
 
