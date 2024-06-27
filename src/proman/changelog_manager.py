@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import datetime
 
+from loggerman import logger
+
 
 class ChangelogManager:
     def __init__(
@@ -24,17 +26,16 @@ class ChangelogManager:
             "parent_commit_url": parent_commit_url,
         }
         self._path_root = Path(path_root).resolve()
-        self._logger = logger or Logger("github")
         self._name_to_id = {v["name"]: k for k, v in self._meta.items()}
         self._changes = {}
         return
 
     def add_change(self, changelog_id: str, section_id: str, change_title: str, change_details: str):
         if changelog_id not in self._meta:
-            self._logger.error(f"Invalid changelog ID: {changelog_id}")
+            logger.error(f"Invalid changelog ID: {changelog_id}")
         changelog_dict = self._changes.setdefault(changelog_id, {})
         if not isinstance(changelog_dict, dict):
-            self._logger.error(
+            logger.error(
                 f"Changelog {changelog_id} is already updated with an entry; cannot add individual changes."
             )
         for section_idx, section in enumerate(
@@ -49,14 +50,14 @@ class ChangelogManager:
                 section_dict["changes"].append({"title": change_title, "details": change_details})
                 break
         else:
-            self._logger.error(f"Invalid section ID: {section_id}")
+            logger.error(f"Invalid section ID: {section_id}")
         return
 
     def add_entry(self, changelog_id: str, sections: str):
         if changelog_id not in self._meta:
-            self._logger.error(f"Invalid changelog ID: {changelog_id}")
+            logger.error(f"Invalid changelog ID: {changelog_id}")
         if changelog_id in self._changes:
-            self._logger.error(
+            logger.error(
                 f"Changelog {changelog_id} is already updated with an entry; cannot add new entry."
             )
         self._changes[changelog_id] = sections
@@ -73,7 +74,7 @@ class ChangelogManager:
             changelog_name = heading.removeprefix("Changelog: ").strip()
             changelog_id = self._name_to_id.get(changelog_name)
             if not changelog_id:
-                self._logger.error(f"Invalid changelog name: {changelog_name}")
+                logger.error(f"Invalid changelog name: {changelog_name}")
             self.add_entry(changelog_id, content)
         return
 
@@ -142,5 +143,5 @@ class ChangelogManager:
         return sections_str.strip() + "\n", True
 
     @property
-    def open_changelogs(self) -> tuple[str]:
+    def open_changelogs(self) -> tuple[str, ...]:
         return tuple(self._changes.keys())
