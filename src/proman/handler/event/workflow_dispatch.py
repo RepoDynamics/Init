@@ -1,7 +1,8 @@
-from typing import NamedTuple as _NamedTuple
+from enum import Enum
 
-from github_contexts import GitHubContext
+import github_contexts
 from loggerman import logger
+import controlman
 # from repodynamics.datatype import InitCheckAction
 # from repodynamics.datatype import (
 #     Branch,
@@ -14,15 +15,29 @@ from proman.handler.main import EventHandler
 from proman.changelog_manager import ChangelogManager
 
 
-class WorkflowDispatchInput(_NamedTuple):
-    # meta: InitCheckAction
-    # hooks: InitCheckAction
-    package_build: bool
-    package_lint: bool
-    package_test: bool
-    website_build: bool
-    website_announcement: str
-    website_announcement_msg: str
+class ConfigLintAction(Enum):
+    DISABLE = "disable"
+    REPORT = "report"
+    PULL = "pull"
+    MERGE = "merge"
+
+
+class WorkflowDispatchInput(Enum):
+    CONFIG = "config"
+    LINT = "lint"
+    BUILD = "build"
+    TEST = "test"
+    WEBSITE = "website"
+    RELEASE = "release"
+
+_WORKFLOW_DISPATCH_INPUT_TYPE = {
+    WorkflowDispatchInput.CONFIG: ConfigLintAction,
+    WorkflowDispatchInput.LINT: ConfigLintAction,
+    WorkflowDispatchInput.BUILD: bool,
+    WorkflowDispatchInput.TEST: bool,
+    WorkflowDispatchInput.WEBSITE: bool,
+    WorkflowDispatchInput.RELEASE: bool,
+}
 
 
 class WorkflowDispatchEventHandler(EventHandler):
@@ -31,7 +46,7 @@ class WorkflowDispatchEventHandler(EventHandler):
     def __init__(
         self,
         template_type: TemplateType,
-        context_manager: GitHubContext,
+        context_manager: github_contexts.GitHubContext,
         admin_token: str,
         # package_build: bool,
         # package_lint: bool,
@@ -67,43 +82,43 @@ class WorkflowDispatchEventHandler(EventHandler):
         # self._input_hooks = InitCheckAction(hooks or "none")
         # self._input_website_announcement = website_announcement
         # self._input_website_announcement_msg = website_announcement_msg
+
+        self._payload: github_contexts.github.payloads.WorkflowDispatchPayload = self._context.event
+        self._inputs = {
+            WorkflowDispatchInput(k): _WORKFLOW_DISPATCH_INPUT_TYPE[WorkflowDispatchInput(k)](v)
+            for k, v in self._payload.inputs.items()
+        }
         return
 
     @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
-        # if self.context.ref_is_main:
-        #     self.state
-        # self.action_website_announcement_update()
-        # self._action_meta(action=self._dispatch_inputs.meta)
-        # self._action_hooks()
-        if self._input_first_major_release:
-            self._action_first_major_release()
-        return
+        if WorkflowDispatchInput.RELEASE in self._inputs:
+            return self._release_first_major_version()
+        return self._action_default()
 
-    def _action_first_major_release(self):
+    def _release_first_major_version(self):
         if not self._context.ref_is_main:
-            self._logger.error("Cannot create first major release: not on main branch")
+            logger.critical("Cannot create first major release: not on main branch")
             return
         latest_ver, _ = self._get_latest_version(base=True)
         if latest_ver is None:
-            self._logger.error("Cannot create first major release: no previous version found")
+            logger.critical("Cannot create first major release: no previous version found")
             return
         if latest_ver.major != 0:
-            self._logger.error("Cannot create first major release: latest version's major is not 0")
+            logger.critical("Cannot create first major release: latest version's major is not 0")
             return
-        meta_gen = ControlCenterManager(
-            path_repo=self._path_repo_base,
+        control_center_manager = controlman.initialize_manager(
+            git_manager=self._git_head,
             github_token=self._context.token,
             future_versions={self._context.ref_name: "1.0.0"},
-            logger=self._logger,
         )
-        ccm_main = meta_gen.generate_data()
+        ccm_main = control_center_manager.generate_data()
         hash_base = self._git_base.commit_hash_normal()
         self._action_meta(
-            action=InitCheckAction.COMMIT,
-            meta=meta_gen,
+            action=controlman.datatype.InitCheckAction.COMMIT,
+            meta=control_center_manager,
             base=True,
-            branch=Branch(type=BranchType.MAIN, name=self._context.ref_name)
+            branch=controlman.datatype.Branch(type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name)
         )
         changelog_manager = ChangelogManager(
             changelog_metadata=self._ccm_main["changelog"],
@@ -113,7 +128,6 @@ class WorkflowDispatchEventHandler(EventHandler):
             parent_commit_hash=hash_base,
             parent_commit_url=self._gh_link.commit(hash_base),
             path_root=self._path_repo_base,
-            logger=self._logger,
         )
         release_body = (
             "This is the first major release of the project, defining the stable public API. "
