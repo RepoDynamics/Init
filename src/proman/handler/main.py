@@ -1,3 +1,6 @@
+"""Main event handler."""
+
+
 from pathlib import Path
 import json
 from typing import Literal
@@ -249,14 +252,11 @@ class EventHandler:
                     )
         self.add_summary(
             name=name,
-            status="fail"
-            if meta_changes_any
-            and action in [
-                   controlman.datatype.InitCheckAction.FAIL,
-                   controlman.datatype.InitCheckAction.REPORT,
-                   controlman.datatype.InitCheckAction.PULL
-               ]
-            else "pass",
+            status="fail" if meta_changes_any and action in [
+               controlman.datatype.InitCheckAction.FAIL,
+               controlman.datatype.InitCheckAction.REPORT,
+               controlman.datatype.InitCheckAction.PULL
+            ] else "pass",
             oneliner=oneliner,
             details=meta_summary,
         )
@@ -768,9 +768,9 @@ class EventHandler:
         event_name = self._context.event_name.value
         action_name = self._context.event.action.value
         action_err_msg = f"Unsupported triggering action for '{event_name}' event"
-        action_err_details_sub = f"but the triggering action '{action_name}' is not supported."
         action_err_details = (
-            f"The workflow was triggered by an event of type '{event_name}', {action_err_details_sub}"
+            f"The workflow was triggered by an event of type '{event_name}', "
+            f"but the triggering action '{action_name}' is not supported."
         )
         self.add_summary(
             name="Event Handler",
@@ -783,7 +783,8 @@ class EventHandler:
 
     @logger.sectioner("File Change Detector")
     def _action_file_change_detector(
-        self, control_center_manager: controlman.ControlCenterManager
+        self,
+        control_center_manager: controlman.ControlCenterManager
     ) -> dict[controlman.datatype.RepoFileType, list[str]]:
         name = "File Change Detector"
         change_type_map = {
