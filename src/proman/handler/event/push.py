@@ -1,4 +1,5 @@
-"""Event handler for pushing commits, branch/tag creation/deletion, repository creation."""
+"""Push event handler."""
+
 
 import shutil
 
@@ -25,6 +26,11 @@ from proman.handler.main import EventHandler
 
 
 class PushEventHandler(EventHandler):
+    """Push event handler.
+
+    This handler is responsible for the setup process of new and existing repositories.
+    It also runs Continuous pipelines on forked repositories.
+    """
 
     @logger.sectioner("Initialize Event Handler")
     def __init__(
@@ -49,48 +55,53 @@ class PushEventHandler(EventHandler):
 
     @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
-        ref_type = self._context.ref_type
-        action = self._payload.action
-        if ref_type is RefType.BRANCH:
-            if action is ActionType.CREATED:
-                self._run_branch_created()
-            elif action is ActionType.EDITED:
-                self._run_branch_edited()
-            elif action is ActionType.DELETED:
-                self._run_branch_deleted()
-            else:
-                self.error_unsupported_triggering_action()
-        elif ref_type is RefType.TAG:
-            if action is ActionType.CREATED:
-                self._run_tag_created()
-            elif action is ActionType.DELETED:
-                self._run_tag_deleted()
-            elif action is ActionType.EDITED:
-                self._run_tag_edited()
-            else:
-                self.error_unsupported_triggering_action()
-        else:
-            logger.critical(
-                f"Unsupported reference type for 'push' event.",
-                "The workflow was triggered by a 'push' event, "
-                f"but the reference type '{ref_type}' is not supported.",
-            )
-        return
-
-    def _run_branch_created(self):
-        if self._context.ref_is_main:
-            if not self._git_head.get_tags():
-                self._run_repository_created()
-            else:
-                logger.notice(
-                    "Creation of default branch detected while a version tag is present; skipping.",
-                    "This is likely a result of a repository transfer, or renaming of the default branch.",
-                )
-        else:
+        if self._context.ref_type is not RefType.BRANCH:
             logger.notice(
-                "Creation of non-default branch detected; skipping.",
+                f"Non-branch reference type for 'push' event.",
+                "The workflow was triggered by a 'push' event, "
+                f"but the reference type was '{self._context.ref_type}'.",
             )
-        return
+            return
+        action = self._payload.action
+        if action not in (ActionType.CREATED, ActionType.EDITED):
+            logger.notice(f"Unsupported action '{action.value}' for 'push' event to branch.")
+            return
+        is_main = self._context.ref_is_main
+        has_tags = bool(self._git_head.get_tags())
+        if action is ActionType.CREATED:
+            if not is_main:
+                logger.notice("Creation of non-default branch detected; skipping.")
+                return
+            if not has_tags:
+                return self._run_repository_created()
+            logger.notice(
+                "Creation of default branch detected while a version tag is present; skipping.",
+                "This is likely a result of renaming the default branch.",
+            )
+            return
+        # Branch edited
+        if self._context.event.repository.fork:
+            return self._run_branch_edited_fork()
+        if not is_main:
+            if self._ccm_main:
+                logger.notice("Canceled Workflow", "Push to non-main branch.")
+                return
+            return self._run_init_existing_nonmain()
+        # Main branch edited
+        self._ccm_main_before = controlman.read_from_json_file_at_commit(
+            commit_hash=self._context.hash_before,
+            git_manager=self._git_head,
+        )
+        if not self._ccm_main_before:
+            return self._run_init_existing_main()
+        if not has_tags:
+            # The repository is in the initialization phase
+            if self._context.event.head_commit.message.startswith("init:"):
+                # User is signaling the end of initialization phase
+                return self._run_first_release()
+            # User is still setting up the repository (still in initialization phase)
+            return self._run_init_phase()
+        return self._run_branch_edited_main_normal()
 
     def _run_repository_created(self):
         logger.info("Detected event", "repository creation")
@@ -121,12 +132,7 @@ class PushEventHandler(EventHandler):
         )
         return
 
-    def _run_branch_edited(self):
-        if self._context.ref_is_main:
-            self._branch = controlman.datatype.Branch(
-                type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name
-            )
-            return self._run_branch_edited_main()
+    def _run_branch_edited_fork(self):
         # self._branch = self._ccm_main.get_branch_info_from_name(branch_name=self._context.ref_name)
         # self._git_head.fetch_remote_branches_by_name(branch_names=self._context.ref_name)
         # self._git_head.checkout(self._context.ref_name)
@@ -147,28 +153,16 @@ class PushEventHandler(EventHandler):
         #     return self._run_branch_edited_ci_pull()
         # self._event_type = EventType.PUSH_OTHER
         # return self._run_branch_edited_other()
-
-    def _run_branch_edited_main(self):
-        if not self._git_head.get_tags():
-            # The repository is in the initialization phase
-            if self._context.event.head_commit.message.startswith("init:"):
-                # User is signaling the end of initialization phase
-                return self._run_first_release()
-            # User is still setting up the repository (still in initialization phase)
-            return self._run_init_phase()
-        self._ccm_main_before = controlman.read_from_json_file_at_commit(
-            commit_hash=self._context.hash_before,
-            git_manager=self._git_base,
-        )
-        if not self._ccm_main_before:
-            return self._run_existing_repository_initialized()
-        return self._run_branch_edited_main_normal()
+        return
 
     def _run_init_phase(self, version: str = "0.0.0", finish: bool = True):
         meta = controlman.initialize_manager(
             git_manager=self._git_head,
             github_token=self._context.token,
             future_versions={self._context.ref_name: version},
+        )
+        self._branch = controlman.datatype.Branch(
+            type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name
         )
         self._ccm_main = meta.generate_data()
         self._config_repo()
@@ -203,7 +197,6 @@ class PushEventHandler(EventHandler):
                 package_test=self._is_pypackit,
                 package_build=self._is_pypackit,
             )
-            return
         return
 
     def _run_first_release(self):
@@ -504,14 +497,3 @@ class PushEventHandler(EventHandler):
         #     )
         return
 
-    def _run_branch_deleted(self):
-        return
-
-    def _run_tag_created(self):
-        return
-
-    def _run_tag_deleted(self):
-        return
-
-    def _run_tag_edited(self):
-        return
