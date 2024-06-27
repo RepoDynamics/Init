@@ -82,7 +82,12 @@ class PullRequestEventHandler(EventHandler):
             return
         action = self._payload.action
         if action is github_contexts.github.enums.ActionType.OPENED:
-            self._run_action_opened()
+            if self._branch_head.type is controlman.datatype.BranchType.PRERELEASE and self._branch_base.type in (
+                controlman.datatype.BranchType.MAIN,
+                controlman.datatype.BranchType.RELEASE,
+            ):
+                return self._run_open_prerelease_to_release()
+            return
         elif action is github_contexts.github.enums.ActionType.REOPENED:
             self._run_action_reopened()
         elif action is github_contexts.github.enums.ActionType.SYNCHRONIZE:
@@ -93,14 +98,6 @@ class PullRequestEventHandler(EventHandler):
             self._run_action_ready_for_review()
         else:
             self.error_unsupported_triggering_action()
-        return
-
-    def _run_action_opened(self):
-        if self._branch_head.type is controlman.datatype.BranchType.PRERELEASE and self._branch_base.type in (
-            controlman.datatype.BranchType.MAIN,
-            controlman.datatype.BranchType.RELEASE,
-        ):
-            return self._run_open_prerelease_to_release()
         return
 
     def _run_action_reopened(self):
