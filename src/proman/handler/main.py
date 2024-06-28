@@ -108,6 +108,158 @@ class EventHandler:
     def _run_event(self) -> None:
         ...
 
+    def run_sync_fix(
+        self,
+        action: InitCheckAction,
+        branch: Branch | None = None,
+        testpypi_publishable: bool = False,
+        version: str | None = None
+    ) -> tuple[dict[str, bool], controlman.ControlCenterContentManager, str]:
+
+        def decide_jobs():
+            package_setup_files_changed = any(
+                filepath in changed_file_groups[RepoFileType.DYNAMIC]
+                for filepath in (
+                    controlman.path.FILE_PYTHON_PYPROJECT,
+                    controlman.path.FILE_PYTHON_MANIFEST,
+                )
+            )
+            package_files_changed = bool(
+                changed_file_groups[RepoFileType.PACKAGE]
+            ) or package_setup_files_changed
+            out = {
+                "website_build": (
+                    bool(changed_file_groups[RepoFileType.WEBSITE])
+                    or bool(changed_file_groups[RepoFileType.PACKAGE])
+                ),
+                "package_test": bool(changed_file_groups[RepoFileType.TEST]) or package_files_changed,
+                "package_build": bool(
+                    changed_file_groups[RepoFileType.PACKAGE]
+                ) or package_setup_files_changed,
+                "package_lint": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
+                "package_publish_testpypi": package_files_changed and testpypi_publishable,
+            }
+            return out
+
+        if (version or action is InitCheckAction.PULL) and not branch:
+            raise RuntimeError("branch must be provided when action is 'pull' or version is provided.")
+        # branch = branch or self.resolve_branch(self._context.head_ref)
+        cc_manager = self.get_cc_manager(future_versions={branch.name: version} if version else None)
+        changed_file_groups = self._action_file_change_detector(control_center_manager=cc_manager)
+        hash_hooks = self._action_hooks(
+            action=action,
+            branch=branch,
+            base=False,
+            ref_range=(self._context.hash_before, self._context.hash_after),
+        ) if self._ccm_main["workflow"].get("pre_commit") else None
+        for file_type in (RepoFileType.SUPERMETA, RepoFileType.META, RepoFileType.DYNAMIC):
+            if changed_file_groups[file_type]:
+                hash_meta = self._action_meta(action=action, cc_manager=cc_manager, base=False, branch=branch)
+                ccm_branch = cc_manager.generate_data()
+                break
+        else:
+            hash_meta = None
+            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+        latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
+        job_runs = decide_jobs()
+        return job_runs, ccm_branch, latest_hash
+
+    @logger.sectioner("File Change Detector")
+    def _action_file_change_detector(
+        self,
+        control_center_manager: controlman.ControlCenterManager
+    ) -> dict[RepoFileType, list[str]]:
+        name = "File Change Detector"
+        change_type_map = {
+            "added": FileChangeType.CREATED,
+            "deleted": FileChangeType.REMOVED,
+            "modified": FileChangeType.MODIFIED,
+            "unmerged": FileChangeType.UNMERGED,
+            "unknown": FileChangeType.UNKNOWN,
+            "broken": FileChangeType.BROKEN,
+            "copied_to": FileChangeType.CREATED,
+            "renamed_from": FileChangeType.REMOVED,
+            "renamed_to": FileChangeType.CREATED,
+            "copied_modified_to": FileChangeType.CREATED,
+            "renamed_modified_from": FileChangeType.REMOVED,
+            "renamed_modified_to": FileChangeType.CREATED,
+        }
+        summary_detail = {file_type: [] for file_type in RepoFileType}
+        change_group = {file_type: [] for file_type in RepoFileType}
+        changes = self._git_head.changed_files(
+            ref_start=self._context.hash_before, ref_end=self._context.hash_after
+        )
+        logger.info("Detected changed files", json.dumps(changes, indent=3))
+        fixed_paths = [outfile.rel_path for outfile in control_center_manager.path_manager.fixed_files]
+        for change_type, changed_paths in changes.items():
+            # if change_type in ["unknown", "broken"]:
+            #     self.logger.warning(
+            #         f"Found {change_type} files",
+            #         f"Running 'git diff' revealed {change_type} changes at: {changed_paths}. "
+            #         "These files will be ignored."
+            #     )
+            #     continue
+            if change_type.startswith("copied") and change_type.endswith("from"):
+                continue
+            for path in changed_paths:
+                if path in fixed_paths:
+                    typ = RepoFileType.DYNAMIC
+                elif path == ".github/_README.md" or path.endswith("/README.md"):
+                    typ = RepoFileType.README
+                elif path.startswith(control_center_manager.path_manager.dir_source_rel):
+                    typ = RepoFileType.PACKAGE
+                elif path.startswith(control_center_manager.path_manager.dir_website_rel):
+                    typ = RepoFileType.WEBSITE
+                elif path.startswith(control_center_manager.path_manager.dir_tests_rel):
+                    typ = RepoFileType.TEST
+                elif path.startswith(controlman.path.DIR_GITHUB_WORKFLOWS):
+                    typ = RepoFileType.WORKFLOW
+                elif (
+                    path.startswith(controlman.path.DIR_GITHUB_DISCUSSION_TEMPLATE)
+                    or path.startswith(controlman.path.DIR_GITHUB_ISSUE_TEMPLATE)
+                    or path.startswith(controlman.path.DIR_GITHUB_PULL_REQUEST_TEMPLATE)
+                    or path.startswith(controlman.path.DIR_GITHUB_WORKFLOW_REQUIREMENTS)
+                ):
+                    typ = RepoFileType.DYNAMIC
+                elif path == controlman.path.FILE_PATH_META:
+                    typ = RepoFileType.SUPERMETA
+                elif path == f"{control_center_manager.path_manager.dir_meta_rel}path.yaml":
+                    typ = RepoFileType.SUPERMETA
+                elif path.startswith(control_center_manager.path_manager.dir_meta_rel):
+                    typ = RepoFileType.META
+                else:
+                    typ = RepoFileType.OTHER
+                summary_detail[typ].append(f"{change_type_map[change_type].value.emoji} {path}")
+                change_group[typ].append(path)
+        summary_details = []
+        changed_groups_str = ""
+        for file_type, summaries in summary_detail.items():
+            if summaries:
+                summary_details.append(html.h(3, file_type.value.title))
+                summary_details.append(html.ul(summaries))
+                changed_groups_str += f", {file_type.value}"
+        if changed_groups_str:
+            oneliner = f"Found changes in following groups: {changed_groups_str[2:]}."
+            if summary_detail[RepoFileType.SUPERMETA]:
+                oneliner = (
+                    f"This event modified SuperMeta files; "
+                    f"make sure to double-check that everything is correct❗ {oneliner}"
+                )
+        else:
+            oneliner = "No changes were found."
+        legend = [f"{status.value.emoji}  {status.value.title}" for status in FileChangeType]
+        color_legend = html.details(content=html.ul(legend), summary="Color Legend")
+        summary_details.insert(0, html.ul([oneliner, color_legend]))
+        self.add_summary(
+            name=name,
+            status="warning"
+            if summary_detail[RepoFileType.SUPERMETA]
+            else ("pass" if changed_groups_str else "skip"),
+            oneliner=oneliner,
+            details=html.ElementCollection(summary_details),
+        )
+        return change_group
+
     @logger.sectioner("Configuration Management")
     def _action_meta(
         self,
@@ -309,6 +461,33 @@ class EventHandler:
             )
         return commit_hash
 
+    def add_summary(
+        self,
+        name: str,
+        status: Literal["pass", "fail", "skip", "warning"],
+        oneliner: str,
+        details: str | html.Element | html.ElementCollection | None = None,
+    ):
+        if status == "fail":
+            self._failed = True
+        self._summary_oneliners.append(f"{Emoji[status]}&nbsp;<b>{name}</b>: {oneliner}")
+        if details:
+            self._summary_sections.append(f"<h2>{name}</h2>\n\n{details}\n\n")
+        return
+
+    def get_cc_manager(
+        self,
+        base: bool = False,
+        ref_ccm: controlman.ControlCenterContentManager | None = None,
+        future_versions: dict[str, str | versionman.PEP440SemVer] | None = None
+    ) -> controlman.ControlCenterManager:
+        return controlman.initialize_manager(
+            git_manager=self._git_base if base else self._git_head,
+            github_token=self._context.token,
+            content_manager=ref_ccm or self._ccm_main,
+            future_versions=future_versions,
+        )
+
     def _get_latest_version(
         self,
         branch: str | None = None,
@@ -352,298 +531,6 @@ class EventHandler:
             logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
         return latest_version, distance
 
-    def _tag_version(self, ver: str | versionman.PEP440SemVer, base: bool, msg: str = "") -> str:
-        tag_prefix = self._ccm_main["tag"]["group"]["version"]["prefix"]
-        tag = f"{tag_prefix}{ver}"
-        if not msg:
-            msg = f"Release version {ver}"
-        git = self._git_base if base else self._git_head
-        git.create_tag(tag=tag, message=msg)
-        return tag
-
-    def switch_to_autoupdate_branch(self, typ: Literal["hooks", "meta"], git: gittidy.Git) -> str:
-        current_branch = git.current_branch_name()
-        new_branch_prefix = self._ccm_main.content.dev.branch.auto_update.prefix
-        new_branch_name = f"{new_branch_prefix}{current_branch}/{typ}"
-        git.stash()
-        git.checkout(branch=new_branch_name, reset=True)
-        logger.info(f"Switch to CI branch '{new_branch_name}' and reset it to '{current_branch}'.")
-        self._branch_name_memory_autoupdate = current_branch
-        return new_branch_name
-
-    def switch_back_from_autoupdate_branch(self, git: gittidy.Git) -> None:
-        if self._branch_name_memory_autoupdate:
-            git.checkout(branch=self._branch_name_memory_autoupdate)
-            git.stash_pop()
-            self._branch_name_memory_autoupdate = None
-        return
-
-    def add_summary(
-        self,
-        name: str,
-        status: Literal["pass", "fail", "skip", "warning"],
-        oneliner: str,
-        details: str | html.Element | html.ElementCollection | None = None,
-    ):
-        if status == "fail":
-            self._failed = True
-        self._summary_oneliners.append(f"{Emoji[status]}&nbsp;<b>{name}</b>: {oneliner}")
-        if details:
-            self._summary_sections.append(f"<h2>{name}</h2>\n\n{details}\n\n")
-        return
-
-    def assemble_summary(self) -> str:
-        github_context, event_payload = (
-            html.details(content=md.code_block(str(data), lang="yaml"), summary=summary)
-            for data, summary in (
-                (self._context, "🎬 GitHub Context"),
-                (self._context.event, "📥 Event Payload"),
-            )
-        )
-        intro = [
-            f"{Emoji.PLAY} The workflow was triggered by a <code>{self._context.event_name}</code> event."
-        ]
-        if self._failed:
-            intro.append(f"{Emoji.FAIL} The workflow failed.")
-        else:
-            intro.append(f"{Emoji.PASS} The workflow passed.")
-        intro = html.ul(intro)
-        summary = html.ElementCollection(
-            [
-                html.h(1, "Workflow Report"),
-                intro,
-                html.ul([github_context, event_payload]),
-                html.h(2, "🏁 Summary"),
-                html.ul(self._summary_oneliners),
-            ]
-        )
-        logs = html.ElementCollection(
-            [
-                html.h(2, "🪵 Logs"),
-                html.details(logger.html_log, "Log"),
-            ]
-        )
-        summaries = html.ElementCollection(self._summary_sections)
-        path = Path("./repodynamics")
-        path.mkdir(exist_ok=True)
-        with open(path / "log.html", "w") as f:
-            f.write(str(logs))
-        with open(path / "report.html", "w") as f:
-            f.write(str(summaries))
-        return str(summary)
-
-    def resolve_branch(self, branch_name: str | None = None) -> Branch:
-        if not branch_name:
-            branch_name = self._context.ref_name
-        if branch_name == self._default_branch_name:
-            return Branch(type=BranchType.MAIN, name=branch_name)
-        return self._ccm_main.get_branch_info_from_name(branch_name=branch_name)
-
-    def error_unsupported_triggering_action(self):
-        event_name = self._context.event_name.value
-        action_name = self._context.event.action.value
-        action_err_msg = f"Unsupported triggering action for '{event_name}' event"
-        action_err_details = (
-            f"The workflow was triggered by an event of type '{event_name}', "
-            f"but the triggering action '{action_name}' is not supported."
-        )
-        self.add_summary(
-            name="Event Handler",
-            status="fail",
-            oneliner=action_err_msg,
-            details=action_err_details,
-        )
-        logger.critical(action_err_msg, action_err_details)
-        return
-
-    @logger.sectioner("File Change Detector")
-    def _action_file_change_detector(
-        self,
-        control_center_manager: controlman.ControlCenterManager
-    ) -> dict[RepoFileType, list[str]]:
-        name = "File Change Detector"
-        change_type_map = {
-            "added": FileChangeType.CREATED,
-            "deleted": FileChangeType.REMOVED,
-            "modified": FileChangeType.MODIFIED,
-            "unmerged": FileChangeType.UNMERGED,
-            "unknown": FileChangeType.UNKNOWN,
-            "broken": FileChangeType.BROKEN,
-            "copied_to": FileChangeType.CREATED,
-            "renamed_from": FileChangeType.REMOVED,
-            "renamed_to": FileChangeType.CREATED,
-            "copied_modified_to": FileChangeType.CREATED,
-            "renamed_modified_from": FileChangeType.REMOVED,
-            "renamed_modified_to": FileChangeType.CREATED,
-        }
-        summary_detail = {file_type: [] for file_type in RepoFileType}
-        change_group = {file_type: [] for file_type in RepoFileType}
-        changes = self._git_head.changed_files(
-            ref_start=self._context.hash_before, ref_end=self._context.hash_after
-        )
-        logger.info("Detected changed files", json.dumps(changes, indent=3))
-        fixed_paths = [outfile.rel_path for outfile in control_center_manager.path_manager.fixed_files]
-        for change_type, changed_paths in changes.items():
-            # if change_type in ["unknown", "broken"]:
-            #     self.logger.warning(
-            #         f"Found {change_type} files",
-            #         f"Running 'git diff' revealed {change_type} changes at: {changed_paths}. "
-            #         "These files will be ignored."
-            #     )
-            #     continue
-            if change_type.startswith("copied") and change_type.endswith("from"):
-                continue
-            for path in changed_paths:
-                if path in fixed_paths:
-                    typ = RepoFileType.DYNAMIC
-                elif path == ".github/_README.md" or path.endswith("/README.md"):
-                    typ = RepoFileType.README
-                elif path.startswith(control_center_manager.path_manager.dir_source_rel):
-                    typ = RepoFileType.PACKAGE
-                elif path.startswith(control_center_manager.path_manager.dir_website_rel):
-                    typ = RepoFileType.WEBSITE
-                elif path.startswith(control_center_manager.path_manager.dir_tests_rel):
-                    typ = RepoFileType.TEST
-                elif path.startswith(controlman.path.DIR_GITHUB_WORKFLOWS):
-                    typ = RepoFileType.WORKFLOW
-                elif (
-                    path.startswith(controlman.path.DIR_GITHUB_DISCUSSION_TEMPLATE)
-                    or path.startswith(controlman.path.DIR_GITHUB_ISSUE_TEMPLATE)
-                    or path.startswith(controlman.path.DIR_GITHUB_PULL_REQUEST_TEMPLATE)
-                    or path.startswith(controlman.path.DIR_GITHUB_WORKFLOW_REQUIREMENTS)
-                ):
-                    typ = RepoFileType.DYNAMIC
-                elif path == controlman.path.FILE_PATH_META:
-                    typ = RepoFileType.SUPERMETA
-                elif path == f"{control_center_manager.path_manager.dir_meta_rel}path.yaml":
-                    typ = RepoFileType.SUPERMETA
-                elif path.startswith(control_center_manager.path_manager.dir_meta_rel):
-                    typ = RepoFileType.META
-                else:
-                    typ = RepoFileType.OTHER
-                summary_detail[typ].append(f"{change_type_map[change_type].value.emoji} {path}")
-                change_group[typ].append(path)
-        summary_details = []
-        changed_groups_str = ""
-        for file_type, summaries in summary_detail.items():
-            if summaries:
-                summary_details.append(html.h(3, file_type.value.title))
-                summary_details.append(html.ul(summaries))
-                changed_groups_str += f", {file_type.value}"
-        if changed_groups_str:
-            oneliner = f"Found changes in following groups: {changed_groups_str[2:]}."
-            if summary_detail[RepoFileType.SUPERMETA]:
-                oneliner = (
-                    f"This event modified SuperMeta files; "
-                    f"make sure to double-check that everything is correct❗ {oneliner}"
-                )
-        else:
-            oneliner = "No changes were found."
-        legend = [f"{status.value.emoji}  {status.value.title}" for status in FileChangeType]
-        color_legend = html.details(content=html.ul(legend), summary="Color Legend")
-        summary_details.insert(0, html.ul([oneliner, color_legend]))
-        self.add_summary(
-            name=name,
-            status="warning"
-            if summary_detail[RepoFileType.SUPERMETA]
-            else ("pass" if changed_groups_str else "skip"),
-            oneliner=oneliner,
-            details=html.ElementCollection(summary_details),
-        )
-        return change_group
-
-    def run_sync_fix(
-        self,
-        action: InitCheckAction,
-        branch: Branch | None = None,
-        testpypi_publishable: bool = False,
-        version: str | None = None
-    ) -> tuple[dict[str, bool], controlman.ControlCenterContentManager, str]:
-
-        def decide_jobs():
-            package_setup_files_changed = any(
-                filepath in changed_file_groups[RepoFileType.DYNAMIC]
-                for filepath in (
-                    controlman.path.FILE_PYTHON_PYPROJECT,
-                    controlman.path.FILE_PYTHON_MANIFEST,
-                )
-            )
-            package_files_changed = bool(
-                changed_file_groups[RepoFileType.PACKAGE]
-            ) or package_setup_files_changed
-            out = {
-                "website_build": (
-                    bool(changed_file_groups[RepoFileType.WEBSITE])
-                    or bool(changed_file_groups[RepoFileType.PACKAGE])
-                ),
-                "package_test": bool(changed_file_groups[RepoFileType.TEST]) or package_files_changed,
-                "package_build": bool(
-                    changed_file_groups[RepoFileType.PACKAGE]
-                ) or package_setup_files_changed,
-                "package_lint": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
-                "package_publish_testpypi": package_files_changed and testpypi_publishable,
-            }
-            return out
-
-        if (version or action is InitCheckAction.PULL) and not branch:
-            raise RuntimeError("branch must be provided when action is 'pull' or version is provided.")
-        # branch = branch or self.resolve_branch(self._context.head_ref)
-        cc_manager = self.get_cc_manager(future_versions={branch.name: version} if version else None)
-        changed_file_groups = self._action_file_change_detector(control_center_manager=cc_manager)
-        hash_hooks = self._action_hooks(
-            action=action,
-            branch=branch,
-            base=False,
-            ref_range=(self._context.hash_before, self._context.hash_after),
-        ) if self._ccm_main["workflow"].get("pre_commit") else None
-        for file_type in (RepoFileType.SUPERMETA, RepoFileType.META, RepoFileType.DYNAMIC):
-            if changed_file_groups[file_type]:
-                hash_meta = self._action_meta(action=action, cc_manager=cc_manager, base=False, branch=branch)
-                ccm_branch = cc_manager.generate_data()
-                break
-        else:
-            hash_meta = None
-            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
-        latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
-        job_runs = decide_jobs()
-        return job_runs, ccm_branch, latest_hash
-
-    def _add_readthedocs_reference_to_pr(
-        self,
-        pull_nr: int,
-        update: bool = True,
-        pull_body: str = ""
-    ) -> str | None:
-        if not self._ccm_main["web"].get("readthedocs"):
-            return
-        url = self._create_readthedocs_preview_url(pull_nr=pull_nr)
-        reference = f"[Website Preview on ReadTheDocs]({url})"
-        if not pull_body:
-            pull_body = self._gh_api.pull(number=pull_nr)["body"]
-        new_body = self._add_reference_to_dev_protocol(protocol=pull_body, reference=reference)
-        if update:
-            self._gh_api.pull_update(number=pull_nr, body=new_body)
-        return new_body
-
-    def _add_reference_to_dev_protocol(self, protocol: str, reference: str) -> str:
-        entry = f"- {reference}"
-        pattern = rf"({self._MARKER_REFERENCES_START})(.*?)({self._MARKER_REFERENCES_END})"
-        replacement = r"\1\2" + entry + "\n" + r"\3"
-        return re.sub(pattern, replacement, protocol, flags=re.DOTALL)
-
-    def _create_readthedocs_preview_url(self, pull_nr: int):
-        # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
-        # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
-        # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
-        config = self._ccm_main["web"]["readthedocs"]
-        domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
-        slug = config["name"]
-        url = f"https://{slug}--{pull_nr}.{domain}/"
-        if config["versioning_scheme"]["translation"]:
-            language = config["language"]
-            url += f"{language}/{pull_nr}/"
-        return url
-
     def _get_commits(self, base: bool = False) -> list[Commit]:
         git = self._git_base if base else self._git_head
         commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
@@ -665,6 +552,30 @@ class EventHandler:
                 commit["msg"] = conv_msg
                 parsed_commits.append(Commit(**commit, group_data=group))
         return parsed_commits
+
+    def _tag_version(self, ver: str | versionman.PEP440SemVer, base: bool, msg: str = "") -> str:
+        tag_prefix = self._ccm_main["tag"]["group"]["version"]["prefix"]
+        tag = f"{tag_prefix}{ver}"
+        if not msg:
+            msg = f"Release version {ver}"
+        git = self._git_base if base else self._git_head
+        git.create_tag(tag=tag, message=msg)
+        return tag
+
+    def _update_issue_status_labels(
+        self, issue_nr: int, labels: list[Label], current_label: Label
+    ) -> None:
+        for label in labels:
+            if label.name != current_label.name:
+                self._gh_api.issue_labels_remove(number=issue_nr, label=label.name)
+        return
+
+    def resolve_branch(self, branch_name: str | None = None) -> Branch:
+        if not branch_name:
+            branch_name = self._context.ref_name
+        if branch_name == self._default_branch_name:
+            return Branch(type=BranchType.MAIN, name=branch_name)
+        return self._ccm_main.get_branch_info_from_name(branch_name=branch_name)
 
     def _extract_tasklist(self, body: str) -> list[dict[str, bool | str | list]]:
         """
@@ -720,14 +631,6 @@ class EventHandler:
         match = re.search(pattern, body, flags=re.DOTALL)
         return extract(match.group(1).strip()) if match else []
 
-    def _update_issue_status_labels(
-        self, issue_nr: int, labels: list[Label], current_label: Label
-    ) -> None:
-        for label in labels:
-            if label.name != current_label.name:
-                self._gh_api.issue_labels_remove(number=issue_nr, label=label.name)
-        return
-
     def _add_to_timeline(
         self,
         entry: str,
@@ -750,6 +653,117 @@ class EventHandler:
             logger.error(
                 "Failed to add to timeline", "Neither issue nor comment ID was provided."
             )
+        return new_body
+
+    def switch_to_autoupdate_branch(self, typ: Literal["hooks", "meta"], git: gittidy.Git) -> str:
+        current_branch = git.current_branch_name()
+        new_branch_prefix = self._ccm_main.content.dev.branch.auto_update.prefix
+        new_branch_name = f"{new_branch_prefix}{current_branch}/{typ}"
+        git.stash()
+        git.checkout(branch=new_branch_name, reset=True)
+        logger.info(f"Switch to CI branch '{new_branch_name}' and reset it to '{current_branch}'.")
+        self._branch_name_memory_autoupdate = current_branch
+        return new_branch_name
+
+    def switch_back_from_autoupdate_branch(self, git: gittidy.Git) -> None:
+        if self._branch_name_memory_autoupdate:
+            git.checkout(branch=self._branch_name_memory_autoupdate)
+            git.stash_pop()
+            self._branch_name_memory_autoupdate = None
+        return
+
+    def assemble_summary(self) -> str:
+        github_context, event_payload = (
+            html.details(content=md.code_block(str(data), lang="yaml"), summary=summary)
+            for data, summary in (
+                (self._context, "🎬 GitHub Context"),
+                (self._context.event, "📥 Event Payload"),
+            )
+        )
+        intro = [
+            f"{Emoji.PLAY} The workflow was triggered by a <code>{self._context.event_name}</code> event."
+        ]
+        if self._failed:
+            intro.append(f"{Emoji.FAIL} The workflow failed.")
+        else:
+            intro.append(f"{Emoji.PASS} The workflow passed.")
+        intro = html.ul(intro)
+        summary = html.ElementCollection(
+            [
+                html.h(1, "Workflow Report"),
+                intro,
+                html.ul([github_context, event_payload]),
+                html.h(2, "🏁 Summary"),
+                html.ul(self._summary_oneliners),
+            ]
+        )
+        logs = html.ElementCollection(
+            [
+                html.h(2, "🪵 Logs"),
+                html.details(logger.html_log, "Log"),
+            ]
+        )
+        summaries = html.ElementCollection(self._summary_sections)
+        path = Path("./repodynamics")
+        path.mkdir(exist_ok=True)
+        with open(path / "log.html", "w") as f:
+            f.write(str(logs))
+        with open(path / "report.html", "w") as f:
+            f.write(str(summaries))
+        return str(summary)
+
+    def error_unsupported_triggering_action(self):
+        event_name = self._context.event_name.value
+        action_name = self._context.event.action.value
+        action_err_msg = f"Unsupported triggering action for '{event_name}' event"
+        action_err_details = (
+            f"The workflow was triggered by an event of type '{event_name}', "
+            f"but the triggering action '{action_name}' is not supported."
+        )
+        self.add_summary(
+            name="Event Handler",
+            status="fail",
+            oneliner=action_err_msg,
+            details=action_err_details,
+        )
+        logger.critical(action_err_msg, action_err_details)
+        return
+
+    def _add_reference_to_dev_protocol(self, protocol: str, reference: str) -> str:
+        entry = f"- {reference}"
+        pattern = rf"({self._MARKER_REFERENCES_START})(.*?)({self._MARKER_REFERENCES_END})"
+        replacement = r"\1\2" + entry + "\n" + r"\3"
+        return re.sub(pattern, replacement, protocol, flags=re.DOTALL)
+
+    def _add_readthedocs_reference_to_pr(
+        self,
+        pull_nr: int,
+        update: bool = True,
+        pull_body: str = ""
+    ) -> str | None:
+
+        def create_readthedocs_preview_url():
+            # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
+            # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
+            # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
+            config = self._ccm_main["web"]["readthedocs"]
+            domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
+            slug = config["name"]
+            url = f"https://{slug}--{pull_nr}.{domain}/"
+            if config["versioning_scheme"]["translation"]:
+                language = config["language"]
+                url += f"{language}/{pull_nr}/"
+            return url
+
+        if not self._ccm_main["web"].get("readthedocs"):
+            return
+        url = create_readthedocs_preview_url()
+        reference = f"[Website Preview on ReadTheDocs]({url})"
+        if not pull_body:
+            pull_body = self._gh_api.pull(number=pull_nr)["body"]
+        new_body = self._add_reference_to_dev_protocol(protocol=pull_body, reference=reference)
+        if update:
+            self._gh_api.pull_update(number=pull_nr, body=new_body)
         return new_body
 
     def create_branch_name_release(self, major_version: int) -> str:
@@ -788,19 +802,6 @@ class EventHandler:
         with open(path_root / ccm["path"]["file"]["website_announcement"], "w") as f:
             f.write(announcement)
         return
-
-    def get_cc_manager(
-        self,
-        base: bool = False,
-        ref_ccm: controlman.ControlCenterContentManager | None = None,
-        future_versions: dict[str, str | versionman.PEP440SemVer] | None = None
-    ) -> controlman.ControlCenterManager:
-        return controlman.initialize_manager(
-            git_manager=self._git_base if base else self._git_head,
-            github_token=self._context.token,
-            content_manager=ref_ccm or self._ccm_main,
-            future_versions=future_versions,
-        )
 
     @staticmethod
     def _get_next_version(
