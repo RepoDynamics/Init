@@ -14,10 +14,10 @@ class OutputWriter:
         self.ref = self._context.ref_name
         self.ref_before = self._context.hash_before
 
-        self._output_website: dict = {}
-        self._output_lint: dict = {}
+        self._output_website: list[dict] = []
+        self._output_lint: list[dict] = []
         self._output_test: list[dict] = []
-        self._output_build: dict = {}
+        self._output_build: list[dict] = []
         self._output_publish_testpypi: dict = {}
         self._output_test_testpypi: list[dict] = []
         self._output_publish_pypi: dict = {}
@@ -42,6 +42,7 @@ class OutputWriter:
         website_deploy: bool = False,
         package_lint: bool = False,
         package_test: bool = False,
+        package_test_source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
         package_build: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
@@ -65,6 +66,7 @@ class OutputWriter:
             self.set_package_test(
                 ccm_branch=ccm_branch,
                 ref=ref,
+                source=package_test_source,
                 version=version,
             )
         if package_build or package_publish_testpypi or package_publish_pypi:
@@ -93,7 +95,8 @@ class OutputWriter:
         if failed:
             # Just to be safe, disable publish/deploy/release jobs if fail is True
             if self._output_website:
-                self._output_website["deploy"] = False
+                for web_output in self._output_website:
+                    web_output["deploy"] = False
             self._output_publish_testpypi = {}
             self._output_test_testpypi = []
             self._output_publish_pypi = {}
@@ -136,15 +139,17 @@ class OutputWriter:
     ):
         if not url:
             raise RuntimeError("No URL provided for setting website job output")
-        self._output_website = {
-            "url": url,
-            "repository": self._repository,
-            "ref": ref or self.ref,
-            "deploy": deploy,
-            "path-website": ccm_branch["path"]["dir"]["website"],
-            "path-package": path_package,
-            "artifact-name": artifact_name,
-        }
+        self._output_website.append(
+            {
+                "url": url,
+                "repository": self._repository,
+                "ref": ref or self.ref,
+                "deploy": deploy,
+                "path-website": ccm_branch["path"]["dir"]["website"],
+                "path-package": path_package,
+                "artifact-name": artifact_name,
+            }
+        )
 
     def set_lint(
         self,
@@ -152,21 +157,23 @@ class OutputWriter:
         ref: str | None = None,
         ref_before: str | None = None,
     ):
-        self._output_lint = {
-            "repository": self._repository,
-            "ref": ref or self.ref,
-            "ref-before": ref_before or self.ref_before,
-            "os": [
-                {"name": name, "runner": runner} for name, runner in zip(
-                    ccm_branch["package"]["os_titles"],
-                    ccm_branch["package"]["github_runners"]
-                )
-            ],
-            "package-name": ccm_branch["package"]["name"],
-            "python-versions": ccm_branch["package"]["python_versions"],
-            "python-max-ver": ccm_branch["package"]["python_version_max"],
-            "path-source": ccm_branch["path"]["dir"]["source"],
-        }
+        self._output_lint.append(
+            {
+                "repository": self._repository,
+                "ref": ref or self.ref,
+                "ref-before": ref_before or self.ref_before,
+                "os": [
+                    {"name": name, "runner": runner} for name, runner in zip(
+                        ccm_branch["package"]["os_titles"],
+                        ccm_branch["package"]["github_runners"]
+                    )
+                ],
+                "package-name": ccm_branch["package"]["name"],
+                "python-versions": ccm_branch["package"]["python_versions"],
+                "python-max-ver": ccm_branch["package"]["python_version_max"],
+                "path-source": ccm_branch["path"]["dir"]["source"],
+            }
+        )
         return
 
     def set_package_test(
@@ -200,15 +207,17 @@ class OutputWriter:
         publish_pypi: bool = False,
         artifact_name: str = "Package"
     ):
-        self._output_build = {
-            "repository": self._repository,
-            "ref": ref or self.ref,
-            "artifact-name": artifact_name,
-            "pure-python": ccm_branch["package"]["pure_python"],
-            "cibw-matrix-platform": ccm_branch["package"]["cibw_matrix_platform"],
-            "cibw-matrix-python": ccm_branch["package"]["cibw_matrix_python"],
-            "path-readme": ccm_branch["path"]["file"]["readme_pypi"],
-        }
+        self._output_build.append(
+            {
+                "repository": self._repository,
+                "ref": ref or self.ref,
+                "artifact-name": artifact_name,
+                "pure-python": ccm_branch["package"]["pure_python"],
+                "cibw-matrix-platform": ccm_branch["package"]["cibw_matrix_platform"],
+                "cibw-matrix-python": ccm_branch["package"]["cibw_matrix_python"],
+                "path-readme": ccm_branch["path"]["file"]["readme_pypi"],
+            }
+        )
         if publish_testpypi or publish_pypi:
             self.set_lint(
                 ccm_branch=ccm_branch,
