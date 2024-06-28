@@ -37,9 +37,9 @@ class ScheduleEventHandler(EventHandler):
     @logger.sectioner("Execute Event Handler", group=False)
     def _run_event(self):
         cron = self._payload.schedule
-        if cron == self._ccm_main.workflow__init__schedule__sync:
+        if cron == self._ccm_main["workflow"]["schedule"]["sync"]["cron"]:
             return self._run_sync()
-        if cron == self._ccm_main.workflow__init__schedule__test:
+        if cron == self._ccm_main["workflow"]["schedule"]["test"]["cron"]:
             return self._run_test()
         logger.critical(
             f"Unknown cron expression for scheduled workflow: {cron}",
@@ -52,7 +52,7 @@ class ScheduleEventHandler(EventHandler):
         cc_manager_generator = self._get_cc_manager_generator(
             branch_types=(BranchType.AUTOUPDATE, ), exclude_branch_types=True
         )
-        for cc_manager, branch in cc_manager_generator:
+        for cc_manager, branch, _ in cc_manager_generator:
             self._action_meta(
                 action=InitCheckAction(self._ccm_main["workflow"]["schedule"]["sync"]["branch"][branch.type.value]),
                 cc_manager=cc_manager,
@@ -69,7 +69,7 @@ class ScheduleEventHandler(EventHandler):
         cc_manager_generator = self._get_cc_manager_generator(
             branch_types=(BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE)
         )
-        for cc_manager, branch in cc_manager_generator:
+        for _, branch, sha in cc_manager_generator:
             latest_hash = self._action_hooks(
                 action=InitCheckAction(
                     self._ccm_main["workflow"]["schedule"]["test"]["branch"][branch.type.value]),
@@ -77,14 +77,26 @@ class ScheduleEventHandler(EventHandler):
                 base=False,
                 ref_range=None,
             )
-
+            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+            self._output.set(
+                ccm_branch=ccm_branch,
+                ref=latest_hash or sha,
+                ref_before=sha,
+                version=self._get_latest_version(base=False),
+                website_url=self._ccm_main["url"]["website"]["base"],
+                website_build=True,
+                package_lint=True,
+                package_test=True,
+                package_test_source="PyPI",
+                package_build=True,
+            )
         return
 
     def _get_cc_manager_generator(
         self, branch_types: tuple[BranchType, ...], exclude_branch_types: bool = False
-    ) -> Generator[tuple[controlman.ControlCenterManager, Branch], None, None]:
-        branch_names = [branch["name"] for branch in self._gh_api.branches]
-        for branch_name in branch_names:
+    ) -> Generator[tuple[controlman.ControlCenterManager, Branch, str], None, None]:
+        for branch_data in self._gh_api.branches:
+            branch_name = branch_data["name"]
             branch = self.resolve_branch(branch_name=branch_name)
             if exclude_branch_types:
                 if branch.type in branch_types:
@@ -94,7 +106,7 @@ class ScheduleEventHandler(EventHandler):
             self._git_head.fetch_remote_branches_by_name(branch_names=branch_name)
             self._git_head.checkout(branch=branch_name)
             cc_manager = self.get_cc_manager()
-            yield cc_manager, branch
+            yield cc_manager, branch, branch_data["commit"]["sha"]
 
     def _web_announcement_expiry_check(self) -> str | None:
         name = "Website Announcement Expiry Check"
