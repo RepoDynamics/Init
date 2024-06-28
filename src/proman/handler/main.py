@@ -15,39 +15,20 @@ from github_contexts import GitHubContext
 import conventional_commits
 import pkgdata
 import controlman
-from controlman.datatype import RepoFileType, BranchType, InitCheckAction
+from controlman.datatype import (
+    RepoFileType, BranchType, InitCheckAction, Branch, Emoji, FileChangeType,
+    Commit, NonConventionalCommit, Label, PrimaryActionCommitType
+)
+from controlman.content.dev.label import LabelType, FullLabel
+from controlman.content.dev.branch import (
+    BranchProtectionRuleset,
+    RulesetEnforcementLevel,
+    RulesetBypassActorType,
+    RulesetBypassMode,
+)
 import gittidy
 import versionman
 import fixman
-
-# import repodynamics
-# import repodynamics.control.content
-# import repodynamics.control.content.manager
-
-# from repodynamics.control.content import ControlCenterContentManager, ControlCenterContent
-# from repodynamics import hook
-# from repodynamics.version import PEP440SemVer
-# from repodynamics.control.manager import ControlCenterManager
-# from repodynamics.path import RelativePath
-# from repodynamics.control.content.dev.branch import (
-#     BranchProtectionRuleset,
-#     RulesetEnforcementLevel,
-#     RulesetBypassActorType,
-#     RulesetBypassMode,
-# )
-# from repodynamics.control.content.dev.label import LabelType, FullLabel
-# from repodynamics.datatype import (
-#     Branch,
-#     BranchType,
-#     Commit,
-#     Label,
-#     RepoFileType,
-#     PrimaryActionCommitType,
-#     NonConventionalCommit,
-#     FileChangeType,
-#     Emoji,
-#     InitCheckAction,
-# )
 
 from proman.datatype import TemplateType
 
@@ -443,10 +424,10 @@ class EventHandler:
     @logger.sectioner("Configuration Management")
     def _action_meta(
         self,
-        action: controlman.datatype.InitCheckAction,
+        action: InitCheckAction,
         cc_manager: controlman.ControlCenterManager,
         base: bool,
-        branch: controlman.datatype.Branch | None = None
+        branch: Branch | None = None
     ) -> str | None:
         name = "Configuration Management"
         # if not action:
@@ -454,7 +435,7 @@ class EventHandler:
         #         self._ccm_main["workflow"]["init"]["meta_check_action"][self._event_type.value]
         #     )
         logger.info(f"Action: {action.value}")
-        if action == controlman.datatype.InitCheckAction.NONE:
+        if action == InitCheckAction.NONE:
             self.add_summary(
                 name=name,
                 status="skip",
@@ -463,7 +444,7 @@ class EventHandler:
             logger.info("Meta synchronization is disabled for this event type; skip❗")
             return
         git = self._git_base if base else self._git_head
-        if action == controlman.datatype.InitCheckAction.PULL:
+        if action == InitCheckAction.PULL:
             pr_branch_name = self.switch_to_autoupdate_branch(typ="meta", git=git)
         meta_results, meta_changes, meta_summary = cc_manager.compare_files()
         # logger.success("Meta synchronization completed.", {"result": meta_results})
@@ -473,7 +454,7 @@ class EventHandler:
         # Push/amend/pull if changes are made and action is not 'fail' or 'report'
         commit_hash = None
         if action not in [
-            controlman.datatype.InitCheckAction.FAIL, controlman.datatype.InitCheckAction.REPORT
+            InitCheckAction.FAIL, InitCheckAction.REPORT
         ] and meta_changes_any:
             cc_manager.apply_changes()
             commit_msg = conventional_commits.message.create(
@@ -483,13 +464,13 @@ class EventHandler:
             commit_hash_before = git.commit_hash_normal()
             commit_hash_after = git.commit(message=str(commit_msg), stage="all")
             commit_hash = self._action_hooks(
-                action=controlman.datatype.InitCheckAction.AMEND,
+                action=InitCheckAction.AMEND,
                 branch=branch,
                 base=base,
                 ref_range=(commit_hash_before, commit_hash_after),
                 internal=True,
             ) or commit_hash_after
-            if action == controlman.datatype.InitCheckAction.PULL:
+            if action == InitCheckAction.PULL:
                 git.push(target="origin", set_upstream=True)
                 pull_data = self._gh_api_admin.pull_create(
                     head=pr_branch_name,
@@ -504,9 +485,9 @@ class EventHandler:
             logger.info(oneliner)
         else:
             oneliner = "Some dynamic files were out of sync with meta content."
-            if action in [controlman.datatype.InitCheckAction.PULL, controlman.datatype.InitCheckAction.COMMIT, controlman.datatype.InitCheckAction.AMEND]:
+            if action in [InitCheckAction.PULL, InitCheckAction.COMMIT, InitCheckAction.AMEND]:
                 oneliner += " These were resynchronized and applied to "
-                if action == controlman.datatype.InitCheckAction.PULL:
+                if action == InitCheckAction.PULL:
                     link = html.a(href=pull_data["url"], content=pull_data["number"])
                     oneliner += f"branch '{pr_branch_name}' and a pull request ({link}) was created."
                 else:
@@ -515,15 +496,15 @@ class EventHandler:
                     )
                     oneliner += "the current branch " + (
                         f"in a new commit (hash: {link})"
-                        if action == controlman.datatype.InitCheckAction.COMMIT
+                        if action == InitCheckAction.COMMIT
                         else f"by amending the latest commit (new hash: {link})"
                     )
         self.add_summary(
             name=name,
             status="fail" if meta_changes_any and action in [
-               controlman.datatype.InitCheckAction.FAIL,
-               controlman.datatype.InitCheckAction.REPORT,
-               controlman.datatype.InitCheckAction.PULL
+               InitCheckAction.FAIL,
+               InitCheckAction.REPORT,
+               InitCheckAction.PULL
             ] else "pass",
             oneliner=oneliner,
             details=meta_summary,
@@ -533,9 +514,9 @@ class EventHandler:
     @logger.sectioner("Workflow Hooks")
     def _action_hooks(
         self,
-        action: controlman.datatype.InitCheckAction,
+        action: InitCheckAction,
         base: bool,
-        branch: controlman.datatype.Branch | None = None,
+        branch: Branch | None = None,
         ref_range: tuple[str, str] | None = None,
         internal: bool = False,
     ) -> str | None:
@@ -545,7 +526,7 @@ class EventHandler:
         #         self._ccm_main["workflow"]["init"]["hooks_check_action"][self._event_type.value]
         #     )
         logger.info(f"Action: {action.value}")
-        if action == controlman.datatype.InitCheckAction.NONE:
+        if action == InitCheckAction.NONE:
             self.add_summary(
                 name=name,
                 status="skip",
@@ -566,19 +547,19 @@ class EventHandler:
             return
         input_action = (
             action
-            if action in [controlman.datatype.InitCheckAction.REPORT, controlman.datatype.InitCheckAction.AMEND, controlman.datatype.InitCheckAction.COMMIT]
-            else (controlman.datatype.InitCheckAction.REPORT if action == controlman.datatype.InitCheckAction.FAIL else controlman.datatype.InitCheckAction.COMMIT)
+            if action in [InitCheckAction.REPORT, InitCheckAction.AMEND, InitCheckAction.COMMIT]
+            else (InitCheckAction.REPORT if action == InitCheckAction.FAIL else InitCheckAction.COMMIT)
         )
         commit_msg = (
             conventional_commits.message.create(
                 typ=self._ccm_main["commit"]["secondary_action"]["auto-update"]["type"],
                 description="Apply automatic fixes made by workflow hooks",
             )
-            if action in [controlman.datatype.InitCheckAction.COMMIT, controlman.datatype.InitCheckAction.PULL]
+            if action in [InitCheckAction.COMMIT, InitCheckAction.PULL]
             else ""
         )
         git = self._git_base if base else self._git_head
-        if action == controlman.datatype.InitCheckAction.PULL:
+        if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
         hooks_output = fixman.hook.run(
             git=git,
@@ -590,9 +571,9 @@ class EventHandler:
         passed = hooks_output["passed"]
         modified = hooks_output["modified"]
         # Push/amend/pull if changes are made and action is not 'fail' or 'report'
-        if action not in [controlman.datatype.InitCheckAction.FAIL, controlman.datatype.InitCheckAction.REPORT] and modified:
+        if action not in [InitCheckAction.FAIL, InitCheckAction.REPORT] and modified:
             # self.push(amend=action == InitCheckAction.AMEND, set_upstream=action == InitCheckAction.PULL)
-            if action == controlman.datatype.InitCheckAction.PULL:
+            if action == InitCheckAction.PULL:
                 git.push(target="origin", set_upstream=True)
                 pull_data = self._gh_api_admin.pull_create(
                     head=pr_branch,
@@ -602,15 +583,15 @@ class EventHandler:
                 )
                 self.switch_back_from_autoupdate_branch(git=git)
         commit_hash = None
-        if action == controlman.datatype.InitCheckAction.PULL and modified:
+        if action == InitCheckAction.PULL and modified:
             link = html.a(href=pull_data["url"], content=pull_data["number"])
             target = f"branch '{pr_branch}' and a pull request ({link}) was created"
-        if action in [controlman.datatype.InitCheckAction.COMMIT, controlman.datatype.InitCheckAction.AMEND] and modified:
+        if action in [InitCheckAction.COMMIT, InitCheckAction.AMEND] and modified:
             commit_hash = hooks_output["commit_hash"]
             link = html.a(href=str(self._gh_link.commit(commit_hash)), content=commit_hash[:7])
             target = "the current branch " + (
                 f"in a new commit (hash: {link})"
-                if action == controlman.datatype.InitCheckAction.COMMIT
+                if action == InitCheckAction.COMMIT
                 else f"by amending the latest commit (new hash: {link})"
             )
         if passed:
@@ -622,7 +603,7 @@ class EventHandler:
                     f"The modifications made during the first run were applied to {target}."
                 )
             )
-        elif action in [controlman.datatype.InitCheckAction.FAIL, controlman.datatype.InitCheckAction.REPORT]:
+        elif action in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             mode = "some failures were auto-fixable" if modified else "failures were not auto-fixable"
             oneliner = f"Some hooks failed ({mode})."
         elif modified:
@@ -635,7 +616,7 @@ class EventHandler:
         if not internal:
             self.add_summary(
                 name=name,
-                status="fail" if not passed or (action == controlman.datatype.InitCheckAction.PULL and modified) else "pass",
+                status="fail" if not passed or (action == InitCheckAction.PULL and modified) else "pass",
                 oneliner=oneliner,
                 details=hooks_output["summary"],
             )
@@ -719,7 +700,7 @@ class EventHandler:
     ):
         if status == "fail":
             self._failed = True
-        self._summary_oneliners.append(f"{controlman.datatype.Emoji[status]}&nbsp;<b>{name}</b>: {oneliner}")
+        self._summary_oneliners.append(f"{Emoji[status]}&nbsp;<b>{name}</b>: {oneliner}")
         if details:
             self._summary_sections.append(f"<h2>{name}</h2>\n\n{details}\n\n")
         return
@@ -735,12 +716,12 @@ class EventHandler:
             )
         )
         intro = [
-            f"{controlman.datatype.Emoji.PLAY} The workflow was triggered by a <code>{self._context.event_name}</code> event."
+            f"{Emoji.PLAY} The workflow was triggered by a <code>{self._context.event_name}</code> event."
         ]
         if self._failed:
-            intro.append(f"{controlman.datatype.Emoji.FAIL} The workflow failed.")
+            intro.append(f"{Emoji.FAIL} The workflow failed.")
         else:
-            intro.append(f"{controlman.datatype.Emoji.PASS} The workflow passed.")
+            intro.append(f"{Emoji.PASS} The workflow passed.")
         intro = html.ul(intro)
         summary = html.ElementCollection(
             [
@@ -766,11 +747,11 @@ class EventHandler:
             f.write(str(summaries))
         return str(summary)
 
-    def resolve_branch(self, branch_name: str | None = None) -> controlman.datatype.Branch:
+    def resolve_branch(self, branch_name: str | None = None) -> Branch:
         if not branch_name:
             branch_name = self._context.ref_name
         if branch_name == self._default_branch_name:
-            return controlman.datatype.Branch(type=controlman.datatype.BranchType.MAIN, name=branch_name)
+            return Branch(type=BranchType.MAIN, name=branch_name)
         return self._ccm_main.get_branch_info_from_name(branch_name=branch_name)
 
     def error_unsupported_triggering_action(self):
@@ -794,24 +775,24 @@ class EventHandler:
     def _action_file_change_detector(
         self,
         control_center_manager: controlman.ControlCenterManager
-    ) -> dict[controlman.datatype.RepoFileType, list[str]]:
+    ) -> dict[RepoFileType, list[str]]:
         name = "File Change Detector"
         change_type_map = {
-            "added": controlman.datatype.FileChangeType.CREATED,
-            "deleted": controlman.datatype.FileChangeType.REMOVED,
-            "modified": controlman.datatype.FileChangeType.MODIFIED,
-            "unmerged": controlman.datatype.FileChangeType.UNMERGED,
-            "unknown": controlman.datatype.FileChangeType.UNKNOWN,
-            "broken": controlman.datatype.FileChangeType.BROKEN,
-            "copied_to": controlman.datatype.FileChangeType.CREATED,
-            "renamed_from": controlman.datatype.FileChangeType.REMOVED,
-            "renamed_to": controlman.datatype.FileChangeType.CREATED,
-            "copied_modified_to": controlman.datatype.FileChangeType.CREATED,
-            "renamed_modified_from": controlman.datatype.FileChangeType.REMOVED,
-            "renamed_modified_to": controlman.datatype.FileChangeType.CREATED,
+            "added": FileChangeType.CREATED,
+            "deleted": FileChangeType.REMOVED,
+            "modified": FileChangeType.MODIFIED,
+            "unmerged": FileChangeType.UNMERGED,
+            "unknown": FileChangeType.UNKNOWN,
+            "broken": FileChangeType.BROKEN,
+            "copied_to": FileChangeType.CREATED,
+            "renamed_from": FileChangeType.REMOVED,
+            "renamed_to": FileChangeType.CREATED,
+            "copied_modified_to": FileChangeType.CREATED,
+            "renamed_modified_from": FileChangeType.REMOVED,
+            "renamed_modified_to": FileChangeType.CREATED,
         }
-        summary_detail = {file_type: [] for file_type in controlman.datatype.RepoFileType}
-        change_group = {file_type: [] for file_type in controlman.datatype.RepoFileType}
+        summary_detail = {file_type: [] for file_type in RepoFileType}
+        change_group = {file_type: [] for file_type in RepoFileType}
         changes = self._git_head.changed_files(
             ref_start=self._context.hash_before, ref_end=self._context.hash_after
         )
@@ -829,32 +810,32 @@ class EventHandler:
                 continue
             for path in changed_paths:
                 if path in fixed_paths:
-                    typ = controlman.datatype.RepoFileType.DYNAMIC
+                    typ = RepoFileType.DYNAMIC
                 elif path == ".github/_README.md" or path.endswith("/README.md"):
-                    typ = controlman.datatype.RepoFileType.README
+                    typ = RepoFileType.README
                 elif path.startswith(control_center_manager.path_manager.dir_source_rel):
-                    typ = controlman.datatype.RepoFileType.PACKAGE
+                    typ = RepoFileType.PACKAGE
                 elif path.startswith(control_center_manager.path_manager.dir_website_rel):
-                    typ = controlman.datatype.RepoFileType.WEBSITE
+                    typ = RepoFileType.WEBSITE
                 elif path.startswith(control_center_manager.path_manager.dir_tests_rel):
-                    typ = controlman.datatype.RepoFileType.TEST
+                    typ = RepoFileType.TEST
                 elif path.startswith(controlman.path.DIR_GITHUB_WORKFLOWS):
-                    typ = controlman.datatype.RepoFileType.WORKFLOW
+                    typ = RepoFileType.WORKFLOW
                 elif (
                     path.startswith(controlman.path.DIR_GITHUB_DISCUSSION_TEMPLATE)
                     or path.startswith(controlman.path.DIR_GITHUB_ISSUE_TEMPLATE)
                     or path.startswith(controlman.path.DIR_GITHUB_PULL_REQUEST_TEMPLATE)
                     or path.startswith(controlman.path.DIR_GITHUB_WORKFLOW_REQUIREMENTS)
                 ):
-                    typ = controlman.datatype.RepoFileType.DYNAMIC
+                    typ = RepoFileType.DYNAMIC
                 elif path == controlman.path.FILE_PATH_META:
-                    typ = controlman.datatype.RepoFileType.SUPERMETA
+                    typ = RepoFileType.SUPERMETA
                 elif path == f"{control_center_manager.path_manager.dir_meta_rel}path.yaml":
-                    typ = controlman.datatype.RepoFileType.SUPERMETA
+                    typ = RepoFileType.SUPERMETA
                 elif path.startswith(control_center_manager.path_manager.dir_meta_rel):
-                    typ = controlman.datatype.RepoFileType.META
+                    typ = RepoFileType.META
                 else:
-                    typ = controlman.datatype.RepoFileType.OTHER
+                    typ = RepoFileType.OTHER
                 summary_detail[typ].append(f"{change_type_map[change_type].value.emoji} {path}")
                 change_group[typ].append(path)
         summary_details = []
@@ -866,20 +847,20 @@ class EventHandler:
                 changed_groups_str += f", {file_type.value}"
         if changed_groups_str:
             oneliner = f"Found changes in following groups: {changed_groups_str[2:]}."
-            if summary_detail[controlman.datatype.RepoFileType.SUPERMETA]:
+            if summary_detail[RepoFileType.SUPERMETA]:
                 oneliner = (
                     f"This event modified SuperMeta files; "
                     f"make sure to double-check that everything is correct❗ {oneliner}"
                 )
         else:
             oneliner = "No changes were found."
-        legend = [f"{status.value.emoji}  {status.value.title}" for status in controlman.datatype.FileChangeType]
+        legend = [f"{status.value.emoji}  {status.value.title}" for status in FileChangeType]
         color_legend = html.details(content=html.ul(legend), summary="Color Legend")
         summary_details.insert(0, html.ul([oneliner, color_legend]))
         self.add_summary(
             name=name,
             status="warning"
-            if summary_detail[controlman.datatype.RepoFileType.SUPERMETA]
+            if summary_detail[RepoFileType.SUPERMETA]
             else ("pass" if changed_groups_str else "skip"),
             oneliner=oneliner,
             details=html.ElementCollection(summary_details),
@@ -961,10 +942,10 @@ class EventHandler:
         def format_labels(
             labels: tuple[controlman.content.dev.label.FullLabel]
         ) -> tuple[
-            dict[tuple[controlman.datatype.LabelType, str, str], controlman.content.dev.label.FullLabel],
-            dict[tuple[controlman.datatype.LabelType, str, str], controlman.content.dev.label.FullLabel],
-            dict[tuple[controlman.datatype.LabelType, str, str], controlman.content.dev.label.FullLabel],
-            dict[tuple[controlman.datatype.LabelType, str, str], controlman.content.dev.label.FullLabel],
+            dict[tuple[LabelType, str, str], FullLabel],
+            dict[tuple[LabelType, str, str], FullLabel],
+            dict[tuple[LabelType, str, str], FullLabel],
+            dict[tuple[LabelType, str, str], FullLabel],
         ]:
             full = {}
             version = {}
@@ -973,7 +954,7 @@ class EventHandler:
             for label in labels:
                 key = (label.type, label.group_name, label.id)
                 full[key] = label
-                if label.type is controlman.content.dev.label.LabelType.AUTO_GROUP:
+                if label.type is LabelType.AUTO_GROUP:
                     if label.group_name == "version":
                         version[key] = label
                     else:
@@ -1067,26 +1048,26 @@ class EventHandler:
     ) -> None:
         """Update branch and tag protection rulesets."""
         enforcement = {
-            controlman.content.dev.branch.RulesetEnforcementLevel.ENABLED: 'active',
-            controlman.content.dev.branch.RulesetEnforcementLevel.DISABLED: 'disabled',
-            controlman.content.dev.branch.RulesetEnforcementLevel.EVALUATE: 'evaluate',
+            RulesetEnforcementLevel.ENABLED: 'active',
+            RulesetEnforcementLevel.DISABLED: 'disabled',
+            RulesetEnforcementLevel.EVALUATE: 'evaluate',
         }
         bypass_actor_type = {
-            controlman.content.dev.branch.RulesetBypassActorType.ORG_ADMIN: 'OrganizationAdmin',
-            controlman.content.dev.branch.RulesetBypassActorType.REPO_ROLE: 'RepositoryRole',
-            controlman.content.dev.branch.RulesetBypassActorType.TEAM: 'Team',
-            controlman.content.dev.branch.RulesetBypassActorType.INTEGRATION: 'Integration',
+            RulesetBypassActorType.ORG_ADMIN: 'OrganizationAdmin',
+            RulesetBypassActorType.REPO_ROLE: 'RepositoryRole',
+            RulesetBypassActorType.TEAM: 'Team',
+            RulesetBypassActorType.INTEGRATION: 'Integration',
         }
         bypass_actor_mode = {
-            controlman.content.dev.branch.RulesetBypassMode.ALWAYS: True,
-            controlman.content.dev.branch.RulesetBypassMode.PULL: False,
+            RulesetBypassMode.ALWAYS: True,
+            RulesetBypassMode.PULL: False,
         }
 
         def apply(
             name: str,
             target: Literal['branch', 'tag'],
             pattern: list[str],
-            ruleset: controlman.content.dev.branch.BranchProtectionRuleset,
+            ruleset: BranchProtectionRuleset,
         ) -> None:
             args = {
                 'name': name,
@@ -1156,8 +1137,8 @@ class EventHandler:
 
     def run_sync_fix(
         self,
-        action: controlman.datatype.InitCheckAction,
-        branch: controlman.datatype.Branch | None = None,
+        action: InitCheckAction,
+        branch: Branch | None = None,
         testpypi_publishable: bool = False,
         version: str | None = None
     ) -> tuple[dict[str, bool], controlman.ControlCenterContentManager, str]:
@@ -1242,7 +1223,7 @@ class EventHandler:
             url += f"{language}/{pull_nr}/"
         return url
 
-    def _get_commits(self, base: bool = False) -> list[controlman.datatype.Commit]:
+    def _get_commits(self, base: bool = False) -> list[Commit]:
         git = self._git_base if base else self._git_head
         commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
         logger.info("Read commits from git history", json.dumps(commits, indent=4))
@@ -1254,14 +1235,14 @@ class EventHandler:
             conv_msg = parser.parse(message=commit["msg"])
             if not conv_msg:
                 parsed_commits.append(
-                    controlman.datatype.Commit(
-                        **commit, group_data=controlman.datatype.NonConventionalCommit()
+                    Commit(
+                        **commit, group_data=NonConventionalCommit()
                     )
                 )
             else:
                 group = self._ccm_main.get_commit_type_from_conventional_type(conv_type=conv_msg.type)
                 commit["msg"] = conv_msg
-                parsed_commits.append(controlman.datatype.Commit(**commit, group_data=group))
+                parsed_commits.append(Commit(**commit, group_data=group))
         return parsed_commits
 
     def _extract_tasklist(self, body: str) -> list[dict[str, bool | str | list]]:
@@ -1319,7 +1300,7 @@ class EventHandler:
         return extract(match.group(1).strip()) if match else []
 
     def _update_issue_status_labels(
-        self, issue_nr: int, labels: list[controlman.datatype.Label], current_label: controlman.datatype.Label
+        self, issue_nr: int, labels: list[Label], current_label: Label
     ) -> None:
         for label in labels:
             if label.name != current_label.name:
@@ -1403,19 +1384,19 @@ class EventHandler:
     @staticmethod
     def _get_next_version(
         version: versionman.PEP440SemVer,
-        action: controlman.datatype.PrimaryActionCommitType
+        action: PrimaryActionCommitType
     ) -> versionman.PEP440SemVer:
-        if action is controlman.datatype.PrimaryActionCommitType.RELEASE_MAJOR:
+        if action is PrimaryActionCommitType.RELEASE_MAJOR:
             if version.major == 0:
                 return version.next_minor
             return version.next_major
-        if action == controlman.datatype.PrimaryActionCommitType.RELEASE_MINOR:
+        if action == PrimaryActionCommitType.RELEASE_MINOR:
             if version.major == 0:
                 return version.next_patch
             return version.next_minor
-        if action == controlman.datatype.PrimaryActionCommitType.RELEASE_PATCH:
+        if action == PrimaryActionCommitType.RELEASE_PATCH:
             return version.next_patch
-        if action == controlman.datatype.PrimaryActionCommitType.RELEASE_POST:
+        if action == PrimaryActionCommitType.RELEASE_POST:
             return version.next_post
         return version
 
