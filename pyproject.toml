@@ -31,7 +31,8 @@ dependencies = [
     "VersionMan",
     "GitTidy",
     "FixMan",
-    "PkgData"
+    "PkgData",
+    "PyShellMan"
 ]
 requires-python = ">=3.10"
 

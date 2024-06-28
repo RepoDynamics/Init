@@ -10,3 +10,4 @@ VersionMan
 GitTidy
 FixMan
 PkgData
+PyShellMan
