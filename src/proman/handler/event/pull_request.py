@@ -104,6 +104,16 @@ class PullRequestEventHandler(EventHandler):
         return
 
     def _run_action_synchronize(self):
+        final_commit_type = self._ccm_main.get_issue_data_from_labels(self._pull.label_names).group_data
+        job_runs, ccm_branch, latest_hash = self.run_sync_fix(
+            action=InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL,
+            branch=self._branch_head,
+            testpypi_publishable=(
+                self._branch_head.type is BranchType.IMPLEMENT
+                and self._payload.internal
+                and self._primary_type_is_package_publish(commit_type=final_commit_type)
+            ),
+        )
         new_body = self._add_to_pr_timeline(
             entry=(
                 "New commits were pushed to the head branch "
@@ -111,41 +121,12 @@ class PullRequestEventHandler(EventHandler):
                 f"actor: @{self._payload.sender.login})."
             )
         )
-        meta_and_hooks_action_type = InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL
-        control_center_manager = controlman.initialize_manager(
-            git_manager=self._git_head,
-            github_token=self._context.token,
-            content_manager=self._ccm_main,
-        )
-        changed_file_groups = self._action_file_change_detector(control_center_manager=control_center_manager)
-        hash_hooks = self._action_hooks(
-            action=meta_and_hooks_action_type,
-            branch=self._branch_head,
-            base=False,
-            ref_range=(self._context.hash_before, self._context.hash_after),
-        )
-        for file_type in (RepoFileType.SUPERMETA, RepoFileType.META, RepoFileType.DYNAMIC):
-            if changed_file_groups[file_type]:
-                hash_meta = self._action_meta(
-                    action=meta_and_hooks_action_type, meta=control_center_manager, base=False, branch=self._branch_head
-                )
-                ccm_branch = control_center_manager.generate_data()
-                break
-        else:
-            hash_meta = None
-            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_base)
-        latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
-
         tasks_complete = self._update_implementation_tasklist(body=new_body)
         if tasks_complete and not self._failed:
             self._gh_api.pull_update(
                 number=self._pull.number,
                 draft=False,
             )
-        final_commit_type = self._ccm_main.get_issue_data_from_labels(self._pull.label_names).group_data
-        job_runs = self._determine_job_runs(
-            changed_file_groups=changed_file_groups, final_commit_type=final_commit_type
-        )
         if job_runs["package_publish_testpypi"]:
             next_ver = self._calculate_next_dev_version(final_commit_type=final_commit_type)
             job_runs["version"] = str(next_ver)
@@ -154,10 +135,10 @@ class PullRequestEventHandler(EventHandler):
                 base=False,
                 msg=f"Developmental release (issue: #{self._branch_head.suffix[0]}, target: {self._branch_base.name})",
             )
-        self._set_output(
+        self._output.set(
             ccm_branch=ccm_branch,
             ref=latest_hash,
-            ref_before=self._context.hash_before,
+            website_url=self._ccm_main["url"]["website"]["base"]
             **job_runs,
         )
         return
@@ -283,24 +264,17 @@ class PullRequestEventHandler(EventHandler):
         # Update the metadata in main branch to reflect the new release
         if next_ver:
             if self._branch_base.type is BranchType.MAIN:
-                meta_gen = controlman.initialize_manager(
-                    git_manager=self._git_head,
-                    github_token=self._context.token,
-                    content_manager=self._ccm_main,
-                    future_versions={self._branch_base.name: next_ver},
-                )
+                # Base is the main branch; we can update the head branch directly
+                cc_manager = self.get_cc_manager(future_versions={self._branch_base.name: next_ver})
                 self._action_meta(
-                    action=InitCheckAction.COMMIT, meta=meta_gen, base=False, branch=self._branch_head
+                    action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=False, branch=self._branch_head
                 )
             else:
+                # Base is a release branch; we need to update the main branch separately
                 self._git_base.checkout(branch=self._payload.repository.default_branch)
-                meta_gen = controlman.initialize_manager(
-                    git_manager=self._git_base,
-                    github_token=self._context.token,
-                    future_versions={self._branch_base.name: next_ver},
-                )
+                cc_manager = self.get_cc_manager(base=True, future_versions={self._branch_base.name: next_ver})
                 self._action_meta(
-                    action=InitCheckAction.COMMIT, meta=meta_gen, base=True, branch=self._branch_base
+                    action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=True, branch=self._branch_base
                 )
                 self._git_base.push()
                 self._git_base.checkout(branch=self._branch_base.name)
@@ -316,7 +290,7 @@ class PullRequestEventHandler(EventHandler):
         ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
         hash_latest = merge_response["sha"]
         if not next_ver:
-            self._set_output(
+            self._output.set(
                 ccm_branch=ccm_branch,
                 ref=hash_latest,
                 ref_before=hash_base,
@@ -324,6 +298,7 @@ class PullRequestEventHandler(EventHandler):
                 package_lint=True,
                 package_test=True,
                 package_build=True,
+                website_url=self._ccm_main["url"]["website"]["base"],
             )
             return
 
@@ -338,7 +313,7 @@ class PullRequestEventHandler(EventHandler):
             return
 
         tag = self._tag_version(ver=next_ver, base=True)
-        self._set_output(
+        self._output.set(
             ccm_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
@@ -352,6 +327,7 @@ class PullRequestEventHandler(EventHandler):
             package_publish_testpypi=True,
             package_publish_pypi=True,
             package_release=True,
+            website_url=self._ccm_main["url"]["website"]["base"]
         )
         return
 
@@ -408,7 +384,7 @@ class PullRequestEventHandler(EventHandler):
             return
         tag = self._tag_version(ver=next_ver_pre, base=True)
         ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
-        self._set_output(
+        self._output.set(
             ccm_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
@@ -423,6 +399,7 @@ class PullRequestEventHandler(EventHandler):
             package_publish_testpypi=True,
             package_publish_pypi=True,
             package_release=True,
+            website_url=self._ccm_main["url"]["website"]["base"],
         )
         return
 
@@ -547,35 +524,6 @@ class PullRequestEventHandler(EventHandler):
             ver_dist = f"{ver_base}+{dist_base + 1}"
             next_ver = None
         return primary_commit_type, ver_base, next_ver, ver_dist
-
-    def _determine_job_runs(self, changed_file_groups, final_commit_type):
-        package_setup_files_changed = any(
-            filepath in changed_file_groups[RepoFileType.DYNAMIC]
-            for filepath in (
-                controlman.path.FILE_PYTHON_PYPROJECT,
-                controlman.path.FILE_PYTHON_MANIFEST,
-            )
-        )
-        out = {
-            "website_build": (
-                bool(changed_file_groups[RepoFileType.WEBSITE])
-                or bool(changed_file_groups[RepoFileType.PACKAGE])
-            ),
-            "package_test": (
-                bool(changed_file_groups[RepoFileType.TEST])
-                or bool(changed_file_groups[RepoFileType.PACKAGE])
-                or package_setup_files_changed
-            ),
-            "package_build": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
-            "package_lint": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
-            "package_publish_testpypi": (
-                self._branch_head.type is BranchType.IMPLEMENT
-                and self._payload.internal
-                and (bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed)
-                and self._primary_type_is_package_publish(commit_type=final_commit_type)
-            ),
-        }
-        return out
 
     def _calculate_next_dev_version(self, final_commit_type):
         ver_last_base, _ = self._get_latest_version(dev_only=False, base=True)
