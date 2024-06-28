@@ -122,6 +122,8 @@ class PushEventHandler(EventHandler):
             cc_manager=cc_manager,
             base=False,
         )
+        ccm = cc_manager.generate_data()
+        self._repo_config.reset_labels(css=ccm.content)
         self.add_summary(
             name="Init",
             status="pass",
@@ -129,30 +131,24 @@ class PushEventHandler(EventHandler):
         )
         return
 
-    def _run_branch_edited_fork(self):
-        # if (self._path_repo_base / "FORK_TEST_MODE").is_file():
-        #     return
-        job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
-        website_deploy = False
-        if self._has_admin_token:
-            if not self._gh_api.info["has_pages"]:
-                self._gh_api_admin.pages_create(build_type="workflow")
-            if job_runs["website_build"]:
-                website_deploy = True
-            if self._context.ref_is_main:
-                ccm_main_before = self._ccm_main
-                self._ccm_main = ccm_branch
-                self.config_repo(
-                    ccm_new=self._ccm_main,
-                    ccm_old=ccm_main_before,
-                    rulesets="ignore"
-                )
+    def _run_init_phase(self):
+        job_runs, ccm_branch, latest_hash = self.run_sync_fix(
+            action=controlman.datatype.InitCheckAction.COMMIT,
+            branch=controlman.datatype.Branch(
+                type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name
+            ),
+            version="0.0.0"
+        )
+        self._ccm_main = ccm_branch
+        self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, rulesets="ignore")
         self._output.set(
-            ccm_branch=ccm_branch,
+            ccm_branch=self._ccm_main,
             ref=latest_hash,
-            ref_before=self._context.hash_before,
-            website_deploy=website_deploy,
-            **job_runs,
+            website_deploy=True,
+            package_lint=self._is_pypackit,
+            package_test=self._is_pypackit,
+            package_build=self._is_pypackit,
+            website_url=self._ccm_main["url"]["website"]["base"],
         )
         return
 
@@ -171,7 +167,7 @@ class PushEventHandler(EventHandler):
     def _run_init_existing_main(self):
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         self._ccm_main = ccm_branch
-        self.config_repo(ccm_new=self._ccm_main, ccm_old=self._ccm_main, rulesets="create")
+        self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main, rulesets="create")
         self._output.set(
             ccm_branch=ccm_branch,
             ref=latest_hash,
@@ -179,29 +175,6 @@ class PushEventHandler(EventHandler):
             website_deploy=True,
             website_url=self._ccm_main["url"]["website"]["base"],
             **job_runs,
-        )
-        return
-
-    def _run_init_phase(self):
-        job_runs, ccm_branch, latest_hash = self.run_sync_fix(
-            action=controlman.datatype.InitCheckAction.COMMIT,
-            branch=controlman.datatype.Branch(
-                type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name
-            ),
-            version="0.0.0"
-        )
-        self._ccm_main = ccm_branch
-        self._output.set(
-            ccm_branch=self._ccm_main,
-            ref=latest_hash,
-            website_deploy=True,
-            package_lint=self._is_pypackit,
-            package_test=self._is_pypackit,
-            package_build=self._is_pypackit,
-            website_url=self._ccm_main["url"]["website"]["base"],
-        )
-        self.config_repo(
-            ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, rulesets="ignore", reset_labels=True
         )
         return
 
@@ -253,7 +226,7 @@ class PushEventHandler(EventHandler):
                 target="origin", ref=self._context.ref_name, force_with_lease=True
             )
         self._tag_version(ver=version, msg=f"Release version {version}", base=False)
-        self.config_repo(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, reset_labels=True, rulesets="create")
+        self._repo_config(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, rulesets="create")
         self._output.set(
             ccm_branch=self._ccm_main,
             ref=latest_hash,
@@ -265,6 +238,32 @@ class PushEventHandler(EventHandler):
         )
         return
 
+    def _run_branch_edited_fork(self):
+        # if (self._path_repo_base / "FORK_TEST_MODE").is_file():
+        #     return
+        job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
+        website_deploy = False
+        if self._has_admin_token:
+            self._repo_config.activate_gh_pages()
+            if job_runs["website_build"]:
+                website_deploy = True
+            if self._context.ref_is_main:
+                ccm_main_before = self._ccm_main
+                self._ccm_main = ccm_branch
+                self._repo_config.update_all(
+                    ccm_new=self._ccm_main,
+                    ccm_old=ccm_main_before,
+                    rulesets="ignore"
+                )
+        self._output.set(
+            ccm_branch=ccm_branch,
+            ref=latest_hash,
+            ref_before=self._context.hash_before,
+            website_deploy=website_deploy,
+            **job_runs,
+        )
+        return
+
     def _run_branch_edited_main_normal(self):
-        self.config_repo(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before)
+        self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before)
         return
