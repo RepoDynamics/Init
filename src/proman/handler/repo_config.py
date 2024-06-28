@@ -25,24 +25,25 @@ class RepoConfig:
         ccm_new: ControlCenterContentManager,
         ccm_old: ControlCenterContentManager | None = None,
         rulesets: Literal["create", "update", "ignore"] = "update",
-        reset_labels: bool = False,
     ):
         self.update_settings(ccm=ccm_new)
-        self.updated_gh_pages(ccm=ccm_new)
+        self.update_gh_pages(ccm=ccm_new)
         self.update_branch_names(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
-        if reset_labels:
-            self.reset_labels(ccs=ccm_new.content)
-        else:
-            self.update_labels(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
-        if rulesets == "create":
-            self.update_rulesets(ccs_new=ccm_new.content)
-        elif rulesets == "update":
-            self.update_rulesets(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
+        self.update_labels(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
+        if rulesets != "ignore":
+            self.update_rulesets(
+                ccs_new=ccm_new.content, ccs_old=ccm_old.content if rulesets == "update" else None
+            )
         return
 
     def update_settings(self, ccm: ControlCenterContentManager):
-        # if not self._gh_api_admin.actions_permissions_workflow_default()["can_approve_pull_request_reviews"]:
-        self._gh_api_admin.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
+        """Update repository settings.
+
+        Notes
+        -----
+        - The GitHub API Token must have write access to 'Administration' scope.
+        """
+        self._gh_api.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
         # if ccm_old and ccm_old.repo__config == ccm.repo__config:
         #     return
         data = ccm.repo__config | {
@@ -52,19 +53,32 @@ class RepoConfig:
             "squash_merge_commit_message": "PR_BODY",
         }
         topics = data.pop("topics")
-        self._gh_api_admin.repo_update(**data)
-        self._gh_api_admin.repo_topics_replace(topics=topics)
+        self._gh_api.repo_update(**data)
+        self._gh_api.repo_topics_replace(topics=topics)
         return
 
-    def updated_gh_pages(self, ccm: ControlCenterContentManager) -> None:
-        """Activate GitHub Pages (source: workflow) if not activated, update custom domain."""
+    def activate_gh_pages(self):
+        """Activate GitHub Pages for the repository if not activated.
+
+        Notes
+        -----
+        - The GitHub API Token must have write access to 'Pages' scope.
+        """
         if not self._gh_api.info["has_pages"]:
-            self._gh_api_admin.pages_create(build_type="workflow")
-        # if ccm_old and ccm_old.web__base_url == ccm_new.web__base_url:
-        #     return
+            self._gh_api.pages_create(build_type="workflow")
+        return
+
+    def update_gh_pages(self, ccm: ControlCenterContentManager) -> None:
+        """Activate GitHub Pages if not activated, and update custom domain.
+
+        Notes
+        -----
+        - The GitHub API Token must have write access to 'Pages' scope.
+        """
+        self.activate_gh_pages()
         cname = ccm.web__base_url
         try:
-            self._gh_api_admin.pages_update(
+            self._gh_api.pages_update(
                 cname=cname.removeprefix("https://").removeprefix("http://") if cname else "",
                 build_type="workflow",
             )
@@ -72,7 +86,7 @@ class RepoConfig:
             logger.notice(f"Failed to update custom domain for GitHub Pages", str(e))
         if cname:
             try:
-                self._gh_api_admin.pages_update(https_enforced=cname.startswith("https://"))
+                self._gh_api.pages_update(https_enforced=cname.startswith("https://"))
             except WebAPIError as e:
                 logger.notice(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
         return
@@ -115,8 +129,6 @@ class RepoConfig:
                     rest[key] = label
             return full, version, branch, rest
 
-        name = "Repository Labels Synchronizer"
-
         labels_old, labels_old_ver, labels_old_branch, labels_old_rest = format_labels(
             ccs_old.dev.label.full_labels
         )
@@ -127,12 +139,19 @@ class RepoConfig:
         ids_old = set(labels_old.keys())
         ids_new = set(labels_new.keys())
 
+        current_label_names = [label['name'] for label in self._gh_api.labels]
+
         # Update labels that are in both old and new settings,
         #   when their label data has changed in new settings.
         ids_shared = ids_old & ids_new
         for id_shared in ids_shared:
             old_label = labels_old[id_shared]
             new_label = labels_new[id_shared]
+            if old_label.name not in current_label_names:
+                self._gh_api.label_create(
+                    name=new_label.name, color=new_label.color, description=new_label.description
+                )
+                continue
             if old_label != new_label:
                 self._gh_api.label_update(
                     name=old_label.name,
