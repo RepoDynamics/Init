@@ -15,6 +15,7 @@ from github_contexts import GitHubContext
 import conventional_commits
 import pkgdata
 import controlman
+from controlman.datatype import RepoFileType, BranchType, InitCheckAction
 import gittidy
 import versionman
 import fixman
@@ -51,6 +52,316 @@ import fixman
 from proman.datatype import TemplateType
 
 
+class OutputWriter:
+
+    def __init__(self, context: GitHubContext):
+        self._context = context
+        self._repository = self._context.target_repo_fullname
+
+        self.ref = self._context.ref_name
+        self.ref_before = self._context.hash_before
+
+        self._output_website: dict = {}
+        self._output_lint: dict = {}
+        self._output_test: list[dict] = []
+        self._output_build: dict = {}
+        self._output_publish_testpypi: dict = {}
+        self._output_test_testpypi: list[dict] = []
+        self._output_publish_pypi: dict = {}
+        self._output_test_pypi: list[dict] = []
+        self._output_finalize: dict = {}
+        return
+
+    def set(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        ref: str = "",
+        ref_before: str = "",
+        version: str = "",
+        release_name: str = "",
+        release_tag: str = "",
+        release_body: str = "",
+        release_prerelease: bool = False,
+        release_make_latest: Literal["legacy", "latest", "none"] = "legacy",
+        release_discussion_category_name: str = "",
+        website_url: str | None = None,
+        website_build: bool = False,
+        website_deploy: bool = False,
+        package_lint: bool = False,
+        package_test: bool = False,
+        package_build: bool = False,
+        package_publish_testpypi: bool = False,
+        package_publish_pypi: bool = False,
+        package_release: bool = False,
+    ):
+        package_artifact_name = f"Package ({version})" if version else "Package"
+        if website_build or website_deploy:
+            self.set_website(
+                ccm_branch=ccm_branch,
+                url=website_url,
+                ref=ref,
+                deploy=website_deploy,
+            )
+        if package_lint and not (package_publish_testpypi or package_publish_pypi):
+            self.set_lint(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                ref_before=ref_before,
+            )
+        if package_test and not (package_publish_testpypi or package_publish_pypi):
+            self.set_package_test(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                version=version,
+            )
+        if package_build or package_publish_testpypi or package_publish_pypi:
+            self.set_package_build_and_publish(
+                ccm_branch=ccm_branch,
+                version=version,
+                ref=ref,
+                publish_testpypi=package_publish_testpypi,
+                publish_pypi=package_publish_pypi,
+                artifact_name=package_artifact_name,
+            )
+        if package_release:
+            self.set_release(
+                name=release_name,
+                tag=release_tag,
+                body=release_body,
+                prerelease=release_prerelease,
+                make_latest=release_make_latest,
+                discussion_category_name=release_discussion_category_name,
+                package_artifact_name=package_artifact_name,
+            )
+        return
+
+    @logger.sectioner("Generate Outputs and Summary")
+    def generate(self, failed: bool) -> dict:
+        if failed:
+            # Just to be safe, disable publish/deploy/release jobs if fail is True
+            if self._output_website:
+                self._output_website["deploy"] = False
+            self._output_publish_testpypi = {}
+            self._output_test_testpypi = []
+            self._output_publish_pypi = {}
+            self._output_test_pypi = []
+            if self._output_finalize.get("release"):
+                self._output_finalize["release"] = False
+        output = {
+            "fail": failed,
+            "run": {
+                "website": bool(self._output_website),
+                "lint": bool(self._output_lint),
+                "test": bool(self._output_test),
+                "build": bool(self._output_build),
+                "publish-testpypi": bool(self._output_publish_testpypi),
+                "test-testpypi": bool(self._output_test_testpypi),
+                "publish-pypi": bool(self._output_publish_pypi),
+                "test-pypi": bool(self._output_test_pypi),
+                "finalize": bool(self._output_finalize),
+            },
+            "website": self._output_website,
+            "lint": self._output_lint,
+            "test": self._output_test,
+            "build": self._output_build,
+            "publish-testpypi": self._output_publish_testpypi,
+            "test-testpypi": self._output_test_testpypi,
+            "publish-pypi": self._output_publish_pypi,
+            "test-pypi": self._output_test_pypi,
+            "finalize": self._output_finalize,
+        }
+        return output
+
+    def set_website(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        url: str,
+        ref: str | None = None,
+        deploy: bool = False,
+        artifact_name: str = "Documentation",
+        path_package: str = "."
+    ):
+        if not url:
+            raise RuntimeError("No URL provided for setting website job output")
+        self._output_website = {
+            "url": url,
+            "repository": self._repository,
+            "ref": ref or self.ref,
+            "deploy": deploy,
+            "path-website": ccm_branch["path"]["dir"]["website"],
+            "path-package": path_package,
+            "artifact-name": artifact_name,
+        }
+
+    def set_lint(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        ref: str | None = None,
+        ref_before: str | None = None,
+    ):
+        self._output_lint = {
+            "repository": self._repository,
+            "ref": ref or self.ref,
+            "ref-before": ref_before or self.ref_before,
+            "os": [
+                {"name": name, "runner": runner} for name, runner in zip(
+                    ccm_branch["package"]["os_titles"],
+                    ccm_branch["package"]["github_runners"]
+                )
+            ],
+            "package-name": ccm_branch["package"]["name"],
+            "python-versions": ccm_branch["package"]["python_versions"],
+            "python-max-ver": ccm_branch["package"]["python_version_max"],
+            "path-source": ccm_branch["path"]["dir"]["source"],
+        }
+        return
+
+    def set_package_test(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        ref: str | None = None,
+        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
+        version: str | None = None,
+        retry_sleep_seconds: str = "30",
+        retry_sleep_seconds_total: str = "900",
+    ):
+        self._output_test.extend(
+            self._create_output_package_test(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                source=source,
+                version=version,
+                retry_sleep_seconds=retry_sleep_seconds,
+                retry_sleep_seconds_total=retry_sleep_seconds_total,
+            )
+        )
+        return
+
+    def set_package_build_and_publish(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        version: str,
+        ref: str | None = None,
+        ref_before: str | None = None,
+        publish_testpypi: bool = False,
+        publish_pypi: bool = False,
+        artifact_name: str = "Package"
+    ):
+        self._output_build = {
+            "repository": self._repository,
+            "ref": ref or self.ref,
+            "artifact-name": artifact_name,
+            "pure-python": ccm_branch["package"]["pure_python"],
+            "cibw-matrix-platform": ccm_branch["package"]["cibw_matrix_platform"],
+            "cibw-matrix-python": ccm_branch["package"]["cibw_matrix_python"],
+            "path-readme": ccm_branch["path"]["file"]["readme_pypi"],
+        }
+        if publish_testpypi or publish_pypi:
+            self.set_lint(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                ref_before=ref_before,
+            )
+            self._output_test.extend(
+                self._create_output_package_test(
+                    ccm_branch=ccm_branch,
+                    ref=ref,
+                    source="GitHub",
+                )
+            )
+            self._output_publish_testpypi = {
+                "platform": "TestPyPI",
+                "upload-url": "https://test.pypi.org/legacy/",
+                "download-url": f'https://test.pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
+                "artifact-name": artifact_name,
+            }
+            self._output_test_testpypi = self._create_output_package_test(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                source="TestPyPI",
+                version=version,
+            )
+        if publish_pypi:
+            self._output_publish_pypi = {
+                "platform": "PyPI",
+                "upload-url": "https://upload.pypi.org/legacy/",
+                "download-url": f'https://pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
+                "artifact-name": artifact_name,
+            }
+            self._output_test_pypi = self._create_output_package_test(
+                ccm_branch=ccm_branch,
+                ref=ref,
+                source="PyPI",
+                version=version,
+            )
+        return
+
+    def set_release(
+        self,
+        name: str,
+        tag: str,
+        body: str | None = None,
+        prerelease: bool | None = None,
+        make_latest: Literal["legacy", "latest", "none"] | None = None,
+        discussion_category_name: str | None = None,
+        website_artifact_name: str = "Documentation",
+        package_artifact_name: str = "Package",
+    ):
+        self._output_finalize["release"] = {
+            "name": name,
+            "tag-name": tag,
+            "body": body,
+            "prerelease": prerelease,
+            "make-latest": make_latest,
+            "discussion_category_name": discussion_category_name,
+            "website-artifact-name": website_artifact_name,
+            "package-artifact-name": package_artifact_name
+        }
+        return
+
+    def _create_output_package_test(
+        self,
+        ccm_branch: controlman.ControlCenterContentManager,
+        ref: str | None = None,
+        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
+        version: str | None = None,
+        retry_sleep_seconds_total: str = "900",
+        retry_sleep_seconds: str = "30",
+    ) -> list[dict]:
+        common = {
+            "repository": self._repository,
+            "ref": ref or self.ref,
+            "path-setup-testsuite": f'./{ccm_branch["path"]["dir"]["tests"]}',
+            "path-setup-package": ".",
+            "testsuite-import-name": ccm_branch["package"]["testsuite_import_name"],
+            "package-source": source,
+            "package-name": ccm_branch["package"]["name"],
+            "package-version": version or "",
+            "path-requirements-package": "requirements.txt",
+            "path-report-pytest": ccm_branch["path"]["dir"]["local"]["report"]["pytest"],
+            "path-report-coverage": ccm_branch["path"]["dir"]["local"]["report"]["coverage"],
+            "path-cache-pytest": ccm_branch["path"]["dir"]["local"]["cache"]["pytest"],
+            "path-cache-coverage": ccm_branch["path"]["dir"]["local"]["cache"]["coverage"],
+            "retry-sleep-seconds": retry_sleep_seconds,
+            "retry-sleep-seconds-total": retry_sleep_seconds_total,
+        }
+        out = []
+        for github_runner, os in zip(
+            ccm_branch["package"]["github_runners"],
+            ccm_branch["package"]["os_titles"]
+        ):
+            for python_version in ccm_branch["package"]["python_versions"]:
+                out.append(
+                    {
+                        **common,
+                        "runner": github_runner,
+                        "os": os,
+                        "python-version": python_version,
+                    }
+                )
+        return out
+
+
 class EventHandler:
 
     _MARKER_COMMIT_START = "<!-- Begin primary commit summary -->"
@@ -76,6 +387,7 @@ class EventHandler:
         self._context = context_manager
         self._path_repo_base = Path(path_repo_base)
         self._path_repo_head = Path(path_repo_head)
+        self._output = OutputWriter(context=self._context)
 
         # TODO: add error handling for when the metadata file doesn't exist or is corrupt
         self._ccm_main: controlman.ControlCenterContentManager | None = controlman.read_from_json_file(
@@ -88,6 +400,8 @@ class EventHandler:
         self._gh_api_admin = pylinks.api.github(token=admin_token).user(repo_user).repo(repo_name)
         self._gh_api = pylinks.api.github(token=self._context.token).user(repo_user).repo(repo_name)
         self._gh_link = pylinks.site.github.user(repo_user).repo(repo_name)
+        self._has_admin_token = bool(admin_token)
+        self._default_branch_name = self._context.event.repository.default_branch
 
         # TODO: Check again when gittidy is finalized; add section titles
         self._git_base = gittidy.Git(
@@ -113,72 +427,26 @@ class EventHandler:
 
         self._failed = False
         self._branch_name_memory_autoupdate: str | None = None
-        self._output_website: dict = {}
-        self._output_lint: dict = {}
-        self._output_test: list[dict] = []
-        self._output_build: dict = {}
-        self._output_publish_testpypi: dict = {}
-        self._output_test_testpypi: list[dict] = []
-        self._output_publish_pypi: dict = {}
-        self._output_test_pypi: list[dict] = []
-        self._output_finalize: dict = {}
         self._summary_oneliners: list[str] = []
         self._summary_sections: list[str | html.ElementCollection | html.Element] = []
         return
 
     def run(self) -> tuple[dict, str]:
         self._run_event()
-        output, summary = self._generate_output()
+        output = self._output.generate(failed=self._failed)
+        summary = self.assemble_summary()
         return output, summary
 
     def _run_event(self) -> None:
         ...
 
-    @logger.sectioner("Generate Outputs and Summary")
-    def _generate_output(self) -> tuple[dict, str]:
-        if self._failed:
-            # Just to be safe, disable publish/deploy/release jobs if fail is True
-            if self._output_website:
-                self._output_website["deploy"] = False
-            self._output_publish_testpypi = {}
-            self._output_test_testpypi = []
-            self._output_publish_pypi = {}
-            self._output_test_pypi = []
-            if self._output_finalize.get("release"):
-                self._output_finalize["release"] = False
-        output = {
-            "fail": self._failed,
-            "run": {
-                "website": bool(self._output_website),
-                "lint": bool(self._output_lint),
-                "test": bool(self._output_test),
-                "build": bool(self._output_build),
-                "publish-testpypi": bool(self._output_publish_testpypi),
-                "test-testpypi": bool(self._output_test_testpypi),
-                "publish-pypi": bool(self._output_publish_pypi),
-                "test-pypi": bool(self._output_test_pypi),
-                "finalize": bool(self._output_finalize),
-            },
-            "website": self._output_website,
-            "lint": self._output_lint,
-            "test": self._output_test,
-            "build": self._output_build,
-            "publish-testpypi": self._output_publish_testpypi,
-            "test-testpypi": self._output_test_testpypi,
-            "publish-pypi": self._output_publish_pypi,
-            "test-pypi": self._output_test_pypi,
-            "finalize": self._output_finalize,
-        }
-        summary = self.assemble_summary()
-        return output, summary
-
     @logger.sectioner("Configuration Management")
     def _action_meta(
         self,
         action: controlman.datatype.InitCheckAction,
-        meta: controlman.ControlCenterManager,
+        cc_manager: controlman.ControlCenterManager,
         base: bool,
-        branch: controlman.datatype.Branch
+        branch: controlman.datatype.Branch | None = None
     ) -> str | None:
         name = "Configuration Management"
         # if not action:
@@ -197,7 +465,7 @@ class EventHandler:
         git = self._git_base if base else self._git_head
         if action == controlman.datatype.InitCheckAction.PULL:
             pr_branch_name = self.switch_to_autoupdate_branch(typ="meta", git=git)
-        meta_results, meta_changes, meta_summary = meta.compare_files()
+        meta_results, meta_changes, meta_summary = cc_manager.compare_files()
         # logger.success("Meta synchronization completed.", {"result": meta_results})
         # logger.success("Meta synchronization summary:", meta_summary)
         # logger.success("Meta synchronization changes:", meta_changes)
@@ -207,7 +475,7 @@ class EventHandler:
         if action not in [
             controlman.datatype.InitCheckAction.FAIL, controlman.datatype.InitCheckAction.REPORT
         ] and meta_changes_any:
-            meta.apply_changes()
+            cc_manager.apply_changes()
             commit_msg = conventional_commits.message.create(
                 typ=self._ccm_main["commit"]["secondary_action"]["auto-update"]["type"],
                 description="Sync dynamic files",
@@ -266,8 +534,8 @@ class EventHandler:
     def _action_hooks(
         self,
         action: controlman.datatype.InitCheckAction,
-        branch: controlman.datatype.Branch,
         base: bool,
+        branch: controlman.datatype.Branch | None = None,
         ref_range: tuple[str, str] | None = None,
         internal: bool = False,
     ) -> str | None:
@@ -285,10 +553,10 @@ class EventHandler:
             )
             logger.info("Hooks are disabled for this event type; skip❗")
             return
-        config = self._ccm_main["workflow"]["pre_commit"].get(branch.type.value)
+        config = self._ccm_main["workflow"]["pre_commit"]
         if not config:
             if not internal:
-                oneliner = "Hooks are enabled but no pre-commit config set in 'meta.workflow.pre_commit'❗"
+                oneliner = "Hooks are enabled but no pre-commit config set in 'workflow.pre_commit'❗"
                 logger.error(oneliner)
                 self.add_summary(
                     name=name,
@@ -456,266 +724,7 @@ class EventHandler:
             self._summary_sections.append(f"<h2>{name}</h2>\n\n{details}\n\n")
         return
 
-    def _set_output(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        repository: str = "",
-        ref: str = "",
-        ref_before: str = "",
-        version: str = "",
-        release_name: str = "",
-        release_tag: str = "",
-        release_body: str = "",
-        release_prerelease: bool = False,
-        release_make_latest: Literal["legacy", "latest", "none"] = "legacy",
-        release_discussion_category_name: str = "",
-        website_build: bool = False,
-        website_deploy: bool = False,
-        package_lint: bool = False,
-        package_test: bool = False,
-        package_build: bool = False,
-        package_publish_testpypi: bool = False,
-        package_publish_pypi: bool = False,
-        package_release: bool = False,
-    ):
-        package_artifact_name = f"Package ({version})" if version else "Package"
-        if website_build or website_deploy:
-            self._set_output_website(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                deploy=website_deploy,
-            )
-        if package_lint and not (package_publish_testpypi or package_publish_pypi):
-            self._set_output_lint(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                ref_before=ref_before,
-            )
-        if package_test and not (package_publish_testpypi or package_publish_pypi):
-            self._set_output_package_test(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                version=version,
-            )
-        if package_build or package_publish_testpypi or package_publish_pypi:
-            self._set_output_package_build_and_publish(
-                ccm_branch=ccm_branch,
-                version=version,
-                repository=repository,
-                ref=ref,
-                publish_testpypi=package_publish_testpypi,
-                publish_pypi=package_publish_pypi,
-                artifact_name=package_artifact_name,
-            )
-        if package_release:
-            self._set_output_release(
-                name=release_name,
-                tag=release_tag,
-                body=release_body,
-                prerelease=release_prerelease,
-                make_latest=release_make_latest,
-                discussion_category_name=release_discussion_category_name,
-                package_artifact_name=package_artifact_name,
-            )
-        return
 
-    def _set_output_website(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        repository: str = "",
-        ref: str = "",
-        deploy: bool = False,
-    ):
-        self._output_website = {
-            "url": self._ccm_main["url"]["website"]["base"],
-            "repository": repository or self._context.target_repo_fullname,
-            "ref": ref or self._context.ref_name,
-            "deploy": deploy,
-            "path-website": ccm_branch["path"]["dir"]["website"],
-            "path-package": ".",
-            "artifact-name": "Documentation",
-        }
-        return
-
-    def _set_output_lint(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        repository: str = "",
-        ref: str = "",
-        ref_before: str = "",
-    ):
-        self._output_lint = {
-            "repository": repository or self._context.target_repo_fullname,
-            "ref": ref or self._context.ref_name,
-            "ref-before": ref_before or self._context.hash_before,
-            "os": [
-                {"name": name, "runner": runner} for name, runner in zip(
-                    ccm_branch["package"]["os_titles"],
-                    ccm_branch["package"]["github_runners"]
-                )
-            ],
-            "package-name": ccm_branch["package"]["name"],
-            "python-versions": ccm_branch["package"]["python_versions"],
-            "python-max-ver": ccm_branch["package"]["python_version_max"],
-            "path-source": ccm_branch["path"]["dir"]["source"],
-        }
-        return
-
-    def _set_output_package_test(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        repository: str = "",
-        ref: str = "",
-        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
-        version: str = "",
-        retry_sleep_seconds: str = "30",
-        retry_sleep_seconds_total: str = "900",
-    ):
-        self._output_test.extend(
-            self._create_output_package_test(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                source=source,
-                version=version,
-                retry_sleep_seconds=retry_sleep_seconds,
-                retry_sleep_seconds_total=retry_sleep_seconds_total,
-            )
-        )
-        return
-
-    def _set_output_package_build_and_publish(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        version: str,
-        repository: str = "",
-        ref: str = "",
-        ref_before: str = "",
-        publish_testpypi: bool = False,
-        publish_pypi: bool = False,
-        artifact_name: str = "Package"
-    ):
-        self._output_build = {
-            "repository": repository or self._context.target_repo_fullname,
-            "ref": ref or self._context.ref_name,
-            "artifact-name": artifact_name,
-            "pure-python": ccm_branch["package"]["pure_python"],
-            "cibw-matrix-platform": ccm_branch["package"]["cibw_matrix_platform"],
-            "cibw-matrix-python": ccm_branch["package"]["cibw_matrix_python"],
-            "path-readme": ccm_branch["path"]["file"]["readme_pypi"],
-        }
-        if publish_testpypi or publish_pypi:
-            self._set_output_lint(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                ref_before=ref_before,
-            )
-            self._output_test.extend(
-                self._create_output_package_test(
-                    ccm_branch=ccm_branch,
-                    repository=repository,
-                    ref=ref,
-                    source="GitHub",
-                )
-            )
-            self._output_publish_testpypi = {
-                "platform": "TestPyPI",
-                "upload-url": "https://test.pypi.org/legacy/",
-                "download-url": f'https://test.pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
-                "artifact-name": artifact_name,
-            }
-            self._output_test_testpypi = self._create_output_package_test(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                source="TestPyPI",
-                version=version,
-            )
-        if publish_pypi:
-            self._output_publish_pypi = {
-                "platform": "PyPI",
-                "upload-url": "https://upload.pypi.org/legacy/",
-                "download-url": f'https://pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
-                "artifact-name": artifact_name,
-            }
-            self._output_test_pypi = self._create_output_package_test(
-                ccm_branch=ccm_branch,
-                repository=repository,
-                ref=ref,
-                source="PyPI",
-                version=version,
-            )
-        return
-
-    def _set_output_release(
-        self,
-        name: str,
-        tag: str,
-        body: str | None = None,
-        prerelease: bool | None = None,
-        make_latest: Literal["legacy", "latest", "none"] | None = None,
-        discussion_category_name: str | None = None,
-        website_artifact_name: str = "Documentation",
-        package_artifact_name: str = "Package",
-    ):
-        self._output_finalize["release"] = {
-            "name": name,
-            "tag-name": tag,
-            "body": body,
-            "prerelease": prerelease,
-            "make-latest": make_latest,
-            "discussion_category_name": discussion_category_name,
-            "website-artifact-name": website_artifact_name,
-            "package-artifact-name": package_artifact_name
-        }
-        return
-
-    def _create_output_package_test(
-        self,
-        ccm_branch: controlman.ControlCenterContentManager,
-        repository: str = "",
-        ref: str = "",
-        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
-        version: str = "",
-        retry_sleep_seconds_total: str = "900",
-        retry_sleep_seconds: str = "30",
-    ) -> list[dict]:
-        common = {
-            "repository": repository or self._context.target_repo_fullname,
-            "ref": ref or self._context.ref_name,
-            "path-setup-testsuite": f'./{ccm_branch["path"]["dir"]["tests"]}',
-            "path-setup-package": ".",
-            "testsuite-import-name": ccm_branch["package"]["testsuite_import_name"],
-            "package-source": source,
-            "package-name": ccm_branch["package"]["name"],
-            "package-version": version,
-            "path-requirements-package": "requirements.txt",
-            "path-report-pytest": ccm_branch["path"]["dir"]["local"]["report"]["pytest"],
-            "path-report-coverage": ccm_branch["path"]["dir"]["local"]["report"]["coverage"],
-            "path-cache-pytest": ccm_branch["path"]["dir"]["local"]["cache"]["pytest"],
-            "path-cache-coverage": ccm_branch["path"]["dir"]["local"]["cache"]["coverage"],
-            "retry-sleep-seconds": retry_sleep_seconds,
-            "retry-sleep-seconds-total": retry_sleep_seconds_total,
-        }
-        out = []
-        for github_runner, os in zip(
-            ccm_branch["package"]["github_runners"],
-            ccm_branch["package"]["os_titles"]
-        ):
-            for python_version in ccm_branch["package"]["python_versions"]:
-                out.append(
-                    {
-                        **common,
-                        "runner": github_runner,
-                        "os": os,
-                        "python-version": python_version,
-                    }
-                )
-        return out
 
     def assemble_summary(self) -> str:
         github_context, event_payload = (
@@ -760,7 +769,7 @@ class EventHandler:
     def resolve_branch(self, branch_name: str | None = None) -> controlman.datatype.Branch:
         if not branch_name:
             branch_name = self._context.ref_name
-        if branch_name == self._context.event.repository.default_branch:
+        if branch_name == self._default_branch_name:
             return controlman.datatype.Branch(type=controlman.datatype.BranchType.MAIN, name=branch_name)
         return self._ccm_main.get_branch_info_from_name(branch_name=branch_name)
 
@@ -877,8 +886,33 @@ class EventHandler:
         )
         return change_group
 
-    def _config_repo(self):
-        data = self._ccm_main.repo__config | {
+    def config_repo(
+        self,
+        ccm_new: controlman.ControlCenterContentManager | None = None,
+        ccm_old: controlman.ControlCenterContentManager | None = None,
+        rulesets: Literal["create", "update", "ignore"] = "update",
+        reset_labels: bool = False,
+    ):
+        ccm_new = ccm_new or self._ccm_main
+        self._config_repo_settings(ccm=ccm_new)
+        self._config_repo_pages(ccm=ccm_new)
+        self._config_repo_branch_names(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
+        if reset_labels:
+            self._config_repo_labels_reset(ccs=ccm_new.content)
+        else:
+            self._config_repo_labels_update(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
+        if rulesets == "create":
+            self._config_repo_rulesets(ccs_new=ccm_new.content)
+        elif rulesets == "update":
+            self._config_repo_rulesets(ccs_new=ccm_new.content, ccs_old=ccm_old.content)
+        return
+
+    def _config_repo_settings(self, ccm: controlman.ControlCenterContentManager):
+        # if not self._gh_api_admin.actions_permissions_workflow_default()["can_approve_pull_request_reviews"]:
+        self._gh_api_admin.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
+        # if ccm_old and ccm_old.repo__config == ccm.repo__config:
+        #     return
+        data = ccm.repo__config | {
             "has_issues": True,
             "allow_squash_merge": True,
             "squash_merge_commit_title": "PR_TITLE",
@@ -887,31 +921,30 @@ class EventHandler:
         topics = data.pop("topics")
         self._gh_api_admin.repo_update(**data)
         self._gh_api_admin.repo_topics_replace(topics=topics)
-        if not self._gh_api_admin.actions_permissions_workflow_default()["can_approve_pull_request_reviews"]:
-            self._gh_api_admin.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
         return
 
-    def _config_repo_pages(self) -> None:
+    def _config_repo_pages(self, ccm: controlman.ControlCenterContentManager) -> None:
         """Activate GitHub Pages (source: workflow) if not activated, update custom domain."""
         if not self._gh_api.info["has_pages"]:
             self._gh_api_admin.pages_create(build_type="workflow")
-        cname = self._ccm_main.web__base_url
+        # if ccm_old and ccm_old.web__base_url == ccm_new.web__base_url:
+        #     return
+        cname = ccm.web__base_url
         try:
             self._gh_api_admin.pages_update(
                 cname=cname.removeprefix("https://").removeprefix("http://") if cname else "",
                 build_type="workflow",
             )
         except WebAPIError as e:
-            logger.warning(f"Failed to update custom domain for GitHub Pages", str(e))
+            logger.notice(f"Failed to update custom domain for GitHub Pages", str(e))
         if cname:
             try:
                 self._gh_api_admin.pages_update(https_enforced=cname.startswith("https://"))
             except WebAPIError as e:
-                logger.warning(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
+                logger.notice(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
         return
 
     def _config_repo_labels_reset(self, ccs: controlman.content.ControlCenterContent | None = None):
-        ccs = ccs or self._ccm_main.content
         for label in self._gh_api.labels:
             self._gh_api.label_delete(label["name"])
         for label in ccs.dev.label.full_labels:
@@ -919,7 +952,11 @@ class EventHandler:
         return
 
     @logger.sectioner("Repository Labels Synchronizer")
-    def _config_repo_labels_update(self, ccs_new: controlman.content.ControlCenterContent, ccs_old: controlman.content.ControlCenterContent):
+    def _config_repo_labels_update(
+        self,
+        ccs_new: controlman.content.ControlCenterContent,
+        ccs_old: controlman.content.ControlCenterContent,
+    ):
 
         def format_labels(
             labels: tuple[controlman.content.dev.label.FullLabel]
@@ -998,14 +1035,16 @@ class EventHandler:
         return
 
     def _config_repo_branch_names(
-        self, ccs_new: controlman.content.ControlCenterContent, ccs_old: controlman.content.ControlCenterContent
+        self,
+        ccs_new: controlman.content.ControlCenterContent,
+        ccs_old: controlman.content.ControlCenterContent,
     ) -> dict:
         old = ccs_old.dev.branch
         new = ccs_new.dev.branch
         old_to_new_map = {}
-        if old.main.name != new.main.name:
-            self._gh_api_admin.branch_rename(old_name=old.main.name, new_name=new.main.name)
-            old_to_new_map[old.main.name] = new.main.name
+        if new.main.name != self._default_branch_name:
+            self._gh_api_admin.branch_rename(old_name=self._default_branch_name, new_name=new.main.name)
+            old_to_new_map[self._default_branch_name] = new.main.name
         branches = self._gh_api.branches
         branch_names = [branch["name"] for branch in branches]
         old_groups = old.groups
@@ -1021,7 +1060,7 @@ class EventHandler:
                         old_to_new_map[branch_name] = new_name
         return old_to_new_map
 
-    def _config_rulesets(
+    def _config_repo_rulesets(
         self,
         ccs_new: controlman.content.ControlCenterContent,
         ccs_old: controlman.content.ControlCenterContent | None = None
@@ -1114,6 +1153,58 @@ class EventHandler:
                     ruleset=group_data.ruleset,
                 )
         return
+
+    def run_sync_fix(
+        self,
+        action: controlman.datatype.InitCheckAction,
+        branch: controlman.datatype.Branch | None = None,
+        testpypi_publishable: bool = False,
+        version: str | None = None
+    ) -> tuple[dict[str, bool], controlman.ControlCenterContentManager, str]:
+
+        def decide_jobs():
+            package_setup_files_changed = any(
+                filepath in changed_file_groups[RepoFileType.DYNAMIC]
+                for filepath in (
+                    controlman.path.FILE_PYTHON_PYPROJECT,
+                    controlman.path.FILE_PYTHON_MANIFEST,
+                )
+            )
+            package_files_changed = bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed
+            out = {
+                "website_build": (
+                    bool(changed_file_groups[RepoFileType.WEBSITE])
+                    or bool(changed_file_groups[RepoFileType.PACKAGE])
+                ),
+                "package_test": bool(changed_file_groups[RepoFileType.TEST]) or package_files_changed,
+                "package_build": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
+                "package_lint": bool(changed_file_groups[RepoFileType.PACKAGE]) or package_setup_files_changed,
+                "package_publish_testpypi": package_files_changed and testpypi_publishable,
+            }
+            return out
+
+        if (version or action is InitCheckAction.PULL) and not branch:
+            raise RuntimeError("branch must be provided when action is 'pull' or version is provided.")
+        # branch = branch or self.resolve_branch(self._context.head_ref)
+        cc_manager = self.get_cc_manager(future_versions={branch.name: version} if version else None)
+        changed_file_groups = self._action_file_change_detector(control_center_manager=cc_manager)
+        hash_hooks = self._action_hooks(
+            action=action,
+            branch=branch,
+            base=False,
+            ref_range=(self._context.hash_before, self._context.hash_after),
+        ) if self._ccm_main["workflow"].get("pre_commit") else None
+        for file_type in (RepoFileType.SUPERMETA, RepoFileType.META, RepoFileType.DYNAMIC):
+            if changed_file_groups[file_type]:
+                hash_meta = self._action_meta(action=action, cc_manager=cc_manager, base=False, branch=branch)
+                ccm_branch = cc_manager.generate_data()
+                break
+        else:
+            hash_meta = None
+            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+        latest_hash = self._git_head.push() if hash_hooks or hash_meta else self._context.hash_after
+        job_runs = decide_jobs()
+        return job_runs, ccm_branch, latest_hash
 
     def _add_readthedocs_reference_to_pr(
         self,
@@ -1296,6 +1387,19 @@ class EventHandler:
             f.write(announcement)
         return
 
+    def get_cc_manager(
+        self,
+        base: bool = False,
+        ref_ccm: controlman.ControlCenterContentManager | None = None,
+        future_versions: dict[str, str | versionman.PEP440SemVer] | None = None
+    ) -> controlman.ControlCenterManager:
+        return controlman.initialize_manager(
+            git_manager=self._git_base if base else self._git_head,
+            github_token=self._context.token,
+            content_manager=ref_ccm or self._ccm_main,
+            future_versions=future_versions,
+        )
+
     @staticmethod
     def _get_next_version(
         version: versionman.PEP440SemVer,
@@ -1317,8 +1421,7 @@ class EventHandler:
 
     @staticmethod
     def _write_tasklist(entries: list[dict[str, bool | str | list]]) -> str:
-        """
-        Write an implementation tasklist as Markdown string.
+        """Write an implementation tasklist as Markdown string.
 
         Parameters
         ----------
