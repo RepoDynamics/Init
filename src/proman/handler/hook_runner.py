@@ -192,6 +192,7 @@ class PreCommitHooks:
             for prefix in ("An error has occurred", "An unexpected error has occurred", "[ERROR]"):
                 if line.startswith(prefix):
                     self.remove_temp_config_file()
+                    print(out_plain)
                     raise _exception.ProManException(f"{error_intro}{line}")
         return out_plain
 
