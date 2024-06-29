@@ -101,7 +101,7 @@ class PushEventHandler(EventHandler):
         return self._run_branch_edited_main_normal()
 
     def _run_repository_created(self):
-        logger.info("Event", "repository creation")
+        self.set_event_description("Repository creation")
         cc_manager = self.get_cc_manager(
             future_versions={self._context.event.repository.default_branch: "0.0.0"}
         )
@@ -140,7 +140,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
-        logger.info("Event", "repository initialization phase")
+        self.set_event_description("Repository initialization phase")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(
             action=controlman.datatype.InitCheckAction.COMMIT,
             branch=controlman.datatype.Branch(
@@ -162,7 +162,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_existing_nonmain(self):
-        logger.info("Event", "branch initialization phase")
+        self.set_event_description("Branch initialization phase")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         self._ccm_main = ccm_branch
         self._output.set(
@@ -175,7 +175,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_existing_main(self):
-        logger.info("Event", "repository initialization (existing repo)")
+        self.set_event_description("Repository initialization (existing repo)")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         self._ccm_main = ccm_branch
         self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main, rulesets="create")
@@ -213,7 +213,7 @@ class PushEventHandler(EventHandler):
                     logger.critical(f"Invalid version string in commit footer: {version_input}")
             return "0.0.0"
 
-        logger.info("Event", "repository initialization (new repo)")
+        self.set_event_description("Repository initialization (new repo)")
         commit_msg = parse_commit_msg()
         version = parse_version()
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(
@@ -253,7 +253,7 @@ class PushEventHandler(EventHandler):
     def _run_branch_edited_fork(self):
         # if (self._path_repo_base / "FORK_TEST_MODE").is_file():
         #     return
-        logger.info("Event", "CI on fork")
+        self.set_event_description("CI on fork")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         website_deploy = False
         if self._has_admin_token:
@@ -278,6 +278,6 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_main_normal(self):
-        logger.info("Event", "repository configuration synchronization")
+        self.set_event_description("Repository configuration synchronization")
         self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before)
         return

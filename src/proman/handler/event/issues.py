@@ -4,6 +4,7 @@ import datetime
 import github_contexts
 from loggerman import logger
 import controlman
+from controlman.datatype import IssueStatus
 
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
@@ -11,7 +12,7 @@ from proman.handler.main import EventHandler
 
 class IssuesEventHandler(EventHandler):
 
-    @logger.sectioner("Initialize Event Handler")
+    @logger.sectioner("Initialize Issue Event Handler")
     def __init__(
         self,
         template_type: TemplateType,
@@ -33,90 +34,55 @@ class IssuesEventHandler(EventHandler):
         self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
         return
 
-    @logger.sectioner("Execute Event Handler", group=False)
+    @logger.sectioner("Execute Issue Handler", group=False)
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)
         if action == github_contexts.github.enums.ActionType.OPENED:
-            self._run_opened()
-        elif action == github_contexts.github.enums.ActionType.LABELED:
-            self._run_labeled()
-        else:
-            self.error_unsupported_triggering_action()
-        return
-
-    def _run_opened(self):
-        issue_body = self._post_process_issue()
-        dev_protocol = self._create_dev_protocol(issue_body)
-        self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
-        return
-
-    def _run_labeled(self):
-        label = self._ccm_main.resolve_label(self._payload.label.name)
-        if label.category is controlman.datatype.LabelType.STATUS:
+            return self._run_opened()
+        if action == github_contexts.github.enums.ActionType.LABELED:
+            label = self._ccm_main.resolve_label(self._payload.label.name)
+            if label.category is not controlman.datatype.LabelType.STATUS:
+                return
             self._label_groups = self._ccm_main.resolve_labels(self._issue.label_names)
             self._update_issue_status_labels(
                 issue_nr=self._issue.number,
                 labels=self._label_groups[controlman.datatype.LabelType.STATUS],
                 current_label=label,
             )
-            self._run_labeled_status(label.type)
+            return self._run_labeled_status(label.type)
+        self.error_unsupported_triggering_action()
+        return
+
+    def _run_opened(self):
+        self.set_event_description(f"Issue #{self._issue.number} opened")
+        issue_body = self.process_issue()
+        dev_protocol = self._create_dev_protocol(issue_body)
+        self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
         return
 
     def _run_labeled_status(self, status: controlman.datatype.IssueStatus):
-        if status is controlman.datatype.IssueStatus.REJECTED:
-            self._run_labeled_status_rejected()
-        elif status is controlman.datatype.IssueStatus.DUPLICATE:
-            self._run_labeled_status_duplicate()
-        elif status is controlman.datatype.IssueStatus.INVALID:
-            self._run_labeled_status_invalid()
-        elif status is controlman.datatype.IssueStatus.PLANNING:
-            self._run_labeled_status_planning()
-        elif status is controlman.datatype.IssueStatus.REQUIREMENT_ANALYSIS:
-            self._run_labeled_status_requirement_analysis()
-        elif status is controlman.datatype.IssueStatus.DESIGN:
-            self._run_labeled_status_design()
-        elif status is controlman.datatype.IssueStatus.IMPLEMENTATION:
-            self._run_labeled_status_implementation()
-        return
-
-    def _run_labeled_status_rejected(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue was rejected and closed (actor: @{self._payload.sender.login})."
+        self.set_event_description(
+            f"Issue #{self._issue.number} status changed to <code>{status.value}</code>"
         )
-        self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
-        return
-
-    def _run_labeled_status_duplicate(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue was marked as a duplicate and closed (actor: @{self._payload.sender.login})."
-        )
-        self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
-        return
-
-    def _run_labeled_status_invalid(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue was marked as invalid and closed (actor: @{self._payload.sender.login})."
-        )
-        self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
-        return
-
-    def _run_labeled_status_planning(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue entered the planning phase (actor: @{self._payload.sender.login})."
-        )
-        return
-
-    def _run_labeled_status_requirement_analysis(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue entered the requirement analysis phase (actor: @{self._payload.sender.login})."
-        )
-        return
-
-    def _run_labeled_status_design(self):
-        self._add_to_issue_timeline(
-            entry=f"The issue entered the design phase (actor: @{self._payload.sender.login})."
-        )
+        if status in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
+            description = {
+                IssueStatus.REJECTED: "rejected",
+                IssueStatus.DUPLICATE: "marked as duplicate",
+                IssueStatus.INVALID: "marked as invalid",
+            }
+            self._add_to_issue_timeline(
+                entry=f"The issue was {description[status]} and closed (actor: @{self._payload.sender.login})."
+            )
+            self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
+            return
+        if status in [IssueStatus.PLANNING, IssueStatus.REQUIREMENT_ANALYSIS, IssueStatus.DESIGN]:
+            self._add_to_issue_timeline(
+                entry=f"The issue entered the <code>{status.value}</code> phase (actor: @{self._payload.sender.login})."
+            )
+            return
+        if status is controlman.datatype.IssueStatus.IMPLEMENTATION:
+            return self._run_labeled_status_implementation()
         return
 
     def _run_labeled_status_implementation(self):
@@ -204,8 +170,8 @@ class IssuesEventHandler(EventHandler):
         comment = comments[0]
         return comment
 
-    @logger.sectioner("Post-Process Issue")
-    def _post_process_issue(self) -> str:
+    @logger.sectioner("Process Issue")
+    def process_issue(self) -> str:
         logger.info(code_title="Issue labels", code=self._issue.label_names)
         issue_form = self._ccm_main.get_issue_data_from_labels(self._issue.label_names).form
         logger.debug(code_title="Issue form", code=issue_form)

@@ -98,6 +98,7 @@ class EventHandler:
         self._branch_name_memory_autoupdate: str | None = None
         self._summary_oneliners: list[str] = []
         self._summary_sections: list[str | html.ElementCollection | html.Element] = []
+        self._summary_event_description: str = ""
         return
 
     def run(self) -> tuple[dict, str]:
@@ -682,22 +683,12 @@ class EventHandler:
             )
         )
         intro = [
-            f"{Emoji.PLAY} The workflow was triggered by a <code>{self._context.event_name}</code> event."
+            f"<b>Status</b>: {Emoji.FAIL if self._failed else Emoji.PASS}",
+            f"<b>Event</b>: {self._summary_event_description}",
+            f"<b>Summary</b>: {html.ul(self._summary_oneliners)}"
+            f"<b>Data</b>: {html.ul([github_context, event_payload])}",
         ]
-        if self._failed:
-            intro.append(f"{Emoji.FAIL} The workflow failed.")
-        else:
-            intro.append(f"{Emoji.PASS} The workflow passed.")
-        intro = html.ul(intro)
-        summary = html.ElementCollection(
-            [
-                html.h(1, "Workflow Report"),
-                intro,
-                html.ul([github_context, event_payload]),
-                html.h(2, "🏁 Summary"),
-                html.ul(self._summary_oneliners),
-            ]
-        )
+        summary = html.ElementCollection([html.h(1, "Workflow Report"), html.ul(intro)])
         logs = html.ElementCollection(
             [
                 html.h(2, "🪵 Logs"),
@@ -766,6 +757,11 @@ class EventHandler:
         if update:
             self._gh_api.pull_update(number=pull_nr, body=new_body)
         return new_body
+
+    def set_event_description(self, description: str) -> None:
+        self._summary_event_description = description
+        logger.info("Event", description)
+        return
 
     def create_branch_name_release(self, major_version: int) -> str:
         """Generate the name of the release branch for a given major version."""
