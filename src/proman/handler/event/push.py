@@ -43,29 +43,36 @@ class PushEventHandler(EventHandler):
         self._ccm_main_before: controlman.ControlCenterContentManager | None = None
         return
 
-    @logger.sectioner("Execute Event Handler", group=False)
+    @logger.sectioner("Execute Push Handler", group=False)
     def _run_event(self):
         if self._context.ref_type is not RefType.BRANCH:
             logger.notice(
-                f"Non-branch reference type for 'push' event.",
+                "Workflow skipped",
                 "The workflow was triggered by a 'push' event, "
-                f"but the reference type was '{self._context.ref_type}'.",
+                f"but the reference '{self._context.ref}' (type: {self._context.ref_type}) is not a branch.",
             )
             return
         action = self._payload.action
+        logger.info("Push Action Type", action.value)
         if action not in (ActionType.CREATED, ActionType.EDITED):
-            logger.notice(f"Unsupported action '{action.value}' for 'push' event to branch.")
+            logger.notice(
+                "Workflow skipped",
+                f"Unsupported action '{action.value}' for 'push' event to branch."
+            )
             return
         is_main = self._context.ref_is_main
+        logger.info("On Default Branch", is_main)
         has_tags = bool(self._git_head.get_tags())
+        logger.info("Branch Has Tags", has_tags)
         if action is ActionType.CREATED:
             if not is_main:
-                logger.notice("Creation of non-default branch detected; skipping.")
+                logger.notice("Workflow skipped", "Non-default branch created.")
                 return
             if not has_tags:
                 return self._run_repository_created()
             logger.notice(
-                "Creation of default branch detected while a version tag is present; skipping.",
+                "Workflow skipped",
+                "Default branch created while a version tag is present. "
                 "This is likely a result of renaming the default branch.",
             )
             return
@@ -74,7 +81,7 @@ class PushEventHandler(EventHandler):
             return self._run_branch_edited_fork()
         if not is_main:
             if self._ccm_main:
-                logger.notice("Canceled Workflow", "Push to non-main branch.")
+                logger.notice("Workflow skipped", "Push to non-default branch.")
                 return
             return self._run_init_existing_nonmain()
         # Main branch edited
@@ -94,7 +101,7 @@ class PushEventHandler(EventHandler):
         return self._run_branch_edited_main_normal()
 
     def _run_repository_created(self):
-        logger.info("Detected event", "repository creation")
+        logger.info("Event", "repository creation")
         cc_manager = self.get_cc_manager(
             future_versions={self._context.event.repository.default_branch: "0.0.0"}
         )
@@ -133,6 +140,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
+        logger.info("Event", "repository initialization phase")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(
             action=controlman.datatype.InitCheckAction.COMMIT,
             branch=controlman.datatype.Branch(
@@ -154,6 +162,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_existing_nonmain(self):
+        logger.info("Event", "branch initialization phase")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         self._ccm_main = ccm_branch
         self._output.set(
@@ -166,6 +175,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_existing_main(self):
+        logger.info("Event", "repository initialization (existing repo)")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         self._ccm_main = ccm_branch
         self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main, rulesets="create")
@@ -203,6 +213,7 @@ class PushEventHandler(EventHandler):
                     logger.critical(f"Invalid version string in commit footer: {version_input}")
             return "0.0.0"
 
+        logger.info("Event", "repository initialization (new repo)")
         commit_msg = parse_commit_msg()
         version = parse_version()
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(
@@ -242,6 +253,7 @@ class PushEventHandler(EventHandler):
     def _run_branch_edited_fork(self):
         # if (self._path_repo_base / "FORK_TEST_MODE").is_file():
         #     return
+        logger.info("Event", "CI on fork")
         job_runs, ccm_branch, latest_hash = self.run_sync_fix(action=controlman.datatype.InitCheckAction.COMMIT)
         website_deploy = False
         if self._has_admin_token:
@@ -266,5 +278,6 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_main_normal(self):
+        logger.info("Event", "repository configuration synchronization")
         self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before)
         return
