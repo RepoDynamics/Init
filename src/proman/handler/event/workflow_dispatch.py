@@ -19,7 +19,8 @@ class ConfigLintAction(Enum):
     DISABLE = "disable"
     REPORT = "report"
     PULL = "pull"
-    MERGE = "merge"
+    MERGE = "pull & merge"
+    COMMIT = "commit"
 
 
 class WorkflowDispatchInput(Enum):
@@ -29,6 +30,7 @@ class WorkflowDispatchInput(Enum):
     TEST = "test"
     WEBSITE = "website"
     RELEASE = "release"
+
 
 _WORKFLOW_DISPATCH_INPUT_TYPE = {
     WorkflowDispatchInput.CONFIG: ConfigLintAction,
