@@ -19,14 +19,13 @@ from controlman.datatype import (
     RepoFileType, BranchType, InitCheckAction, Branch, Emoji, FileChangeType,
     Commit, NonConventionalCommit, Label, PrimaryActionCommitType
 )
-
 import gittidy
 import versionman
-import fixman
 
 from proman.datatype import TemplateType
 from proman.handler.output_writer import OutputWriter
 from proman.handler.repo_config import RepoConfig
+from proman.handler import hook_runner
 
 
 class EventHandler:
@@ -400,7 +399,7 @@ class EventHandler:
         git = self._git_base if base else self._git_head
         if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
-        hooks_output = fixman.hook.run(
+        hooks_output = hook_runner.run(
             git=git,
             ref_range=ref_range,
             action=input_action.value,
