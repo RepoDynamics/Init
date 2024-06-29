@@ -123,7 +123,7 @@ class PushEventHandler(EventHandler):
             base=False,
         )
         ccm = cc_manager.generate_data()
-        self._repo_config.reset_labels(css=ccm.content)
+        self._repo_config.reset_labels(ccs=ccm.content)
         self.add_summary(
             name="Init",
             status="pass",
