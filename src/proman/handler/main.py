@@ -685,7 +685,7 @@ class EventHandler:
         intro = [
             f"<b>Status</b>: {Emoji.FAIL if self._failed else Emoji.PASS}",
             f"<b>Event</b>: {self._summary_event_description}",
-            f"<b>Summary</b>: {html.ul(self._summary_oneliners)}"
+            f"<b>Summary</b>: {html.ul(self._summary_oneliners)}",
             f"<b>Data</b>: {html.ul([github_context, event_payload])}",
         ]
         summary = html.ElementCollection([html.h(1, "Workflow Report"), html.ul(intro)])
