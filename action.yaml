@@ -232,5 +232,5 @@ runs:
     - name: 'Artifact Upload'
       uses: actions/upload-artifact@v3
       with:
-        path: proman-artifacts
+        path: proman_artifacts
         name: Workflow Results

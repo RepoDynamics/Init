@@ -705,7 +705,7 @@ class EventHandler:
             ]
         )
         summaries = html.ElementCollection(self._summary_sections)
-        path = Path("./repodynamics")
+        path = Path("./proman_artifacts")
         path.mkdir(exist_ok=True)
         with open(path / "log.html", "w") as f:
             f.write(str(logs))
