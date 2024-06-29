@@ -23,9 +23,22 @@ from controlman.datatype import (
 from proman.datatype import TemplateType
 from proman.handler.main import EventHandler
 from proman.changelog_manager import ChangelogManager
+from proman.handler.event.pull_request_target import PullRequestTargetEventHandler
 
 
-class PullRequestEventHandler(EventHandler):
+class PullRequestEventHandler(PullRequestTargetEventHandler):
+
+    _INTERNAL_HEAD_TO_BASE_MAP = {
+        BranchType.PRERELEASE: (BranchType.MAIN, BranchType.RELEASE),
+        BranchType.DEV: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
+        BranchType.AUTOUPDATE: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
+    }
+    _EXTERNAL_HEAD_TO_BASE_MAP = {
+        BranchType.DEV: (BranchType.DEV,),
+        BranchType.PRERELEASE: (BranchType.PRERELEASE,),
+        BranchType.RELEASE: (BranchType.RELEASE,),
+        BranchType.MAIN: (BranchType.MAIN,),
+    }
 
     @logger.sectioner("Initialize Event Handler")
     def __init__(
@@ -43,22 +56,7 @@ class PullRequestEventHandler(EventHandler):
             path_repo_base=path_repo_base,
             path_repo_head=path_repo_head,
         )
-        self._payload: github_contexts.github.payloads.PullRequestPayload = self._context.event
-        self._pull = self._payload.pull_request
-        self._branch_base = self.resolve_branch(self._context.base_ref)
-        logger.info(
-            "Resolve base branch",
-            self._branch_base.type.value,
-            code_title="Branch details",
-            code=self._branch_base,
-        )
-        self._branch_head = self.resolve_branch(self._context.head_ref)
-        logger.info(
-            "Resolve head branch",
-            self._branch_head.type.value,
-            code_title="Branch details",
-            code=self._branch_head,
-        )
+
         self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
         self._git_base.checkout(branch=self._context.base_ref)
         self._primary_commit_type: (
@@ -99,7 +97,7 @@ class PullRequestEventHandler(EventHandler):
             action=InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL,
             branch=self._branch_head,
             testpypi_publishable=(
-                self._branch_head.type is BranchType.IMPLEMENT
+                self._branch_head.type is BranchType.DEV
                 and self._payload.internal
                 and self._primary_type_is_package_publish(commit_type=final_commit_type)
             ),
@@ -161,8 +159,6 @@ class PullRequestEventHandler(EventHandler):
         if self._branch_head.type is BranchType.AUTOUPDATE:
             return self._run_merge_autoupdate()
         elif self._branch_head.type is BranchType.DEV:
-            return self._run_merge_development_to_implementation()
-        elif self._branch_head.type is BranchType.IMPLEMENT:
             if self._payload.internal:
                 if self._branch_base.type in (BranchType.RELEASE, BranchType.MAIN):
                     return self._run_merge_implementation_to_release()
@@ -175,7 +171,7 @@ class PullRequestEventHandler(EventHandler):
                         f"to a branch of type '{self._branch_base.type.value}' is not allowed.",
                     )
             else:
-                if self._branch_base.type is BranchType.IMPLEMENT:
+                if self._branch_base.type is BranchType.DEV:
                     return self._run_merge_fork_to_implementation()
                 else:
                     logger.error(
@@ -635,17 +631,9 @@ class PullRequestEventHandler(EventHandler):
         return int(issue_nr)
 
     def _head_to_base_allowed(self) -> bool:
-        internal_head_to_base_map = {
-            BranchType.PRERELEASE: (BranchType.MAIN, BranchType.RELEASE),
-            BranchType.IMPLEMENT: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
-            BranchType.DEV: (BranchType.IMPLEMENT,),
-            BranchType.AUTOUPDATE: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
-        }
-        external_head_to_base_map = {
-            BranchType.IMPLEMENT: (BranchType.IMPLEMENT,),
-            BranchType.DEV: (BranchType.DEV,),
-        }
-        mapping = internal_head_to_base_map if self._payload.internal else external_head_to_base_map
+        mapping = (
+            self._INTERNAL_HEAD_TO_BASE_MAP if self._payload.internal else self._EXTERNAL_HEAD_TO_BASE_MAP
+        )
         allowed_base_types = mapping.get(self._branch_head.type)
         if not allowed_base_types:
             self._error_unsupported_head()
