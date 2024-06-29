@@ -122,6 +122,7 @@ class PushEventHandler(EventHandler):
             cc_manager=cc_manager,
             base=False,
         )
+        self._git_head.push()
         ccm = cc_manager.generate_data()
         self._repo_config.reset_labels(ccs=ccm.content)
         self.add_summary(
