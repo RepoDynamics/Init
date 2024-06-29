@@ -227,7 +227,7 @@ class PushEventHandler(EventHandler):
                 target="origin", ref=self._context.ref_name, force_with_lease=True
             )
         self._tag_version(ver=version, msg=f"Release version {version}", base=False)
-        self._repo_config(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, rulesets="create")
+        self._repo_config.update_all(ccm_new=self._ccm_main, ccm_old=self._ccm_main_before, rulesets="create")
         self._output.set(
             ccm_branch=self._ccm_main,
             ref=latest_hash,
