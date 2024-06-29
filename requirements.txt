@@ -1,3 +1,4 @@
+pre-commit == 3.3.3
 ActionMan
 ControlMan
 ConventionalCommits
@@ -11,3 +12,4 @@ GitTidy
 FixMan
 PkgData
 PyShellMan
+pyserials
