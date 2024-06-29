@@ -21,6 +21,7 @@ class RepoConfig:
         self._default_branch_name = default_branch_name
         return
 
+    @logger.sectioner("Update Repository Configurations")
     def update_all(
         self,
         ccm_new: ControlCenterContentManager,
@@ -37,6 +38,7 @@ class RepoConfig:
             )
         return
 
+    @logger.sectioner("Update Repository Settings")
     def update_settings(self, ccm: ControlCenterContentManager):
         """Update repository settings.
 
@@ -45,8 +47,6 @@ class RepoConfig:
         - The GitHub API Token must have write access to 'Administration' scope.
         """
         self._gh_api.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
-        # if ccm_old and ccm_old.repo__config == ccm.repo__config:
-        #     return
         data = ccm.repo__config | {
             "has_issues": True,
             "allow_squash_merge": True,
@@ -58,6 +58,7 @@ class RepoConfig:
         self._gh_api.repo_topics_replace(topics=topics)
         return
 
+    @logger.sectioner("Activate GitHub Pages")
     def activate_gh_pages(self):
         """Activate GitHub Pages for the repository if not activated.
 
@@ -69,6 +70,7 @@ class RepoConfig:
             self._gh_api.pages_create(build_type="workflow")
         return
 
+    @logger.sectioner("Update GitHub Pages Settings")
     def update_gh_pages(self, ccm: ControlCenterContentManager) -> None:
         """Activate GitHub Pages if not activated, and update custom domain.
 
@@ -92,6 +94,7 @@ class RepoConfig:
                 logger.notice(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
         return
 
+    @logger.sectioner("Reset Repository Labels")
     def reset_labels(self, ccs: ControlCenterContent | None = None):
         for label in self._gh_api.labels:
             self._gh_api.label_delete(label["name"])
@@ -99,7 +102,7 @@ class RepoConfig:
             self._gh_api.label_create(name=label.name, description=label.description, color=label.color)
         return
 
-    @logger.sectioner("Repository Labels Synchronizer")
+    @logger.sectioner("Update Repository Labels")
     def update_labels(
         self,
         ccs_new: ControlCenterContent,
@@ -187,6 +190,7 @@ class RepoConfig:
                     )
         return
 
+    @logger.sectioner("Update Repository Branch Names")
     def update_branch_names(
         self,
         ccs_new: ControlCenterContent,
@@ -219,6 +223,7 @@ class RepoConfig:
                         old_to_new_map[branch_name] = new_name
         return old_to_new_map
 
+    @logger.sectioner("Update Repository Rulesets")
     def update_rulesets(
         self,
         ccs_new: ControlCenterContent,
