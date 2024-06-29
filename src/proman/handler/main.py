@@ -67,8 +67,10 @@ class EventHandler:
         self._gh_api = pylinks.api.github(token=self._context.token).user(repo_user).repo(repo_name)
         self._gh_link = pylinks.site.github.user(repo_user).repo(repo_name)
         self._has_admin_token = bool(admin_token)
-        self._default_branch_name = self._context.event.repository.default_branch
-        self._repo_config = RepoConfig(gh_api=self._gh_api_admin if self._has_admin_token else self._gh_api)
+        self._repo_config = RepoConfig(
+            gh_api=self._gh_api_admin if self._has_admin_token else self._gh_api,
+            default_branch_name=self._context.event.repository.default_branch
+        )
 
         # TODO: Check again when gittidy is finalized; add section titles
         self._git_base = gittidy.Git(
@@ -572,7 +574,7 @@ class EventHandler:
     def resolve_branch(self, branch_name: str | None = None) -> Branch:
         if not branch_name:
             branch_name = self._context.ref_name
-        if branch_name == self._default_branch_name:
+        if branch_name == self._context.event.repository.default_branch:
             return Branch(type=BranchType.MAIN, name=branch_name)
         return self._ccm_main.get_branch_info_from_name(branch_name=branch_name)
 

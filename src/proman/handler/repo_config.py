@@ -16,8 +16,9 @@ from controlman.content.dev.branch import (
 
 class RepoConfig:
 
-    def __init__(self, gh_api: GitHubRepoAPI):
+    def __init__(self, gh_api: GitHubRepoAPI, default_branch_name: str):
         self._gh_api = gh_api
+        self._default_branch_name = default_branch_name
         return
 
     def update_all(
@@ -191,11 +192,17 @@ class RepoConfig:
         ccs_new: ControlCenterContent,
         ccs_old: ControlCenterContent,
     ) -> dict:
+        """Update all branch names.
+
+        Notes
+        -----
+        - The GitHub API Token must have write access to 'Administration' scope.
+        """
         old = ccs_old.dev.branch
         new = ccs_new.dev.branch
         old_to_new_map = {}
         if new.main.name != self._default_branch_name:
-            self._gh_api_admin.branch_rename(old_name=self._default_branch_name, new_name=new.main.name)
+            self._gh_api.branch_rename(old_name=self._default_branch_name, new_name=new.main.name)
             old_to_new_map[self._default_branch_name] = new.main.name
         branches = self._gh_api.branches
         branch_names = [branch["name"] for branch in branches]
@@ -208,7 +215,7 @@ class RepoConfig:
                 for branch_name in branch_names:
                     if branch_name.startswith(prefix_old):
                         new_name = f"{prefix_new}{branch_name.removeprefix(prefix_old)}"
-                        self._gh_api_admin.branch_rename(old_name=branch_name, new_name=new_name)
+                        self._gh_api.branch_rename(old_name=branch_name, new_name=new_name)
                         old_to_new_map[branch_name] = new_name
         return old_to_new_map
 
@@ -273,19 +280,19 @@ class RepoConfig:
                 'non_fast_forward': ruleset.rule.protect_force_push,
             }
             if not ccs_old:
-                self._gh_api_admin.ruleset_create(**args)
+                self._gh_api.ruleset_create(**args)
                 return
             for existing_ruleset in existing_rulesets:
                 if existing_ruleset['name'] == name:
                     args["ruleset_id"] = existing_ruleset["id"]
                     args["require_status_checks"] = ruleset.rule.require_status_checks
-                    self._gh_api_admin.ruleset_update(**args)
+                    self._gh_api.ruleset_update(**args)
                     return
-            self._gh_api_admin.ruleset_create(**args)
+            self._gh_api.ruleset_create(**args)
             return
 
         if ccs_old:
-            existing_rulesets = self._gh_api_admin.rulesets(include_parents=False)
+            existing_rulesets = self._gh_api.rulesets(include_parents=False)
 
         if not ccs_old or ccs_old.dev.branch.main != ccs_new.dev.branch.main:
             apply(
