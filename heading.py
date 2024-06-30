@@ -11,6 +11,7 @@ def heading(heading):
         "5": {"top": 1, "bottom": 0, "len": 50, "style": "\033[1;38;2;240;100;0m"},
         "6": {"top": 1, "bottom": 0, "len": 35, "style": "\033[1;38;2;220;0;35m"},
     }
+    print(heading)
     number, title = heading.split(" ", 1)
     level = len(number.split("."))
     if level not in spec:
