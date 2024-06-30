@@ -61,9 +61,9 @@ class PushEventHandler(EventHandler):
             )
             return
         is_main = self._context.ref_is_main
-        logger.info("On Default Branch", is_main)
+        logger.info("On Default Branch", str(is_main))
         has_tags = bool(self._git_head.get_tags())
-        logger.info("Branch Has Tags", has_tags)
+        logger.info("Branch Has Tags", str(has_tags))
         if action is ActionType.CREATED:
             if not is_main:
                 logger.notice("Workflow skipped", "Non-default branch created.")
