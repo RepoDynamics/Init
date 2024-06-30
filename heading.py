@@ -4,14 +4,13 @@ import sys
 
 def heading(heading):
     spec = {
-        "1": {"top": 1, "bottom": 0, "len": 110, "style": "\033[1;38;2;150;0;170m"},
-        "2": {"top": 1, "bottom": 0, "len": 95, "style": "\033[1;38;2;25;100;175m"},
-        "3": {"top": 1, "bottom": 0, "len": 80, "style": "\033[1;38;2;100;160;0m"},
-        "4": {"top": 1, "bottom": 0, "len": 65, "style": "\033[1;38;2;200;150;0m"},
-        "5": {"top": 1, "bottom": 0, "len": 50, "style": "\033[1;38;2;240;100;0m"},
-        "6": {"top": 1, "bottom": 0, "len": 35, "style": "\033[1;38;2;220;0;35m"},
+        1: {"top": 1, "bottom": 0, "len": 110, "style": "\033[1;38;2;150;0;170m"},
+        2: {"top": 1, "bottom": 0, "len": 95, "style": "\033[1;38;2;25;100;175m"},
+        3: {"top": 1, "bottom": 0, "len": 80, "style": "\033[1;38;2;100;160;0m"},
+        4: {"top": 1, "bottom": 0, "len": 65, "style": "\033[1;38;2;200;150;0m"},
+        5: {"top": 1, "bottom": 0, "len": 50, "style": "\033[1;38;2;240;100;0m"},
+        6: {"top": 1, "bottom": 0, "len": 35, "style": "\033[1;38;2;220;0;35m"},
     }
-    print(heading)
     number, title = heading.split(" ", 1)
     level = len(number.split("."))
     if level not in spec:
