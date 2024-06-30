@@ -30,6 +30,8 @@ from proman.handler import hook_runner
 
 class EventHandler:
 
+    _REPODYNAMICS_BOT_USER = ("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com")
+
     _MARKER_COMMIT_START = "<!-- Begin primary commit summary -->"
     _MARKER_COMMIT_END = "<!-- End primary commit summary -->"
     _MARKER_TASKLIST_START = "<!-- Begin secondary commits tasklist -->"
@@ -72,20 +74,21 @@ class EventHandler:
             default_branch_name=self._context.event.repository.default_branch
         )
 
+        git_user = (self._context.event.sender.login, self._context.event.sender.github_email)
         # TODO: Check again when gittidy is finalized; add section titles
         self._git_base = gittidy.Git(
             path=self._path_repo_base,
-            user=(self._context.event.sender.login, self._context.event.sender.github_email),
+            user=git_user,
             user_scope="global",
-            committer=("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com"),
+            committer=self._REPODYNAMICS_BOT_USER,
             committer_scope="local",
             committer_persistent=True,
         )
         self._git_head = gittidy.Git(
             path=self._path_repo_head,
-            user=(self._context.event.sender.login, self._context.event.sender.github_email),
+            user=git_user,
             user_scope="global",
-            committer=("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com"),
+            committer=self._REPODYNAMICS_BOT_USER,
             committer_scope="local",
             committer_persistent=True,
         )

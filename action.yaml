@@ -111,9 +111,9 @@ runs:
       run: |
         # Initialization
         printf "\n\n$(cat ${{github.action_path}}/logo.txt)\n"
-        python "${{ github.action_path }}/heading.py" 1 "Initialization"
+        python "${{ github.action_path }}/heading.py" "1 Initialize Action"
         cp "${{ github.action_path }}/requirements.txt" .
-        python "${{ github.action_path }}/heading.py" 2 "Repository Checkout (Base)"
+        python "${{ github.action_path }}/heading.py" "1.1 Checkout Repository (Base)"
 
     - name: 'Repository Checkout (Base)'
       uses: actions/checkout@v4
@@ -140,7 +140,7 @@ runs:
       shell: bash
       run: |
         # Repository Checkout (Head)
-        python "${{ github.action_path }}/heading.py" 2 "Repository Checkout (Head)"
+        python "${{ github.action_path }}/heading.py" "1.2 Checkout Repository (Head)"
     - uses: actions/checkout@v4
       with:
         repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
@@ -165,7 +165,7 @@ runs:
       shell: bash
       run: |
         # Python Setup
-        python "${{ github.action_path }}/heading.py" 2 "Python Setup"
+        python "${{ github.action_path }}/heading.py" "1.3 Setup Python"
     - uses: actions/setup-python@v4
       with:
         python-version: '3.x'
@@ -176,7 +176,7 @@ runs:
       shell: bash
       run: |
         # Environment Setup
-        python "${{ github.action_path }}/heading.py" 2 "Environment Setup"
+        python "${{ github.action_path }}/heading.py" "1.4 Setup Environment"
         echo "::group::Install Action Requirements"
         python -m pip install -r requirements.txt
         echo "::endgroup::"
@@ -191,7 +191,7 @@ runs:
       shell: bash
       run: |
         # Pre-commit Cache
-        python "${{ github.action_path }}/heading.py" 2 "Pre-commit Cache"
+        python "${{ github.action_path }}/heading.py" "1.5 Load Pre-commit Cache"
     - uses: actions/cache@v3
       with:
         path: ~/.cache/pre-commit
@@ -226,8 +226,8 @@ runs:
       run: |
         # Action
         python -m proman
-        python "${{ github.action_path }}/heading.py" 1 "Finalization"
-        python "${{ github.action_path }}/heading.py" 2 "Artifact Upload"
+        python "${{ github.action_path }}/heading.py" "3 Finalize Action"
+        python "${{ github.action_path }}/heading.py" "3.1 Upload Reports"
 
     - name: 'Artifact Upload'
       uses: actions/upload-artifact@v4
