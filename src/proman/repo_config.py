@@ -100,11 +100,11 @@ class RepoConfig:
     @logger.sectioner("Update Repository Labels")
     def update_labels(self, data_new: _NestedDict, data_old: _NestedDict):
 
-        def format_labels(labels: tuple[FullLabel]) -> tuple[
-            dict[tuple[LabelType, str, str], FullLabel],
-            dict[tuple[LabelType, str, str], FullLabel],
-            dict[tuple[LabelType, str, str], FullLabel],
-            dict[tuple[LabelType, str, str], FullLabel],
+        def format_labels(labels: list[dict]) -> tuple[
+            dict[tuple[str, str, str], dict],
+            dict[tuple[str, str, str], dict],
+            dict[tuple[str, str, str], dict],
+            dict[tuple[str, str, str], dict],
         ]:
             full = {}
             version = {}

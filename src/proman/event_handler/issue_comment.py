@@ -20,21 +20,8 @@ class IssueCommentEventHandler(EventHandler):
     """
 
     @logger.sectioner("Initialize Issue-Comment Event Handler")
-    def __init__(
-        self,
-        template_type: TemplateType,
-        context_manager: github_contexts.GitHubContext,
-        admin_token: str,
-        path_repo_base: str,
-        path_repo_head: str,
-    ):
-        super().__init__(
-            template_type=template_type,
-            context_manager=context_manager,
-            admin_token=admin_token,
-            path_repo_base=path_repo_base,
-            path_repo_head=path_repo_head,
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._payload: github_contexts.github.payloads.IssueCommentPayload = self._context.event
         self._comment = self._payload.comment
         self._issue = self._payload.issue

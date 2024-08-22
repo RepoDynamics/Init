@@ -2,7 +2,7 @@ import time
 import re
 
 from pylinks.exceptions import WebAPIError
-import github_contexts
+from github_contexts import github as _gh_context
 import conventional_commits
 from loggerman import logger
 from versionman import PEP440SemVer
@@ -39,22 +39,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     }
 
     @logger.sectioner("Initialize Event Handler")
-    def __init__(
-        self,
-        template_type: TemplateType,
-        context_manager: github_contexts.GitHubContext,
-        admin_token: str,
-        path_repo_base: str,
-        path_repo_head: str,
-    ):
-        super().__init__(
-            template_type=template_type,
-            context_manager=context_manager,
-            admin_token=admin_token,
-            path_repo_base=path_repo_base,
-            path_repo_head=path_repo_head,
-        )
-
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
         self._git_base.checkout(branch=self._context.base_ref)
         self._primary_commit_type: (
@@ -67,20 +53,20 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         if not self._head_to_base_allowed():
             return
         action = self._payload.action
-        if action is github_contexts.github.enums.ActionType.OPENED:
+        if action is _gh_context.enum.ActionType.OPENED:
             if self._branch_head.type is controlman.datatype.BranchType.PRERELEASE and self._branch_base.type in (
                 controlman.datatype.BranchType.MAIN,
                 controlman.datatype.BranchType.RELEASE,
             ):
                 return self._run_open_prerelease_to_release()
             return
-        elif action is github_contexts.github.enums.ActionType.REOPENED:
+        elif action is _gh_context.enum.ActionType.REOPENED:
             self._run_action_reopened()
-        elif action is github_contexts.github.enums.ActionType.SYNCHRONIZE:
+        elif action is _gh_context.enum.ActionType.SYNCHRONIZE:
             self._run_action_synchronize()
-        elif action is github_contexts.github.enums.ActionType.LABELED:
+        elif action is _gh_context.enum.ActionType.LABELED:
             self._run_action_labeled()
-        elif action is github_contexts.github.enums.ActionType.READY_FOR_REVIEW:
+        elif action is _gh_context.enum.ActionType.READY_FOR_REVIEW:
             self._run_action_ready_for_review()
         else:
             self.error_unsupported_triggering_action()
@@ -122,7 +108,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 msg=f"Developmental release (issue: #{self._branch_head.suffix[0]}, target: {self._branch_base.name})",
             )
         self._output.set(
-            ccm_branch=ccm_branch,
+            data_branch=ccm_branch,
             ref=latest_hash,
             website_url=self._data_main["url"]["website"]["base"]
             **job_runs,
@@ -250,14 +236,14 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             if self._branch_base.type is BranchType.MAIN:
                 # Base is the main branch; we can update the head branch directly
                 cc_manager = self.get_cc_manager(future_versions={self._branch_base.name: next_ver})
-                self._action_meta(
+                self._sync(
                     action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=False, branch=self._branch_head
                 )
             else:
                 # Base is a release branch; we need to update the main branch separately
                 self._git_base.checkout(branch=self._payload.repository.default_branch)
                 cc_manager = self.get_cc_manager(base=True, future_versions={self._branch_base.name: next_ver})
-                self._action_meta(
+                self._sync(
                     action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=True, branch=self._branch_base
                 )
                 self._git_base.push()
@@ -271,11 +257,11 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         if not merge_response:
             return
 
-        ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+        ccm_branch = controlman.read_from_json_file(path_repo=self._path_head)
         hash_latest = merge_response["sha"]
         if not next_ver:
             self._output.set(
-                ccm_branch=ccm_branch,
+                data_branch=ccm_branch,
                 ref=hash_latest,
                 ref_before=hash_base,
                 website_deploy=True,
@@ -298,7 +284,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
         tag = self._tag_version(ver=next_ver, base=True)
         self._output.set(
-            ccm_branch=ccm_branch,
+            data_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
             version=str(next_ver),
@@ -367,9 +353,9 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self._failed = True
             return
         tag = self._tag_version(ver=next_ver_pre, base=True)
-        ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+        ccm_branch = controlman.read_from_json_file(path_repo=self._path_head)
         self._output.set(
-            ccm_branch=ccm_branch,
+            data_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
             version=str(next_ver_pre),
@@ -473,7 +459,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             commit_title=commit_title,
             parent_commit_hash=hash_base,
             parent_commit_url=self._gh_link.commit(hash_base),
-            path_root=self._path_repo_head,
+            path_root=self._path_head,
         )
         tasklist = self._extract_tasklist(body=self._pull.body)
         for task in tasklist:
@@ -607,7 +593,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return self._add_to_timeline(entry=entry, body=self._pull.body, issue_nr=self._pull.number)
 
     def _write_prerelease_dev_protocol(self, ver: str):
-        filepath = self._path_repo_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+        filepath = self._path_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
         filepath.parent.mkdir(parents=True, exist_ok=True)
         old_title = f'# {self._data_main["issue"]["dev_protocol"]["template"]["title"]}'
         new_title = f"{old_title} (v{ver})"
@@ -617,7 +603,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return
 
     def _read_prerelease_dev_protocols(self) -> tuple[str, str]:
-        filepath = self._path_repo_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+        filepath = self._path_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
         protocols = filepath.read_text().strip()
         main_protocol, sub_protocols = protocols.split("\n# ", 1)
         return main_protocol.strip(), f"# {sub_protocols.strip()}"

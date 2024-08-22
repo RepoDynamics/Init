@@ -3,7 +3,7 @@ import github_contexts as _github_contexts
 from loggerman import logger as _logger
 
 from proman.datatype import TemplateType as _TemplateType
-from proman import exception as _exception, handler as _handler
+from proman import exception as _exception, event_handler as _handler
 
 
 @_logger.sectioner(catch_exception_set=Exception)
@@ -20,13 +20,11 @@ def run():
 @_logger.sectioner("Initialize", group=False)
 def _init_handler():
     inputs = _read_inputs()
-    template_type = _get_template_type(input_template_type=inputs.pop("template_type"))
-    context_manager = _github_contexts.GitHubContext(context=inputs.pop("github_context"))
+    context_manager = _github_contexts.github.create(context=inputs["github_context"])
     event_handler_class = _get_event_handler(event=context_manager.event_name)
     event_handler = event_handler_class(
-        template_type=template_type,
-        context_manager=context_manager,
-        admin_token=inputs["admin_token"] or "",
+        github_context=context_manager,
+        admin_token=inputs["admin_token"],
         path_repo_base=inputs["path_repo_base"],
         path_repo_head=inputs["path_repo_head"],
     )
@@ -58,7 +56,6 @@ def _read_inputs():
     _logger.section_end()
 
     for section_title, env_var_name, env_var_type in (
-        ("Template Type", "TEMPLATE_TYPE", str,),
         ("Base Repository Path", "PATH_REPO_BASE", str),
         ("Head Repository Path", "PATH_REPO_HEAD", str),
     ):
@@ -74,34 +71,18 @@ def _read_inputs():
     return parsed_inputs
 
 
-@_logger.sectioner("Verify Template Type")
-def _get_template_type(input_template_type: str) -> _TemplateType:
-    """Parse and verify the input template type."""
-    try:
-        template_type = _TemplateType(input_template_type)
-    except ValueError:
-        supported_templates = ", ".join([f"'{enum.value}'" for enum in _TemplateType])
-        raise _exception.ProManInputError(
-            "Template type verification failed; "
-            f"the 'template' input argument of ProMan action must be one of {supported_templates},"
-            f"but got '{input_template_type}'. "
-        )
-    _logger.info("Template type", template_type.value)
-    return template_type
-
-
 @_logger.sectioner("Verify Triggering Event")
-def _get_event_handler(event: _github_contexts.github.enums.EventType):
+def _get_event_handler(event: _github_contexts.github.enum.EventType):
     _logger.info("Triggering event", event.value)
-    event_type = _github_contexts.github.enums.EventType
+    event_type = _github_contexts.github.enum.EventType
     event_to_handler = {
-        event_type.ISSUES: _handler.event.IssuesEventHandler,
-        event_type.ISSUE_COMMENT: _handler.event.IssueCommentEventHandler,
-        event_type.PULL_REQUEST: _handler.event.PullRequestEventHandler,
-        event_type.PULL_REQUEST_TARGET: _handler.event.PullRequestTargetEventHandler,
-        event_type.PUSH: _handler.event.PushEventHandler,
-        event_type.SCHEDULE: _handler.event.ScheduleEventHandler,
-        event_type.WORKFLOW_DISPATCH: _handler.event.WorkflowDispatchEventHandler,
+        event_type.ISSUES: _handler.IssuesEventHandler,
+        event_type.ISSUE_COMMENT: _handler.IssueCommentEventHandler,
+        event_type.PULL_REQUEST: _handler.PullRequestEventHandler,
+        event_type.PULL_REQUEST_TARGET: _handler.PullRequestTargetEventHandler,
+        event_type.PUSH: _handler.PushEventHandler,
+        event_type.SCHEDULE: _handler.ScheduleEventHandler,
+        event_type.WORKFLOW_DISPATCH: _handler.WorkflowDispatchEventHandler,
     }
     handler = event_to_handler.get(event)
     if not handler:

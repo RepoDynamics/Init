@@ -2,7 +2,8 @@ from typing import Literal
 
 from loggerman import logger
 from github_contexts import GitHubContext
-from controlman import ControlCenterContentManager
+
+from proman.data_manager import DataManager
 
 
 class OutputWriter:
@@ -27,7 +28,7 @@ class OutputWriter:
 
     def set(
         self,
-        ccm_branch: ControlCenterContentManager,
+        data_branch: DataManager,
         ref: str = "",
         ref_before: str = "",
         version: str = "",
@@ -39,6 +40,7 @@ class OutputWriter:
         release_discussion_category_name: str = "",
         website_url: str | None = None,
         website_build: bool = False,
+        website_artifact_name: str = "Website",
         website_deploy: bool = False,
         package_lint: bool = False,
         package_test: bool = False,
@@ -51,27 +53,28 @@ class OutputWriter:
         package_artifact_name = f"Package ({version})" if version else "Package"
         if website_build or website_deploy:
             self.set_website(
-                ccm_branch=ccm_branch,
+                data_branch=data_branch,
                 url=website_url,
                 ref=ref,
                 deploy=website_deploy,
+                artifact_name=website_artifact_name,
             )
         if package_lint and not (package_publish_testpypi or package_publish_pypi):
             self.set_lint(
-                ccm_branch=ccm_branch,
+                data_branch=data_branch,
                 ref=ref,
                 ref_before=ref_before,
             )
         if package_test and not (package_publish_testpypi or package_publish_pypi):
             self.set_package_test(
-                ccm_branch=ccm_branch,
+                data_branch=data_branch,
                 ref=ref,
                 source=package_test_source,
                 version=version,
             )
         if package_build or package_publish_testpypi or package_publish_pypi:
             self.set_package_build_and_publish(
-                ccm_branch=ccm_branch,
+                data_branch=data_branch,
                 version=version,
                 ref=ref,
                 publish_testpypi=package_publish_testpypi,
@@ -130,33 +133,39 @@ class OutputWriter:
 
     def set_website(
         self,
-        ccm_branch: ControlCenterContentManager,
-        url: str,
+        data_branch: DataManager,
+        url: str | None = None,
         ref: str | None = None,
         deploy: bool = False,
-        artifact_name: str = "Documentation",
-        path_package: str = "."
+        artifact_name: str = "Website",
     ):
+        if "web" not in data_branch:
+            return
         if not url:
             raise RuntimeError("No URL provided for setting website job output")
+        path_pkg = data_branch.get("pkg.path.root", "") if data_branch["web.sphinx.needs_package"] else ""
         self._output_website.append(
             {
-                "url": url,
+                "url": url or data_branch["web.url.base"],
                 "repository": self._repository,
                 "ref": ref or self.ref,
-                "deploy": deploy,
-                "path-website": ccm_branch["path"]["dir"]["website"],
-                "path-package": path_package,
+                "path-env": data_branch["web.env.file.conda.path"],
+                "path-web": data_branch["web.path.root"],
+                "path-pkg": path_pkg,
                 "artifact-name": artifact_name,
+                "deploy": deploy,
             }
         )
+        return
 
     def set_lint(
         self,
-        ccm_branch: ControlCenterContentManager,
+        data_branch: DataManager,
         ref: str | None = None,
         ref_before: str | None = None,
     ):
+        if "pkg" not in data_branch:
+            return
         self._output_lint.append(
             {
                 "repository": self._repository,
@@ -164,21 +173,21 @@ class OutputWriter:
                 "ref-before": ref_before or self.ref_before,
                 "os": [
                     {"name": name, "runner": runner} for name, runner in zip(
-                        ccm_branch["package"]["os_titles"],
-                        ccm_branch["package"]["github_runners"]
+                        data_branch["package"]["os_titles"],
+                        data_branch["package"]["github_runners"]
                     )
                 ],
-                "package-name": ccm_branch["package"]["name"],
-                "python-versions": ccm_branch["package"]["python_versions"],
-                "python-max-ver": ccm_branch["package"]["python_version_max"],
-                "path-source": ccm_branch["path"]["dir"]["source"],
+                "package-name": data_branch["package"]["name"],
+                "python-versions": data_branch["package"]["python_versions"],
+                "python-max-ver": data_branch["package"]["python_version_max"],
+                "path-source": data_branch["path"]["dir"]["source"],
             }
         )
         return
 
     def set_package_test(
         self,
-        ccm_branch: ControlCenterContentManager,
+        data_branch: DataManager,
         ref: str | None = None,
         source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
         version: str | None = None,
@@ -187,7 +196,7 @@ class OutputWriter:
     ):
         self._output_test.extend(
             self._create_output_package_test(
-                ccm_branch=ccm_branch,
+                ccm_branch=data_branch,
                 ref=ref,
                 source=source,
                 version=version,
@@ -199,7 +208,7 @@ class OutputWriter:
 
     def set_package_build_and_publish(
         self,
-        ccm_branch: ControlCenterContentManager,
+        data_branch: DataManager,
         version: str,
         ref: str | None = None,
         ref_before: str | None = None,
@@ -258,21 +267,21 @@ class OutputWriter:
                 "repository": self._repository,
                 "ref": ref or self.ref,
                 "artifact-name": artifact_name,
-                "pure-python": ccm_branch["package"]["pure_python"],
-                "cibw-matrix-platform": ccm_branch["package"]["cibw_matrix_platform"],
-                "cibw-matrix-python": ccm_branch["package"]["cibw_matrix_python"],
-                "path-readme": ccm_branch["path"]["file"]["readme_pypi"],
+                "pure-python": data_branch["package"]["pure_python"],
+                "cibw-matrix-platform": data_branch["package"]["cibw_matrix_platform"],
+                "cibw-matrix-python": data_branch["package"]["cibw_matrix_python"],
+                "path-readme": data_branch["path"]["file"]["readme_pypi"],
             }
         )
         if publish_testpypi or publish_pypi:
             self.set_lint(
-                ccm_branch=ccm_branch,
+                data_branch=data_branch,
                 ref=ref,
                 ref_before=ref_before,
             )
             self._output_test.extend(
                 self._create_output_package_test(
-                    ccm_branch=ccm_branch,
+                    ccm_branch=data_branch,
                     ref=ref,
                     source="GitHub",
                 )
@@ -280,11 +289,11 @@ class OutputWriter:
             self._output_publish_testpypi = {
                 "platform": "TestPyPI",
                 "upload-url": "https://test.pypi.org/legacy/",
-                "download-url": f'https://test.pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
+                "download-url": f'https://test.pypi.org/project/{data_branch["package"]["name"]}/{version}',
                 "artifact-name": artifact_name,
             }
             self._output_test_testpypi = self._create_output_package_test(
-                ccm_branch=ccm_branch,
+                ccm_branch=data_branch,
                 ref=ref,
                 source="TestPyPI",
                 version=version,
@@ -293,11 +302,11 @@ class OutputWriter:
             self._output_publish_pypi = {
                 "platform": "PyPI",
                 "upload-url": "https://upload.pypi.org/legacy/",
-                "download-url": f'https://pypi.org/project/{ccm_branch["package"]["name"]}/{version}',
+                "download-url": f'https://pypi.org/project/{data_branch["package"]["name"]}/{version}',
                 "artifact-name": artifact_name,
             }
             self._output_test_pypi = self._create_output_package_test(
-                ccm_branch=ccm_branch,
+                ccm_branch=data_branch,
                 ref=ref,
                 source="PyPI",
                 version=version,
@@ -329,7 +338,7 @@ class OutputWriter:
 
     def _create_output_package_test(
         self,
-        ccm_branch: ControlCenterContentManager,
+        ccm_branch: DataManager,
         ref: str | None = None,
         source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
         version: str | None = None,
@@ -339,13 +348,13 @@ class OutputWriter:
         common = {
             "repository": self._repository,
             "ref": ref or self.ref,
-            "path-setup-testsuite": f'./{ccm_branch["path"]["dir"]["tests"]}',
-            "path-setup-package": ".",
-            "testsuite-import-name": ccm_branch["package"]["testsuite_import_name"],
+            "path-setup-testsuite": ccm_branch["test.path.root"],
+            "path-setup-package": ccm_branch["pkg.path.root"],
+            "testsuite-import-name": ccm_branch["test.import_name"],
             "package-source": source,
-            "package-name": ccm_branch["package"]["name"],
+            "package-name": ccm_branch["pkg.name"],
             "package-version": version or "",
-            "path-requirements-package": "requirements.txt",
+            "path-requirements-package": ccm_branch["pkg.dependency.env.pip.path"],
             "path-report-pytest": ccm_branch["path"]["dir"]["local"]["report"]["pytest"],
             "path-report-coverage": ccm_branch["path"]["dir"]["local"]["report"]["coverage"],
             "path-cache-pytest": ccm_branch["path"]["dir"]["local"]["cache"]["pytest"],

@@ -1,7 +1,7 @@
 from versionman import PEP440SemVer as _PEP440SemVer
 import pyserials as _ps
 
-from controlman.datatype import (
+from proman.datatype import (
     BranchType as _BranchType,
     Branch as _Branch,
     LabelType as _LabelType,

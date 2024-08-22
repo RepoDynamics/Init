@@ -1,7 +1,7 @@
 import re
 import datetime
 
-import github_contexts
+from github_contexts import github as gh_context
 from loggerman import logger
 import controlman
 from controlman.datatype import IssueStatus
@@ -13,22 +13,9 @@ from proman.main import EventHandler
 class IssuesEventHandler(EventHandler):
 
     @logger.sectioner("Initialize Issue Event Handler")
-    def __init__(
-        self,
-        template_type: TemplateType,
-        context_manager: github_contexts.GitHubContext,
-        admin_token: str,
-        path_repo_base: str,
-        path_repo_head: str,
-    ):
-        super().__init__(
-            template_type=template_type,
-            context_manager=context_manager,
-            admin_token=admin_token,
-            path_repo_base=path_repo_base,
-            path_repo_head=path_repo_head,
-        )
-        self._payload: github_contexts.github.payloads.IssuesPayload = self._context.event
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._payload: gh_context.payload.IssuesPayload = self._context.event
         self._issue = self._payload.issue
 
         self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
@@ -38,9 +25,9 @@ class IssuesEventHandler(EventHandler):
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)
-        if action == github_contexts.github.enums.ActionType.OPENED:
+        if action == gh_context.enum.ActionType.OPENED:
             return self._run_opened()
-        if action == github_contexts.github.enums.ActionType.LABELED:
+        if action == gh_context.enum.ActionType.LABELED:
             label = self._data_main.resolve_label(self._payload.label.name)
             if label.category is not controlman.datatype.LabelType.STATUS:
                 return

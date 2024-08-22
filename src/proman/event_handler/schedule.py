@@ -16,21 +16,8 @@ from proman.main import EventHandler
 class ScheduleEventHandler(EventHandler):
 
     @logger.sectioner("Initialize Event Handler")
-    def __init__(
-        self,
-        template_type: TemplateType,
-        context_manager: GitHubContext,
-        admin_token: str,
-        path_repo_base: str,
-        path_repo_head: str | None = None,
-    ):
-        super().__init__(
-            template_type=template_type,
-            context_manager=context_manager,
-            admin_token=admin_token,
-            path_repo_base=path_repo_base,
-            path_repo_head=path_repo_head,
-        )
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._payload: SchedulePayload = self._context.event
         return
 
@@ -53,7 +40,7 @@ class ScheduleEventHandler(EventHandler):
             branch_types=(BranchType.AUTOUPDATE, ), exclude_branch_types=True
         )
         for cc_manager, branch, _ in cc_manager_generator:
-            self._action_meta(
+            self._sync(
                 action=InitCheckAction(self._data_main["workflow"]["schedule"]["sync"]["branch"][branch.type.value]),
                 cc_manager=cc_manager,
                 base=False,
@@ -77,9 +64,9 @@ class ScheduleEventHandler(EventHandler):
                 base=False,
                 ref_range=None,
             )
-            ccm_branch = controlman.read_from_json_file(path_repo=self._path_repo_head)
+            ccm_branch = controlman.read_from_json_file(path_repo=self._path_head)
             self._output.set(
-                ccm_branch=ccm_branch,
+                data_branch=ccm_branch,
                 ref=latest_hash or sha,
                 ref_before=sha,
                 version=self._get_latest_version(base=False),

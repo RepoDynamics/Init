@@ -45,22 +45,8 @@ _WORKFLOW_DISPATCH_INPUT_TYPE = {
 class WorkflowDispatchEventHandler(EventHandler):
 
     @logger.sectioner("Initialize Event Handler")
-    def __init__(
-        self,
-        template_type: TemplateType,
-        context_manager: github_contexts.GitHubContext,
-        admin_token: str,
-        path_repo_base: str,
-        path_repo_head: str | None = None,
-    ):
-        super().__init__(
-            template_type=template_type,
-            context_manager=context_manager,
-            admin_token=admin_token,
-            path_repo_base=path_repo_base,
-            path_repo_head=path_repo_head,
-        )
-
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self._payload: github_contexts.github.payloads.WorkflowDispatchPayload = self._context.event
         self._inputs = {
             WorkflowDispatchInput(k): _WORKFLOW_DISPATCH_INPUT_TYPE[WorkflowDispatchInput(k)](v)
@@ -92,7 +78,7 @@ class WorkflowDispatchEventHandler(EventHandler):
         cc_manager = self.get_cc_manager(future_versions={self._context.ref_name: "1.0.0"})
         self._ccm_main = cc_manager.generate_data()
         hash_before = self._git_head.commit_hash_normal()
-        self._action_meta(
+        self._sync(
             action=controlman.datatype.InitCheckAction.COMMIT,
             cc_manager=cc_manager,
             base=False,
@@ -105,7 +91,7 @@ class WorkflowDispatchEventHandler(EventHandler):
             commit_title="Release public API",
             parent_commit_hash=hash_before,
             parent_commit_url=self._gh_link.commit(hash_before),
-            path_root=self._path_repo_head,
+            path_root=self._path_head,
         )
         release_body = (
             "This is the first major release of the project, defining the stable public API. "
@@ -118,7 +104,7 @@ class WorkflowDispatchEventHandler(EventHandler):
         tag = self._tag_version(ver="1.0.0", base=False)
 
         self._output.set(
-            ccm_branch=self._ccm_main,
+            data_branch=self._ccm_main,
             ref=hash_latest,
             ref_before=self._context.hash_before,
             version="1.0.0",
