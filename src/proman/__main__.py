@@ -16,4 +16,6 @@ if __name__ == "__main__":
         root_heading="Execute Action",
         html_title="Workflow Log",
     )
+    print("\n\n\nSSSSSSSSSSTTTTARR\n\n\n")
+    loggerman.logger.info("Start")
     proman.run()
