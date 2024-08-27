@@ -10,7 +10,7 @@ import versionman
 import fileex as _fileex
 import pyserials as _ps
 
-from proman.datatype import TemplateType, InitCheckAction
+from proman.datatype import InitCheckAction
 from proman.main import EventHandler
 
 
@@ -30,50 +30,57 @@ class PushEventHandler(EventHandler):
     @logger.sectioner("Execute Push Handler", group=False)
     def _run_event(self):
         if self._context.ref_type is not _gh_context.enum.RefType.BRANCH:
-            self._reporter.set_event(
-                f"Push to tag <code>{self._context.ref_name}</code>"
+            self._reporter.event(
+                f"Push to tag `{self._context.ref_name}`"
             )
-            self._reporter.set_event_status(
+            self._reporter.add(
+                name="main",
                 status="skip",
-                reason="Only push to branches triggers the workflow."
+                summary="Push to tags does not trigger the workflow."
             )
             return
         action = self._payload.action
         if action not in (_gh_context.enum.ActionType.CREATED, _gh_context.enum.ActionType.EDITED):
-            self._reporter.set_event(
-                f"Push to branch '{self._context.ref_name}' (action: {action.value})"
+            self._reporter.event(
+                f"Deletion of branch `{self._context.ref_name}`"
             )
-            self._reporter.set_event_status(
+            self._reporter.add(
+                name="main",
                 status="skip",
-                reason="Push events are only supported for branches.",
-            )
-
-            logger.notice(
-                "Workflow skipped",
-                f"Unsupported action '{action.value}' for 'push' event to branch."
+                summary="Branch deletion does not trigger the workflow.",
             )
             return
         is_main = self._context.ref_is_main
-        logger.info("On Default Branch", str(is_main))
         has_tags = bool(self._git_head.get_tags())
-        logger.info("Branch Has Tags", str(has_tags))
         if action is _gh_context.enum.ActionType.CREATED:
             if not is_main:
-                logger.notice("Workflow skipped", "Non-default branch created.")
+                self._reporter.event(f"Creation of branch `{self._context.ref_name}`")
+                self._reporter.add(
+                    name="main",
+                    status="skip",
+                    summary="Branch creation does not trigger the workflow.",
+                )
                 return
             if not has_tags:
                 return self._run_repository_created()
-            logger.notice(
-                "Workflow skipped",
-                "Default branch created while a version tag is present. "
-                "This is likely a result of renaming the default branch.",
+            self._reporter.event(f"Creation of default branch `{self._context.ref_name}`")
+            self._reporter.add(
+                name="main",
+                status="skip",
+                summary="Default branch created while a version tag is present. "
+                        "This is likely a result of renaming the default branch.",
             )
             return
         # Branch edited
         if self._context.event.repository.fork:
             return self._run_branch_edited_fork()
         if not is_main:
-            logger.notice("Workflow skipped", "Push to non-default branch.")
+            self._reporter.event(f"Modification of branch `{self._context.ref_name}`")
+            self._reporter.add(
+                name="main",
+                status="skip",
+                summary="Modification of non-default branches does not trigger the workflow.",
+            )
             return
         # Main branch edited
         if not has_tags:
@@ -86,7 +93,7 @@ class PushEventHandler(EventHandler):
         return self._run_branch_edited_main_normal()
 
     def _run_repository_created(self):
-        self.set_event_description("Repository creation")
+        self._reporter.event("Repository creation")
         _fileex.directory.delete_contents(
             path=self._path_head,
             exclude=[".github", "template"],
@@ -106,24 +113,24 @@ class PushEventHandler(EventHandler):
             future_versions={self._context.event.repository.default_branch: "0.0.0"},
             control_center_path=".control"
         )
-        data = cc_manager.generate_data()
         self._sync(
             action=InitCheckAction.AMEND,
             cc_manager=cc_manager,
             base=False,
-            commit_msg=f"init: Create repository from RepoDynamics {self._template_name_ver} template.",
+            commit_msg=f"init: Create repository from RepoDynamics template.",
         )
+        data = cc_manager.generate_data()
         self._git_head.push()
         self._repo_config.reset_labels(data=data)
-        self.add_summary(
-            name="Init",
+        self._reporter.add(
+            name="main",
             status="pass",
-            description=f"Repository created from RepoDynamics {self._template_name_ver} template.",
+            summary=f"Repository created from RepoDynamics template.",
         )
         return
 
     def _run_init_phase(self):
-        self.set_event_description("Repository initialization phase")
+        self._reporter.event("Repository initialization phase")
         new_data, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT,
             future_versions={self._context.ref_name: "0.0.0"},
@@ -149,7 +156,7 @@ class PushEventHandler(EventHandler):
                 head_commit_msg_final = head_commit_msg
             else:
                 head_commit_msg_lines[0] = (
-                    f"init: Initialize project from RepoDynamics {self._template_name_ver} template."
+                    f"init: Initialize project from RepoDynamics template."
                 )
                 head_commit_msg_final = "\n".join(head_commit_msg_lines)
             return conventional_commits.parser.create(types=["init"]).parse(head_commit_msg_final)
@@ -163,7 +170,7 @@ class PushEventHandler(EventHandler):
                     logger.critical(f"Invalid version string in commit footer: {version_input}")
             return "0.0.0"
 
-        self.set_event_description("Repository initialization (new repo)")
+        self._reporter.event("Project initialization")
         commit_msg = parse_commit_msg()
         version = parse_version()
         new_data, job_runs, latest_hash = self.run_sync_fix(
@@ -196,7 +203,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_fork(self):
-        self.set_event_description("CI on fork")
+        self._reporter.event("CI on fork")
         new_data, job_runs, latest_hash = self.run_sync_fix(action=InitCheckAction.COMMIT)
         website_deploy = False
         if self._has_admin_token:
@@ -219,7 +226,7 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_main_normal(self):
-        self.set_event_description("Repository configuration synchronization")
+        self._reporter.event("Repository configuration synchronization")
         self._repo_config.update_all(
             data_new=self._data_main,
             data_old=controlman.from_json_file_at_commit(

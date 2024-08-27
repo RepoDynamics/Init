@@ -1,7 +1,7 @@
 from github_contexts import github as _gh_context
 
 from loggerman import logger
-from controlman.datatype import (
+from proman.datatype import (
     BranchType,
 )
 

@@ -7,7 +7,7 @@ import conventional_commits
 from loggerman import logger
 from versionman import PEP440SemVer
 import controlman
-from controlman.datatype import (
+from proman.datatype import (
     Label,
     PrimaryActionCommit,
     PrimaryCustomCommit,
@@ -27,13 +27,13 @@ from proman.event_handler.pull_request_target import PullRequestTargetEventHandl
 class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     _INTERNAL_HEAD_TO_BASE_MAP = {
-        BranchType.PRERELEASE: (BranchType.MAIN, BranchType.RELEASE),
-        BranchType.DEV: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
-        BranchType.AUTOUPDATE: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE),
+        BranchType.PRE: (BranchType.MAIN, BranchType.RELEASE),
+        BranchType.DEV: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRE),
+        BranchType.AUTO: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRE),
     }
     _EXTERNAL_HEAD_TO_BASE_MAP = {
         BranchType.DEV: (BranchType.DEV,),
-        BranchType.PRERELEASE: (BranchType.PRERELEASE,),
+        BranchType.PRE: (BranchType.PRE,),
         BranchType.RELEASE: (BranchType.RELEASE,),
         BranchType.MAIN: (BranchType.MAIN,),
     }

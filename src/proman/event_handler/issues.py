@@ -4,7 +4,7 @@ import datetime
 from github_contexts import github as gh_context
 from loggerman import logger
 import controlman
-from controlman.datatype import IssueStatus
+from proman.datatype import IssueStatus
 
 from proman.datatype import TemplateType
 from proman.main import EventHandler
@@ -42,14 +42,14 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_opened(self):
-        self.set_event_description(f"Issue #{self._issue.number} opened")
+        self._reporter.event(f"Issue #{self._issue.number} opened")
         issue_body = self.process_issue()
         dev_protocol = self._create_dev_protocol(issue_body)
         self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
         return
 
-    def _run_labeled_status(self, status: controlman.datatype.IssueStatus):
-        self.set_event_description(
+    def _run_labeled_status(self, status: IssueStatus):
+        self._reporter.event(
             f"Issue #{self._issue.number} status changed to <code>{status.value}</code>"
         )
         if status in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:

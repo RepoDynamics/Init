@@ -14,18 +14,18 @@ class RepoDynamicsBotCommand(_Enum):
     CREATE_DEV_BRANCH = "create_dev_branch"
 
 
-class _FileStatus(_NamedTuple):
+class TitledEmoji(_NamedTuple):
     title: str
     emoji: str
 
 
 class FileChangeType(_Enum):
-    REMOVED = _FileStatus("Removed", "🔴")
-    MODIFIED = _FileStatus("Modified", "🟣")
-    BROKEN = _FileStatus("Broken", "🟠")
-    ADDED = _FileStatus("Added", "🟢")
-    UNMERGED = _FileStatus("Unmerged", "⚪️")
-    UNKNOWN = _FileStatus("Unknown", "⚫")
+    REMOVED = TitledEmoji("Removed", "🔴")
+    MODIFIED = TitledEmoji("Modified", "🟣")
+    BROKEN = TitledEmoji("Broken", "🟠")
+    ADDED = TitledEmoji("Added", "🟢")
+    UNMERGED = TitledEmoji("Unmerged", "⚪️")
+    UNKNOWN = TitledEmoji("Unknown", "⚫")
 
 
 class RepoFileType(_Enum):
@@ -302,24 +302,3 @@ class Label(_NamedTuple):
         return self.name.removeprefix(self.prefix)
 
 
-class Emoji:
-    """Enum of emojis used in the bot."""
-
-    _db = {
-        "PASS": "✅",
-        "SKIP": "❎",
-        "FAIL": "❌",
-        "WARNING": "⚠️",
-        "PLAY": "▶️",
-    }
-
-    def __init__(self):
-        for name, emoji in self._db.items():
-            setattr(self, name, emoji)
-        return
-
-    def __getitem__(self, item: str):
-        return self._db[item.upper()]
-
-
-Emoji = Emoji()

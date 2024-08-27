@@ -6,12 +6,6 @@ branding:
   color: blue
 
 inputs:
-
-  template:
-    description: |
-      Name of the template used for the repository.
-      Available templates: PyPackIT
-    required: true
   admin-token:
     description: A personal access token with administration access to the repository.
     required: false
@@ -208,7 +202,6 @@ runs:
     - name: 'Action'
       id: meta
       env:
-        RD_PROMAN__TEMPLATE_TYPE: ${{ inputs.template }}
         RD_PROMAN__GITHUB_CONTEXT: ${{ toJson(github) }}
         RD_PROMAN__ADMIN_TOKEN: ${{ inputs.admin-token }}
 #        RD_INIT__PACKAGE_BUILD: ${{ inputs.package-build }}

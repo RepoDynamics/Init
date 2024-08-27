@@ -5,7 +5,7 @@ from functools import partial
 
 import github_contexts
 from loggerman import logger
-from controlman.datatype import BranchType
+from proman.datatype import BranchType
 import pysyntax
 
 from proman.datatype import TemplateType, RepoDynamicsBotCommand

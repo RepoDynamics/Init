@@ -2,12 +2,12 @@ from typing import Generator
 
 import conventional_commits.message
 from github_contexts import GitHubContext
-from github_contexts.github.payloads.schedule import SchedulePayload
+from github_contexts.github.payload.schedule import SchedulePayload
 from loggerman import logger
 from markitup import html, md
 import pyshellman
 import controlman
-from controlman.datatype import BranchType, InitCheckAction, Branch
+from proman.datatype import BranchType, InitCheckAction, Branch
 
 from proman.datatype import TemplateType
 from proman.main import EventHandler
@@ -81,7 +81,7 @@ class ScheduleEventHandler(EventHandler):
 
     def _get_cc_manager_generator(
         self, branch_types: tuple[BranchType, ...], exclude_branch_types: bool = False
-    ) -> Generator[tuple[controlman.ControlCenterManager, Branch, str], None, None]:
+    ) -> Generator[tuple[controlman.CenterManager, Branch, str], None, None]:
         for branch_data in self._gh_api.branches:
             branch_name = branch_data["name"]
             branch = self.resolve_branch(branch_name=branch_name)
