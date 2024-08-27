@@ -5,7 +5,7 @@ from pylinks.exceptions import WebAPIError
 from github_contexts import github as _gh_context
 import conventional_commits
 from loggerman import logger
-from versionman import PEP440SemVer
+from versionman.pep440_semver import PEP440SemVer
 import controlman
 from proman.datatype import (
     Label,

@@ -6,9 +6,8 @@ import conventional_commits
 from github_contexts import github as _gh_context
 from loggerman import logger
 import controlman
-import versionman
+from versionman.pep440_semver import PEP440SemVer
 import fileex as _fileex
-import pyserials as _ps
 
 from proman.datatype import InitCheckAction
 from proman.main import EventHandler
@@ -165,7 +164,7 @@ class PushEventHandler(EventHandler):
             if commit_msg.footer.get("version"):
                 version_input = commit_msg.footer["version"]
                 try:
-                    return str(versionman.PEP440SemVer(version_input))
+                    return str(PEP440SemVer(version_input))
                 except ValueError:
                     logger.critical(f"Invalid version string in commit footer: {version_input}")
             return "0.0.0"

@@ -2,7 +2,7 @@ from enum import Enum as _Enum
 from typing import NamedTuple as _NamedTuple
 
 import conventional_commits as _conventional_commits
-from versionman import PEP440SemVer as _PEP440SemVer
+from versionman.pep440_semver import PEP440SemVer as _PEP440SemVer
 
 
 class TemplateType(_Enum):

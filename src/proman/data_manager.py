@@ -1,4 +1,4 @@
-from versionman import PEP440SemVer as _PEP440SemVer
+from versionman.pep440_semver import PEP440SemVer as _PEP440SemVer
 import pyserials as _ps
 
 from proman.datatype import (

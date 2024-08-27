@@ -21,7 +21,7 @@ from proman.datatype import (
     Commit, NonConventionalCommit, Label, PrimaryActionCommitType
 )
 import gittidy
-import versionman
+from versionman.pep440_semver import PEP440SemVer
 
 from proman.datatype import FileChangeType, RepoFileType, BranchType
 from proman.output_writer import OutputWriter
@@ -412,7 +412,7 @@ class EventHandler:
         base: bool = False,
         data_before: _ps.NestedDict | None = None,
         data_main: _ps.NestedDict | None = None,
-        future_versions: dict[str, str | versionman.PEP440SemVer] | None = None,
+        future_versions: dict[str, str | PEP440SemVer] | None = None,
     ) -> controlman.CenterManager:
         return controlman.manager(
             repo=self._git_base if base else self._git_head,
@@ -427,9 +427,9 @@ class EventHandler:
         branch: str | None = None,
         dev_only: bool = False,
         base: bool = True,
-    ) -> tuple[versionman.PEP440SemVer | None, int | None]:
+    ) -> tuple[PEP440SemVer | None, int | None]:
 
-        def get_latest_version() -> versionman.PEP440SemVer | None:
+        def get_latest_version() -> PEP440SemVer | None:
             tags_lists = git.get_tags()
             if not tags_lists:
                 return
@@ -437,7 +437,7 @@ class EventHandler:
                 ver_tags = []
                 for tag in tags_list:
                     if tag.startswith(ver_tag_prefix):
-                        ver_tags.append(versionman.PEP440SemVer(tag.removeprefix(ver_tag_prefix)))
+                        ver_tags.append(PEP440SemVer(tag.removeprefix(ver_tag_prefix)))
                 if ver_tags:
                     if dev_only:
                         ver_tags = sorted(ver_tags, reverse=True)
@@ -487,7 +487,7 @@ class EventHandler:
                 parsed_commits.append(Commit(**commit, group_data=group))
         return parsed_commits
 
-    def _tag_version(self, ver: str | versionman.PEP440SemVer, base: bool, msg: str = "") -> str:
+    def _tag_version(self, ver: str | PEP440SemVer, base: bool, msg: str = "") -> str:
         tag_prefix = self._data_main["tag.version.prefix"]
         tag = f"{tag_prefix}{ver}"
         if not msg:
@@ -516,7 +516,7 @@ class EventHandler:
                 if branch_type is BranchType.RELEASE:
                     suffix = int(suffix_raw)
                 elif branch_type is BranchType.PRE:
-                    suffix = versionman.PEP440SemVer(suffix_raw)
+                    suffix = PEP440SemVer(suffix_raw)
                 elif branch_type is BranchType.DEV:
                     issue_num, target_branch = suffix_raw.split("/", 1)
                     suffix = (int(issue_num), target_branch)
@@ -680,7 +680,7 @@ class EventHandler:
         release_branch_prefix = self._data_main["branch.release.name"]
         return f"{release_branch_prefix}{major_version}"
 
-    def create_branch_name_prerelease(self, version: versionman.PEP440SemVer) -> str:
+    def create_branch_name_prerelease(self, version: PEP440SemVer) -> str:
         """Generate the name of the pre-release branch for a given version."""
         pre_release_branch_prefix = self._data_main["branch.pre.name"]
         return f"{pre_release_branch_prefix}{version}"
@@ -711,9 +711,9 @@ class EventHandler:
 
     @staticmethod
     def get_next_version(
-        version: versionman.PEP440SemVer,
+        version: PEP440SemVer,
         action: PrimaryActionCommitType
-    ) -> versionman.PEP440SemVer:
+    ) -> PEP440SemVer:
         if action is PrimaryActionCommitType.RELEASE_MAJOR:
             if version.major == 0:
                 return version.next_minor
