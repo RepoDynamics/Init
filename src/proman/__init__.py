@@ -13,6 +13,7 @@ def run():
         outputs, summary = event_handler.run()
         _write_outputs_and_summary(outputs, summary)
     except Exception as e:
+        print(e)
         raise _exception.ProManInternalError() from e
     return
 
