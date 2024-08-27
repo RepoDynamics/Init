@@ -6,14 +6,13 @@ from proman.datatype import TemplateType as _TemplateType
 from proman import exception as _exception, event_handler as _handler
 
 
-@_logger.sectioner(catch_exception_set=Exception)
+# @_logger.sectioner(catch_exception_set=Exception)
 def run():
     try:
         event_handler = _init_handler()
         outputs, summary = event_handler.run()
         _write_outputs_and_summary(outputs, summary)
     except Exception as e:
-        print(e)
         raise _exception.ProManInternalError() from e
     return
 
