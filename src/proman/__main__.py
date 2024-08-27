@@ -18,4 +18,4 @@ if __name__ == "__main__":
     )
     print("\n\n\nSSSSSSSSSSTTTTARR\n\n\n")
     loggerman.logger.info("Start")
-    proman.run()
+    # proman.run()
