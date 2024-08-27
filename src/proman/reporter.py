@@ -128,7 +128,7 @@ class Reporter:
 
     def _generate_context_summary(self) -> html.elem.Details:
         rows = []
-        event_type = self._context.event_name
+        event_type = self._context.event_name.value
         if hasattr(self._context.event, "action"):
             event_type += f" ({self._context.event.action.value})"
         for name, val in (
