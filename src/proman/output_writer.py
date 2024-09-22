@@ -8,8 +8,8 @@ from proman.data_manager import DataManager
 
 class OutputWriter:
 
-    def __init__(self, context: GitHubContext):
-        self._context = context
+    def __init__(self, github_context: GitHubContext):
+        self._context = github_context
         self._repository = self._context.target_repo_fullname
 
         self.ref = self._context.ref_name

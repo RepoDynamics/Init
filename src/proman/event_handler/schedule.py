@@ -4,7 +4,6 @@ import conventional_commits.message
 from github_contexts import GitHubContext
 from github_contexts.github.payload.schedule import SchedulePayload
 from loggerman import logger
-from markitup import html, md
 import pyshellman
 import controlman
 from proman.datatype import BranchType, InitCheckAction, Branch

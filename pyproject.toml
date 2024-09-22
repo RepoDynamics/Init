@@ -20,22 +20,23 @@ namespaces = true
 version = "0.0.0.dev3"
 name = "ProMan"
 dependencies = [
-    "pre-commit == 3.3.3",
+    "pre-commit == 3.8.0",
     "ActionMan",
     "ControlMan",
     "ConventionalCommits",
     "GitHub-Contexts",
     "LoggerMan",
-    "MarkItUp",
+    "MDit",
+    "HTMP",
     "PyLinks",
     "PySyntax",
     "VersionMan",
     "GitTidy",
-    "FixMan",
     "PkgData",
     "PyShellMan",
-    "pyserials",
-    "FileEx"
+    "PySerials",
+    "FileEx",
+    "ANSI-SGR",
 ]
 requires-python = ">=3.10"
 

@@ -1,17 +1,18 @@
 """Main event handler."""
 
+from __future__ import annotations
 
 from pathlib import Path
 import json
-from typing import Literal
+from typing import TYPE_CHECKING
 import re
 import datetime
 
 from loggerman import logger
-from markitup import html, md
+import mdit
+import htmp
 import pylinks
 import pyserials as _ps
-
 from github_contexts import GitHubContext
 import conventional_commits
 import pkgdata
@@ -24,12 +25,16 @@ import gittidy
 from versionman.pep440_semver import PEP440SemVer
 
 from proman.datatype import FileChangeType, RepoFileType, BranchType
-from proman.output_writer import OutputWriter
 from proman.repo_config import RepoConfig
 from proman import hook_runner
 from proman.data_manager import DataManager
 from proman import change_detector
-from proman.reporter import Reporter
+from proman.exception import ProManException
+
+if TYPE_CHECKING:
+    from typing import Literal
+    from proman.reporter import Reporter
+    from proman.output_writer import OutputWriter
 
 
 class EventHandler:
@@ -50,6 +55,8 @@ class EventHandler:
     def __init__(
         self,
         github_context: GitHubContext,
+        reporter: Reporter,
+        output_writer: OutputWriter,
         admin_token: str | None,
         path_repo_base: str,
         path_repo_head: str,
@@ -57,8 +64,8 @@ class EventHandler:
         self._context = github_context
         self._path_base = Path(path_repo_base)
         self._path_head = Path(path_repo_head)
-        self._reporter = Reporter(github_context=self._context)
-        self._output = OutputWriter(context=self._context)
+        self._reporter = reporter
+        self._output = output_writer
 
         repo_user = self._context.repository_owner
         repo_name = self._context.repository_name
@@ -99,23 +106,12 @@ class EventHandler:
         self._branch_name_memory_autoupdate: str | None = None
         return
 
-    def run(self) -> tuple[dict, str]:
+    def run(self) -> None:
         self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
         self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
             controlman.from_json_file(repo_path=self._path_head)
         )
-        self._run_event()
-        output = self._output.generate(failed=self._failed)
-        summary_gha, summary_full = self._reporter.generate()
-        filename = (
-            f"{self._context.repository_name}-workflow-run"
-            f"-{self._context.run_id}-{self._context.run_attempt}.{{}}.html"
-        )
-        dir_path = Path("./proman_artifacts")
-        dir_path.mkdir(exist_ok=True)
-        with open(dir_path / filename.format("report"), "w") as f:
-            f.write(summary_full)
-        return output, summary_gha
+        return self._run_event()
 
     def _run_event(self) -> None:
         ...
@@ -170,35 +166,30 @@ class EventHandler:
         changes = self._git_head.changed_files(
             ref_start=self._context.hash_before, ref_end=self._context.hash_after
         )
-        logger.debug("Detected changed files", json.dumps(changes, indent=3))
         full_info = change_detector.detect(data=self._data_branch_before, changes=changes)
         changed_filetypes = {}
-        headers = "".join(
-            [f"<th>{header}</th>" for header in ("Type", "Subtype", "Change", "Dynamic", "Path")])
-        rows = [f"<tr>{headers}</tr>"]
+        rows = [["Type", "Subtype", "Change", "Dynamic", "Path"]]
         for typ, subtype, change_type, is_dynamic, path in sorted(full_info, key=lambda x: (x[0].value, x[1])):
             changed_filetypes.setdefault(typ, []).append(change_type)
             if is_dynamic:
                 changed_filetypes.setdefault(RepoFileType.DYNAMIC, []).append(change_type)
-            dynamic = f'<td title="{'Dynamic' if is_dynamic else 'Static'}">{'✅' if is_dynamic else '❌'}</td>'
+            dynamic = htmp.element.span('✅' if is_dynamic else '❌', title='Dynamic' if is_dynamic else 'Static')
             change_sig = change_type.value
-            change = f'<td title="{change_sig.title}">{change_sig.emoji}</td>'
+            change = htmp.element.span(change_sig.emoji, title=change_sig.title)
             subtype = subtype or Path(path).stem
-            rows.append(
-                f"<tr><td>{typ.value}</td><td>{subtype}</td>{change}{dynamic}<td><code>{path}</code></td></tr>"
-            )
+            rows.append([typ.value, subtype, change, dynamic, mdit.element.code_span(path)])
         if not changed_filetypes:
             oneliner = "No files were changed in this event."
-            section = None
+            body = None
         else:
             changed_types = ", ".join(sorted([typ.value for typ in changed_filetypes]))
             oneliner = f"Following filetypes were changed: {changed_types}"
-            section_intro = []
-            intro_table_rows = ["<tr><th>Type</th><th>Changes</th></tr>"]
+            body = mdit.element.unordered_list()
+            intro_table_rows = [["Type", "Changes"]]
             has_broken_changes = False
             if RepoFileType.DYNAMIC in changed_filetypes:
                 warning = "⚠️ Dynamic files were changed; make sure to double-check that everything is correct."
-                section_intro.append(warning)
+                body.append(warning)
             for file_type, change_list in changed_filetypes.items():
                 change_list = sorted(set(change_list), key=lambda x: x.value.title)
                 changes = []
@@ -209,29 +200,22 @@ class EventHandler:
                         f'<span title="{change_type.value.title}">{change_type.value.emoji}</span>'
                     )
                 changes_cell = "&nbsp;".join(changes)
-                intro_table_rows.append(
-                    f"<tr><td>{file_type.value}</td><td>{changes_cell}</td></tr>"
-                )
+                intro_table_rows.append([file_type.value, changes_cell])
             if has_broken_changes:
                 warning = "⚠️ Some changes were marked as 'broken' or 'unknown'; please investigate."
-                section_intro.append(warning)
-            intro_table = html.elem.table(intro_table_rows)
-            section_intro.append(f"Following filetypes were changed: {intro_table}")
-            section_intro.append(f"Following files were changed during this event: {html.elem.table(rows)}")
-            legend = [html.elem.li(f"{status.value.emoji}  {status.value.title}") for status in FileChangeType]
-            color_legend = html.elem.details(content=[html.elem.ul(legend)], summary="Color Legend")
-            section_intro.append(color_legend)
-            section = html.elem.ul([html.elem.li(entry) for entry in section_intro])
+                body.append(warning)
+            intro_table = mdit.element.table(intro_table_rows, num_rows_header=1)
+            body.append(["Following filetypes were changed:", intro_table])
+            body.append(["Following files were changed:", mdit.element.table(rows, num_rows_header=1)])
         self._reporter.add(
             name="file_change",
             status="pass",
             summary=oneliner,
-            details_full=section,
-            details_short=section,
+            body=body,
         )
         return tuple(changed_filetypes.keys())
 
-    @logger.sectioner("Configuration Management")
+    @logger.sectioner("Continuous Configuration Management")
     def _sync(
         self,
         action: InitCheckAction,
@@ -239,13 +223,13 @@ class EventHandler:
         base: bool,
         commit_msg: str | None = None,
     ) -> str | None:
-        logger.info(f"Action: {action.value}")
         if action == InitCheckAction.NONE:
             self._reporter.add(
                 name="cca",
                 status="skip",
                 summary="CCA is disabled for this event.",
             )
+            logger.info("CCA Disabled", "CCA is disabled for this event.")
             return
         git = self._git_base if base else self._git_head
         if action == InitCheckAction.PULL:
@@ -253,16 +237,16 @@ class EventHandler:
         try:
             reporter = cc_manager.report()
         except controlman.exception.ControlManException as e:
-            report_full = e.report(mode="full", md=False)
-            report_short = e.report(mode="short", md=True)
             self._reporter.add(
                 name="cca",
                 status="fail",
-                summary=e.summary_html,
-                details_full=list(report_full.section["details"].content.values()) if report_full.section else None,
-                details_short=list(report_short.section["details"].content.values()) if report_short.section else None,
+                summary=e.report.body["intro"].content,
+                body=e.report.body,
+                section=e.report.section,
+                section_is_container=True,
             )
-            return
+            logger.critical("CCA Error", e.report.body)
+            raise ProManException()
         # Push/pull if changes are made and action is not 'fail' or 'report'
         report = reporter.report()
         commit_hash = None
@@ -296,18 +280,16 @@ class EventHandler:
                 )
                 self.switch_back_from_autoupdate_branch(git=git)
                 commit_hash = None
-                link = html.elem.a(href=pull_data["url"], content=f'#{pull_data["number"]}')
-                description += f"branch {html.elem.code(pr_branch_name)} in PR {link}."
+                link = f'[\#{pull_data["number"]}]({pull_data["url"]})'
+                description += f"branch {htmp.element.code(pr_branch_name)} in PR {link}."
             else:
-                link = html.elem.a(
-                    href=str(self._gh_link.commit(commit_hash)), content=f"<code>{commit_hash[:7]}</code>"
-                )
+                link = f"[`{commit_hash[:7]}`]({self._gh_link.commit(commit_hash)})"
                 description += "the current branch " + (
                     f"in commit {link}."
                     if action == InitCheckAction.COMMIT
                     else f"by amending the latest commit (new hash: {link})."
                 )
-            report.content["summary"] += f" {description}"
+            report.body["summary"].content += f" {description}"
         self._reporter.add(
             name="cca",
             status="fail" if reporter.has_changes and action in [
@@ -315,8 +297,9 @@ class EventHandler:
                InitCheckAction.REPORT,
                InitCheckAction.PULL
             ] else "pass",
-            summary=report.content["summary"],
-            details_full=report.section["changes"].content["details"],
+            summary=report.body["summary"].content,
+            section=report.section,
+            section_is_container=True,
         )
         return commit_hash
 
@@ -364,13 +347,16 @@ class EventHandler:
         git = self._git_base if base else self._git_head
         if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
-        hooks_output = hook_runner.run(
-            git=git,
-            ref_range=ref_range,
-            action=input_action.value,
-            commit_message=str(commit_msg),
-            config=config,
-        )
+        try:
+            hooks_output = hook_runner.run(
+                git=git,
+                ref_range=ref_range,
+                action=input_action.value,
+                commit_message=str(commit_msg),
+                config=config,
+            )
+        except ProManException as e:
+            pass
         passed = hooks_output["passed"]
         modified = hooks_output["modified"]
         commit_hash = None
@@ -402,8 +388,8 @@ class EventHandler:
                 name="hooks",
                 status="fail" if not passed or (action == InitCheckAction.PULL and modified) else "pass",
                 summary=hooks_output["summary"],
-                details_full=hooks_output["details_full"],
-                details_short=hooks_output["details_short"],
+                body=hooks_output["body"],
+                section=hooks_output["section"],
             )
         return commit_hash
 
@@ -632,11 +618,10 @@ class EventHandler:
             name="main",
             status="fail",
             summary=action_err_msg,
-            details_short=action_err_details,
-            details_full=action_err_details,
+            body=action_err_details,
         )
         logger.critical(action_err_msg, action_err_details)
-        return
+        raise ProManException()
 
     def _add_reference_to_dev_protocol(self, protocol: str, reference: str) -> str:
         entry = f"- {reference}"
