@@ -173,7 +173,7 @@ class Reporter:
 
     def _generate_sections(self) -> dict[str, mdit.Document]:
         sections = {}
-        for section_id, data in self._info.values():
+        for section_id, data in self._info.items():
             if section_id == "event":
                 for context_dropdown in self._generate_context():
                     data["body"].append(context_dropdown, conditions=["full"])

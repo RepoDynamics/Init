@@ -17,21 +17,21 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev8"
+version = "0.0.0.dev9"
 name = "ProMan"
 dependencies = [
     "pre-commit == 3.8.0",
     "ActionMan == 0.0.0.dev17",
-    "ControlMan == 0.0.0.dev276",
+    "ControlMan == 0.0.0.dev277",
     "ConventionalCommits == 0.0.0.dev7",
     "GitHub-Contexts == 0.0.0.dev8",
-    "LoggerMan == 0.0.0.dev21",
+    "LoggerMan == 0.0.0.dev22",
     "MDit == 0.0.0.dev8",
     "HTMP == 0.0.0.dev5",
     "PyLinks == 0.0.0.dev27",
     "PySyntax == 0.0.0.dev3",
     "VersionMan == 0.0.0.dev248",
-    "GitTidy == 0.0.0.dev13",
+    "GitTidy == 0.0.0.dev14",
     "PkgData == 0.0.0.dev4",
     "PyShellMan == 0.0.0.dev2",
     "PySerials == 0.0.0.dev11",
