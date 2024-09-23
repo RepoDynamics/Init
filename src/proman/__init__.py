@@ -25,7 +25,7 @@ def run():
     path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
 
     admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
-    _logger.info("Admin Token", "Provided" if admin_token else "Not provided")
+    _logger.info("Admin Token", f"Provided ({len(admin_token)} characters)" if admin_token else "Not provided")
 
     event_to_handler = {
         _EventType.ISSUES: _handler.IssuesEventHandler,
@@ -40,15 +40,14 @@ def run():
     handler_class = event_to_handler.get(github_context.event_name)
     if handler_class:
         try:
-            handler = handler_class(
+            handler_class(
                 github_context=github_context,
                 reporter=reporter,
                 output_writer=output_writer,
                 admin_token=admin_token,
                 path_repo_base=path_repo_base,
                 path_repo_head=path_repo_head,
-            )
-            handler.run()
+            ).run()
         except _exception.ProManException:
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return

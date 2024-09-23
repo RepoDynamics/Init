@@ -20,20 +20,20 @@ class PushEventHandler(EventHandler):
     It also runs Continuous pipelines on forked repositories.
     """
 
-    @logger.sectioner("Initialize Event Handler")
+    @logger.sectioner("Event Handler Initialization (Push)")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: _gh_context.payload.PushPayload = self._context.event
         return
 
-    @logger.sectioner("Execute Push Handler", group=False)
+    @logger.sectioner("Event Handler Execution")
     def _run_event(self):
         if self._context.ref_type is not _gh_context.enum.RefType.BRANCH:
             self._reporter.event(
                 f"Push to tag `{self._context.ref_name}`"
             )
             self._reporter.add(
-                name="main",
+                name="event",
                 status="skip",
                 summary="Push to tags does not trigger the workflow."
             )
@@ -44,7 +44,7 @@ class PushEventHandler(EventHandler):
                 f"Deletion of branch `{self._context.ref_name}`"
             )
             self._reporter.add(
-                name="main",
+                name="event",
                 status="skip",
                 summary="Branch deletion does not trigger the workflow.",
             )
@@ -55,16 +55,17 @@ class PushEventHandler(EventHandler):
             if not is_main:
                 self._reporter.event(f"Creation of branch `{self._context.ref_name}`")
                 self._reporter.add(
-                    name="main",
+                    name="event",
                     status="skip",
                     summary="Branch creation does not trigger the workflow.",
                 )
                 return
             if not has_tags:
-                return self._run_repository_created()
+                self._reporter.event("Repository creation")
+                return self._run_repository_creation()
             self._reporter.event(f"Creation of default branch `{self._context.ref_name}`")
             self._reporter.add(
-                name="main",
+                name="event",
                 status="skip",
                 summary="Default branch created while a version tag is present. "
                         "This is likely a result of renaming the default branch.",
@@ -76,7 +77,7 @@ class PushEventHandler(EventHandler):
         if not is_main:
             self._reporter.event(f"Modification of branch `{self._context.ref_name}`")
             self._reporter.add(
-                name="main",
+                name="event",
                 status="skip",
                 summary="Modification of non-default branches does not trigger the workflow.",
             )
@@ -91,8 +92,7 @@ class PushEventHandler(EventHandler):
             return self._run_init_phase()
         return self._run_branch_edited_main_normal()
 
-    def _run_repository_created(self):
-        self._reporter.event("Repository creation")
+    def _run_repository_creation(self):
         _fileex.directory.delete_contents(
             path=self._path_head,
             exclude=[".github", "template"],
@@ -122,7 +122,7 @@ class PushEventHandler(EventHandler):
         self._git_head.push()
         self._repo_config.reset_labels(data=data)
         self._reporter.add(
-            name="main",
+            name="event",
             status="pass",
             summary=f"Repository created from RepoDynamics template.",
         )

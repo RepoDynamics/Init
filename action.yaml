@@ -192,7 +192,8 @@ runs:
       run: |
         # Repo Cache (base)
         python "${{ github.action_path }}/heading.py" "1.5 Cache Load"
-    - uses: actions/cache@v4
+    - if: ${{ steps.local_dir.outputs.local_dirpath_repo_base }}
+      uses: actions/cache@v4
       with:
         path: ${{ steps.local_dir.outputs.local_dirpath_repo_base }}
         key: branch_${{ github.ref }}_local
@@ -202,7 +203,8 @@ runs:
       run: |
         # Repo Cache (head)
         python "${{ github.action_path }}/heading.py" "1.5 Cache Load"
-    - uses: actions/cache@v4
+    - if: ${{ steps.local_dir.outputs.local_dirpath_repo_head }}
+      uses: actions/cache@v4
       with:
         path: ${{ steps.local_dir.outputs.local_dirpath_repo_head }}
         key: branch_${{ github.ref }}_local

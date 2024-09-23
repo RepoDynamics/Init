@@ -8,8 +8,14 @@ import actionman
 
 def get_local_dir_paths():
     for repo_path in ("repo_base", "repo_head"):
-        meta = controlman.from_json_file(repo_path=repo_path)
-        local_dir_path = meta["local"]["path"]
+        try:
+            meta = controlman.from_json_file(repo_path=repo_path)
+        except controlman.exception.ControlManException:
+            return
+        try:
+            local_dir_path = meta["local"]["path"]
+        except Exception:
+            return
         actionman.step_output.write(f"local_dirpath_{repo_path}", local_dir_path)
     return
 

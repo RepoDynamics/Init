@@ -640,6 +640,8 @@ class EventHandler:
             # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
             # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
             # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
+            # https://docs.readthedocs.io/en/latest/guides/pull-requests.html
+
             config = self._data_main["tool.readthedocs.config.workflow"]
             domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
             slug = config["name"]
