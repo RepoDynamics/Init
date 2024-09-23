@@ -104,6 +104,7 @@ class Reporter:
             rows=table_rows,
             caption="Pipeline Summary",
             num_rows_header=1,
+            align_table="center",
         )
         if failed:
             workflow_status = "fail"
@@ -121,9 +122,6 @@ class Reporter:
             label="Status",
             style="for-the-badge",
             color=color,
-            align="center",
-            container="div",
-            attrs_container={"align": "center"},
         )
         return status_badge, table, failed
 
@@ -146,7 +144,7 @@ class Reporter:
     def _generate_context_summary(self) -> mdit.element.DropDown:
         event_type = self._context.event_name.value
         if hasattr(self._context.event, "action"):
-            event_type += f" ({self._context.event.action.value})"
+            event_type += f" {self._context.event.action.value}"
         field_list = mdit.element.field_list(
             [
                 ("Event Type", event_type),
