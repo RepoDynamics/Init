@@ -2,7 +2,7 @@
 import sys
 
 
-def heading(heading):
+def heading(heading: str):
     spec = {
         1: {"top": 1, "bottom": 0, "len": 110, "style": "\033[1;38;2;150;0;170m"},
         2: {"top": 1, "bottom": 0, "len": 95, "style": "\033[1;38;2;25;100;175m"},
@@ -11,14 +11,27 @@ def heading(heading):
         5: {"top": 1, "bottom": 0, "len": 50, "style": "\033[1;38;2;240;100;0m"},
         6: {"top": 1, "bottom": 0, "len": 35, "style": "\033[1;38;2;220;0;35m"},
     }
+    colors = [
+        (255, 120, 255),
+        (0, 255, 255),
+        (127, 255, 0),
+        (255, 255, 0),
+        (255, 200, 55),
+        (255, 255, 255),
+    ]
     number, title = heading.split(" ", 1)
-    level = len(number.split("."))
-    if level not in spec:
-        print("Invalid option. Choose between 1 and 6.")
-        sys.exit(1)
-    margin_top = "\n" * spec[level]['top']
-    margin_bottom = "\n" * spec[level]['bottom']
-    return f"{margin_top}{spec[level]['style']}{number.strip()}  {title.strip()}{margin_bottom}"
+    level = max(len(number.split(".")), len(colors))
+
+    len_heading = len(heading)
+    len_margin = 2
+    len_console_line = 88
+    num_dashes = len_console_line - len_heading - len_margin
+    num_dashes_left = num_dashes // 2
+    num_dashes_right = num_dashes - num_dashes_left
+    dash = "–"
+    color = colors[level - 1]
+    ansi_seq = f"\033[1;38;2;{color[0]};{color[1]};{color[2]}m"
+    return f"{dash * num_dashes_left} {ansi_seq}{heading.strip()} {dash * num_dashes_right}"
 
 
 if __name__ == "__main__":
