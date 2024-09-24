@@ -21,7 +21,7 @@ class IssuesEventHandler(EventHandler):
         self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
         return
 
-    @logger.sectioner("Execute Issue Handler", group=False)
+    @logger.sectioner("Execute Issue Handler")
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)
