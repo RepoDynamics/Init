@@ -5,7 +5,7 @@ import sys
 import controlman
 import actionman
 from loggerman import logger
-
+from proman.logger import initialize as proman_logger_initialize
 
 
 def get_local_dir_paths():
@@ -72,12 +72,7 @@ def set_local_dir_path(metadata, repo_path: str, repo_name: str) -> bool:
 
 
 if __name__ == "__main__":
-    logger.initialize(
-        realtime_levels=list(range(1, 7)),
-        github=True,
-        github_debug=True,
-        title_number=[1, 4],
-    )
+    proman_logger_initialize()
     logger.section("Cache Load")
     first_sub_sec_key = get_local_dir_paths()
     if first_sub_sec_key:
