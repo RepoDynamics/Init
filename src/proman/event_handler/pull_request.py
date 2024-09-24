@@ -48,7 +48,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         ) = None
         return
 
-    @logger.sectioner("Execute Event Handler", group=False)
+    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         if not self._head_to_base_allowed():
             return
