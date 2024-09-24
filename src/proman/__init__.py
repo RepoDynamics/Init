@@ -52,19 +52,19 @@ def run():
         except _exception.ProManException:
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
-        except Exception:
-            exc_type, exc_value, exc_traceback = _sys.exc_info()
+        except Exception as e:
             traceback = _logger.traceback()
+            error_name = e.__class__.__name__
             _logger.critical(
-                "Unexpected Error",
+                f"Unexpected Error: {error_name}",
                 traceback,
             )
             reporter.add(
                 "main",
                 status="fail",
-                summary="An unexpected error occurred.",
+                summary=f"An unexpected error occurred: `{error_name}`",
                 body=mdit.element.admonition(
-                    title=exc_type,
+                    title=error_name,
                     body=traceback,
                     type="error",
                     dropdown=True,
