@@ -13,7 +13,7 @@ import mdit
 import htmp
 import pylinks
 import pyserials as _ps
-from github_contexts import GitHubContext
+from github_contexts.github import enum as _ghc_enum
 import conventional_commits
 import pkgdata
 import controlman
@@ -33,6 +33,7 @@ from proman.exception import ProManException
 
 if TYPE_CHECKING:
     from typing import Literal
+    from github_contexts import GitHubContext
     from proman.reporter import Reporter
     from proman.output_writer import OutputWriter
 
@@ -107,10 +108,19 @@ class EventHandler:
         return
 
     def run(self) -> None:
-        self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
-        self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
-            controlman.from_json_file(repo_path=self._path_head)
-        )
+        if not (
+            # Repository creation event conditions:
+            # self._context.event_name is _ghc_enum.EventType.PUSH
+            # and self._context.ref_type is _ghc_enum.RefType.BRANCH
+            # and self._context.event.action is _ghc_enum.ActionType.CREATED
+            # and self._context.ref_is_main
+            # and not bool(self._git_head.get_tags())
+            False
+        ):
+            self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
+            self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
+                controlman.from_json_file(repo_path=self._path_head)
+            )
         return self._run_event()
 
     def _run_event(self) -> None:
