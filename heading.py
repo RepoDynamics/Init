@@ -120,20 +120,13 @@ def logo(
     total_hor_spaces = box_len - logo_len - 2
     spaces_left = (total_hor_spaces // 2)
     spaces_right = total_hor_spaces - spaces_left
-    print("box_len", box_len)
-    print("logo_len", logo_len)
-    print("total_hor_spaces", total_hor_spaces)
-    print("spaces_left", spaces_left)
-    print("spaces_right", spaces_right)
     ver_margin_lines = [apply_style(f'{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}', BOX_COLOR)] * MARGIN_VER
     boxed_logo = [
         "",
         apply_style(f"{BOX_TOP_LEFT}{BOX_TOP * (box_len - 2)}{BOX_TOP_RIGHT}", BOX_COLOR),
         *ver_margin_lines,
     ]
-    import ansi_sgr as sgr
     for line in full_logo:
-        print("line_len", len(sgr.remove_sequence(line)))
         boxed_logo.append(
             f'{apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{apply_style(BOX_RIGHT, BOX_COLOR)}'
         )
