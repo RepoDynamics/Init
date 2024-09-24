@@ -17,7 +17,7 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev12"
+version = "0.0.0.dev13"
 name = "ProMan"
 dependencies = [
     "pre-commit == 3.8.0",

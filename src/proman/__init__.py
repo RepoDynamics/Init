@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys as _sys
 
 import actionman as _actionman
 import github_contexts as _github_contexts
@@ -52,6 +53,7 @@ def run():
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
         except Exception:
+            exc_type, exc_value, exc_traceback = _sys.exc_info()
             traceback = _logger.traceback()
             _logger.critical(
                 "Unexpected Error",
@@ -60,8 +62,14 @@ def run():
             reporter.add(
                 "main",
                 status="fail",
-                summary="An unexpected error occurred",
-                body=traceback,
+                summary="An unexpected error occurred.",
+                body=mdit.element.admonition(
+                    title=exc_type,
+                    body=traceback,
+                    type="error",
+                    dropdown=True,
+                    opened=True,
+                ),
             )
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
