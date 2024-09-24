@@ -20,7 +20,7 @@ class ScheduleEventHandler(EventHandler):
         self._payload: SchedulePayload = self._context.event
         return
 
-    @logger.sectioner("Execute Event Handler", group=False)
+    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         cron = self._payload.schedule
         if cron == self._data_main["workflow"]["schedule"]["sync"]["cron"]:
