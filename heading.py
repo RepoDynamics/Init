@@ -125,7 +125,7 @@ def logo(
     print("total_hor_spaces", total_hor_spaces)
     print("spaces_left", spaces_left)
     print("spaces_right", spaces_right)
-    ver_margin_lines = [apply_style(f"{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}", BOX_COLOR)] * MARGIN_VER
+    ver_margin_lines = [apply_style(f'{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}', BOX_COLOR)] * MARGIN_VER
     boxed_logo = [
         "",
         apply_style(f"{BOX_TOP_LEFT}{BOX_TOP * (box_len - 2)}{BOX_TOP_RIGHT}", BOX_COLOR),
