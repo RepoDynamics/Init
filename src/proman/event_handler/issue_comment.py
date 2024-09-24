@@ -34,7 +34,7 @@ class IssueCommentEventHandler(EventHandler):
         }
         return
 
-    @logger.sectioner("Execute Issue-Comment Event Handler", group=False)
+    @logger.sectioner("Execute Issue-Comment Event Handler")
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)
