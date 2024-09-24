@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-import tomllib
+import re
 
 if TYPE_CHECKING:
     from typing import Sequence
@@ -138,8 +138,8 @@ def logo(
             f'{apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{apply_style(BOX_RIGHT, BOX_COLOR)}'
         )
 
-    pyproject = tomllib.loads(PATH_PYPROJECT.read_text())
-    version = pyproject["project"]["version"]
+    pyproject = PATH_PYPROJECT.read_text()
+    version = re.findall(r'^version\s+=\s*"([^"]*)"', pyproject, re.MULTILINE)[0]
     version_str = f" {apply_style(VERSION_PREFIX, VERSION_COLOR_PREFIX)}{apply_style(version, VERSION_COLOR_VERSION)} "
     version_str_len = len(VERSION_PREFIX) + len(version) + 2
     num_chars = box_len - version_str_len - 2
