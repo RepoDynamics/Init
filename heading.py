@@ -19,9 +19,10 @@ def heading(heading: str):
         (255, 200, 55),
         (255, 255, 255),
     ]
+    line_color = (255, 100, 100)
+    ansi_reset = f"\033[0m"
     number, title = heading.split(" ", 1)
-    level = max(len(number.split(".")), len(colors))
-
+    level = min(len(number.split(".")), len(colors))
     len_heading = len(heading)
     len_margin = 2
     len_console_line = 88
@@ -29,9 +30,13 @@ def heading(heading: str):
     num_dashes_left = num_dashes // 2
     num_dashes_right = num_dashes - num_dashes_left
     dash = "–"
-    color = colors[level - 1]
-    ansi_seq = f"\033[1;38;2;{color[0]};{color[1]};{color[2]}m"
-    return f"{dash * num_dashes_left} {ansi_seq}{heading.strip()} {dash * num_dashes_right}"
+    ansi_heading = make_ansi(colors[level - 1])
+    ansi_line = make_ansi(line_color)
+    return f"{ansi_line}{dash * num_dashes_left}{ansi_reset} {ansi_heading}{heading.strip()}{ansi_reset} {ansi_line}{dash * num_dashes_right}"
+
+
+def make_ansi(color: tuple[int, int, int]):
+    return f"\033[1;38;2;{color[0]};{color[1]};{color[2]}m"
 
 
 if __name__ == "__main__":
