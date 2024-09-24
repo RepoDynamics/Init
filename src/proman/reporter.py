@@ -141,7 +141,7 @@ class Reporter:
             output.append(dropdown)
         return output
 
-    def _generate_context_summary(self) -> mdit.element.DropDown:
+    def _generate_context_summary(self) -> mdit.element.Admonition:
         event_type = self._context.event_name.value
         if hasattr(self._context.event, "action"):
             event_type += f" {self._context.event.action.value}"
@@ -160,12 +160,12 @@ class Reporter:
             ]
         )
         logger.info("Context Summary", field_list)
-        dropdown = mdit.element.dropdown(
+        dropdown = mdit.element.admonition(
             title="Context Summary",
             body=field_list,
-            color="info",
-            icon="🎬",
+            dropdown=True,
             opened=True,
+            emoji="🎬",
         )
         return dropdown
 
