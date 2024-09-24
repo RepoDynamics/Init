@@ -35,14 +35,21 @@ VERSION_PREFIX = "Version "
 VERSION_COLOR_PREFIX = (75, 100, 160)
 VERSION_COLOR_VERSION = (0, 100, 200)
 HEADING_COLORS = [
-    (255, 120, 255),
-    (0, 255, 255),
-    (127, 255, 0),
-    (255, 255, 0),
-    (255, 200, 55),
-    (255, 255, 255),
+    (255, 200, 255),
+    (235, 160, 255),
+    (215, 120, 255),
+    (195, 80, 255),
+    (175, 40, 255),
+    (155, 0, 255),
 ]
-LINE_COLOR = (150, 150, 150)
+LINE_COLORS = [
+    (250, 250, 230),
+    (220, 220, 200),
+    (190, 190, 170),
+    (160, 160, 140),
+    (130, 130, 110),
+    (100, 100, 80),
+]
 BOX_COLOR = (100, 100, 100)
 BOX_TOP_LEFT = "╭"
 BOX_TOP = "─"
@@ -175,8 +182,8 @@ def heading(content: str):
     num_dashes_right = num_dashes - num_dashes_left
     line_char = "–"
     heading_text = apply_style(content.strip(), HEADING_COLORS[level - 1])
-    line_left = apply_style(line_char * num_dashes_left, LINE_COLOR)
-    line_right = apply_style(line_char * num_dashes_right, LINE_COLOR)
+    line_left = apply_style(line_char * num_dashes_left, LINE_COLORS[level - 1])
+    line_right = apply_style(line_char * num_dashes_right, LINE_COLORS[level - 1])
     return f"{line_left} {heading_text} {line_right}"
 
 
