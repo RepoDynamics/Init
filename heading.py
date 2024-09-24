@@ -135,7 +135,7 @@ def logo(
     for line in full_logo:
         print("line_len", len(sgr.remove_sequence(line)))
         boxed_logo.append(
-            f"{apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{apply_style(BOX_RIGHT, BOX_COLOR)}"
+            f'{apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{apply_style(BOX_RIGHT, BOX_COLOR)}'
         )
 
     pyproject = tomllib.loads(PATH_PYPROJECT.read_text())
