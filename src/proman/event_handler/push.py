@@ -110,7 +110,7 @@ class PushEventHandler(EventHandler):
             repo=self._git_head,
             github_token=self._context.token,
             future_versions={self._context.event.repository.default_branch: "0.0.0"},
-            control_center_path=".control"
+            control_center_path=self._path_head / ".control"
         )
         self._sync(
             action=InitCheckAction.AMEND,
