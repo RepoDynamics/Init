@@ -123,7 +123,6 @@ def logo(
     ver_margin_lines = [apply_style(f'{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}', BOX_COLOR)] * MARGIN_VER
     boxed_logo = [
         "",
-        "",
         apply_style(f"{BOX_TOP_LEFT}{BOX_TOP * (box_len - 2)}{BOX_TOP_RIGHT}", BOX_COLOR),
         *ver_margin_lines,
     ]
@@ -142,7 +141,7 @@ def logo(
     line_left = apply_style(f"{BOX_BOTTOM_LEFT}{BOX_BOTTOM * chars_left}", BOX_COLOR)
     line_right = apply_style(f"{BOX_BOTTOM * chars_right}{BOX_BOTTOM_RIGHT}", BOX_COLOR)
     boxed_logo.extend(
-        [*ver_margin_lines, f"{line_left}{version_str}{line_right}", "", ""]
+        [*ver_margin_lines, f"{line_left}{version_str}{line_right}", ""]
     )
     return "\n".join(boxed_logo)
 
