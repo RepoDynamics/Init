@@ -1,11 +1,10 @@
 import proman
 from proman import reporter
 
-reporter.initialize_logger(title_number=[2])
+# reporter.initialize_logger(title_number=[2])
 
 
 import pyserials as ps
-from loggerman import logger
 import mdit
 data = {"fail": False,
         "run": {
@@ -14,10 +13,20 @@ data = {"fail": False,
         "website": []
        }
 yaml_str = ps.write.to_yaml_string(data)
-x = mdit.element.code_block(yaml_str, language="yaml")
-rich = x.source("console")
-logger._print(rich)
+x = mdit.element.code_block(yaml_str, language="yaml").source("console")
 
-logger.info("Action Output", x)
+import rich
+rich.print(x)
 
-proman.run()
+from rich.console import Console
+console = Console(
+    color_system="truecolor",
+    force_terminal=True,
+    width=88,
+)
+console.print(x)
+
+
+
+
+# proman.run()
