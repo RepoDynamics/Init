@@ -91,11 +91,11 @@ class Reporter:
         )
         gha_summary = report.source(target="github", filters=["short, github"], separate_sections=False)
         full_summary = report.render(target="sphinx", filters=["full"], separate_sections=False)
-        logger.info(
-            "Report Generation",
-            mdit.element.rich(Text.from_ansi(stdout.getvalue())),
-            mdit.element.rich(Text.from_ansi(stderr.getvalue())),
-        )
+        # logger.info(
+        #     "Report Generation",
+        #     mdit.element.rich(Text.from_ansi(stdout.getvalue())),
+        #     mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+        # )
         return gha_summary, full_summary
 
     def _generate_summary(self) -> tuple[mdit.element.InlineImage, mdit.element.Table]:

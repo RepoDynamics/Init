@@ -104,11 +104,11 @@ def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporte
     target_config, stdout, stderr = make_sphinx_target_config()
     log.target_configs["sphinx"] = target_config
     log_html = log.render(target="sphinx")
-    _logger.info(
-        "Log Generation",
-        mdit.element.rich(Text.from_ansi(stdout.getvalue())),
-        mdit.element.rich(Text.from_ansi(stderr.getvalue())),
-    )
+    # _logger.info(
+    #     "Log Generation",
+    #     mdit.element.rich(Text.from_ansi(stdout.getvalue())),
+    #     mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+    # )
     filename = (
         f"{github_context.repository_name}-workflow-run"
         f"-{github_context.run_id}-{github_context.run_attempt}.{{}}.html"
