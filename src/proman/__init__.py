@@ -14,7 +14,7 @@ from proman.reporter import Reporter as _Reporter, make_sphinx_target_config
 from proman.output_writer import OutputWriter as _OutputWriter
 
 
-@_logger.sectioner("Action Execution")
+@_logger.sectioner("Execution")
 def run():
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
@@ -92,7 +92,7 @@ def run():
     return
 
 
-@_logger.sectioner("Action Finalization")
+@_logger.sectioner("Output Generation")
 def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporter, output_writer: _OutputWriter):
     output = output_writer.generate(failed=reporter.failed)
     _write_step_outputs(output)

@@ -106,7 +106,7 @@ runs:
         # Initialization
         # Print logo and heading
         python "${{ github.action_path }}/heading.py" logo
-        python "${{ github.action_path }}/heading.py" "1. Action Initialization"
+        python "${{ github.action_path }}/heading.py" "1. Initialization"
         # Copy ProMan requirements file to the workspace so that it can be used by SetupPython for caching
         cp "${{ github.action_path }}/requirements.txt" .
         python "${{ github.action_path }}/heading.py" "1.1. Repository Checkout"
@@ -204,8 +204,10 @@ runs:
       run: |
         # Action
         python -m proman
+        python "${{ github.action_path }}/heading.py" "3. Finalization"
+        python "${{ github.action_path }}/heading.py" "3.1. Report Upload"
 
-    - name: Artifact Upload
+    - name: Report Upload
       uses: actions/upload-artifact@v4
       with:
         path: uploads
