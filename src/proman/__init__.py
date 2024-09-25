@@ -104,11 +104,11 @@ def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporte
     target_config, stdout, stderr = make_sphinx_target_config()
     log.target_configs["sphinx"] = target_config
     log_html = log.render(target="sphinx")
-    # _logger.info(
-    #     "Log Generation",
-    #     mdit.element.rich(Text.from_ansi(stdout.getvalue())),
-    #     mdit.element.rich(Text.from_ansi(stderr.getvalue())),
-    # )
+    _logger.info(
+        "Log Generation",
+        mdit.element.rich(Text.from_ansi(stdout.getvalue())),
+        mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+    )
     filename = (
         f"{github_context.repository_name}-workflow-run"
         f"-{github_context.run_id}-{github_context.run_attempt}.{{}}.html"
@@ -134,11 +134,11 @@ def _write_step_outputs(kwargs: dict) -> None:
                 caption=f"{output_name} [{type(value).__name__}]",
             )
         )
-    # _logger.debug("GHA Step Outputs", *log_outputs)
+    _logger.debug("GHA Step Outputs", *log_outputs)
     return
 
 
 def _write_step_summary(content: str) -> None:
-    # _logger.debug("GHA Summary Output", mdit.element.code_block(content))
+    _logger.debug("GHA Summary Output", mdit.element.code_block(content))
     _actionman.step_summary.write(content)
     return
