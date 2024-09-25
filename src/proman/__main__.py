@@ -18,7 +18,7 @@ examples:
     ex2: 2
 """
 x = Syntax(yaml_str, lexer="yaml", code_width=80, dedent=False)
-console = Console(no_color=False, width=88)
+console = Console(force_terminal=True, width=88, soft_wrap=True)
 console.print(x)
 
 
