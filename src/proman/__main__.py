@@ -13,7 +13,12 @@ data = {"fail": False,
         "website": []
        }
 yaml_str = ps.write.to_yaml_string(data)
-x = mdit.element.code_block(yaml_str, language="yaml").source("console")
+# x = mdit.element.code_block(yaml_str, language="yaml").source("console")
+from rich import syntax
+x = syntax.Syntax(
+    yaml_str,
+    lexer="yaml",
+)
 
 import rich
 rich.print(x)
