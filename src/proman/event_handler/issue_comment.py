@@ -19,7 +19,6 @@ class IssueCommentEventHandler(EventHandler):
     is created, edited, or deleted.
     """
 
-    @logger.sectioner("Initialize Issue-Comment Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: github_contexts.github.payloads.IssueCommentPayload = self._context.event
@@ -34,7 +33,6 @@ class IssueCommentEventHandler(EventHandler):
         }
         return
 
-    @logger.sectioner("Execute Issue-Comment Event Handler")
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)

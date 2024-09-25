@@ -53,7 +53,6 @@ def run():
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
         except Exception as e:
-            _logger.info("in main", "wrgwrg")
             traceback = _logger.traceback()
             error_name = e.__class__.__name__
             _logger.critical(

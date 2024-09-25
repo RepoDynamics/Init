@@ -20,13 +20,11 @@ class PushEventHandler(EventHandler):
     It also runs Continuous pipelines on forked repositories.
     """
 
-    @logger.sectioner("Event Handler Initialization (Push)")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: _gh_context.payload.PushPayload = self._context.event
         return
 
-    @logger.sectioner("Event Handler Execution")
     def _run_event(self):
         if self._context.ref_type is not _gh_context.enum.RefType.BRANCH:
             self._reporter.event(

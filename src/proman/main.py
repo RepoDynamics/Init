@@ -107,6 +107,7 @@ class EventHandler:
         self._branch_name_memory_autoupdate: str | None = None
         return
 
+    @logger.sectioner("Event Handler Execution")
     def run(self) -> None:
         if not (
             # Repository creation event conditions:
@@ -117,7 +118,6 @@ class EventHandler:
             # and not bool(self._git_head.get_tags())
             False
         ):
-            logger.info("Inrun", "wgwr")
             self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
             self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
                 controlman.from_json_file(repo_path=self._path_head)

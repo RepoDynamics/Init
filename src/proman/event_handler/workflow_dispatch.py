@@ -44,7 +44,6 @@ _WORKFLOW_DISPATCH_INPUT_TYPE = {
 
 class WorkflowDispatchEventHandler(EventHandler):
 
-    @logger.sectioner("Initialize Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: github_contexts.github.payloads.WorkflowDispatchPayload = self._context.event
@@ -54,7 +53,6 @@ class WorkflowDispatchEventHandler(EventHandler):
         }
         return
 
-    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         if WorkflowDispatchInput.RELEASE in self._inputs:
             if self._context.ref_is_main:

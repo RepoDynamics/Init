@@ -12,7 +12,6 @@ from proman.main import EventHandler
 
 class IssuesEventHandler(EventHandler):
 
-    @logger.sectioner("Initialize Issue Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: gh_context.payload.IssuesPayload = self._context.event
@@ -21,7 +20,6 @@ class IssuesEventHandler(EventHandler):
         self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
         return
 
-    @logger.sectioner("Execute Issue Handler")
     def _run_event(self):
         action = self._payload.action
         logger.info("Action", action.value)

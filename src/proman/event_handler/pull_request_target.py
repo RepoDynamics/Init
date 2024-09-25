@@ -11,7 +11,6 @@ from proman.main import EventHandler
 
 class PullRequestTargetEventHandler(EventHandler):
 
-    @logger.sectioner("Initialize Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: _gh_context.payload.PullRequestPayload = self._context.event
@@ -32,7 +31,6 @@ class PullRequestTargetEventHandler(EventHandler):
         )
         return
 
-    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         if self._payload.internal:
             return

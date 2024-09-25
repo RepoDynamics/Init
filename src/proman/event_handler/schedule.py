@@ -14,13 +14,11 @@ from proman.main import EventHandler
 
 class ScheduleEventHandler(EventHandler):
 
-    @logger.sectioner("Initialize Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: SchedulePayload = self._context.event
         return
 
-    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         cron = self._payload.schedule
         if cron == self._data_main["workflow"]["schedule"]["sync"]["cron"]:

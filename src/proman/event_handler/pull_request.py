@@ -38,7 +38,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         BranchType.MAIN: (BranchType.MAIN,),
     }
 
-    @logger.sectioner("Initialize Event Handler")
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
@@ -48,7 +47,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         ) = None
         return
 
-    @logger.sectioner("Execute Event Handler")
     def _run_event(self):
         if not self._head_to_base_allowed():
             return
