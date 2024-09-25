@@ -4,29 +4,21 @@ from proman import reporter
 # reporter.initialize_logger(title_number=[2])
 
 
-import pyserials as ps
-import mdit
-data = {"fail": False,
-        "run": {
-            "website": True
-        },
-        "website": []
-       }
-yaml_str = ps.write.to_yaml_string(data)
+
+
 # x = mdit.element.code_block(yaml_str, language="yaml").source("console")
-from rich import syntax
-x = syntax.Syntax(
-    yaml_str,
-    lexer="yaml",
-)
 
-import rich
-rich.print(x)
-
+from rich.syntax import Syntax
 from rich.console import Console
-console = Console(
-    force_terminal=True,
-)
+
+yaml_str = """
+test: true
+examples:
+    ex1: 1
+    ex2: 2
+"""
+x = Syntax(yaml_str, lexer="yaml")
+console = Console(force_terminal=True)
 console.print(x)
 
 
