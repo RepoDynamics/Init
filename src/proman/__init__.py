@@ -101,13 +101,12 @@ def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporte
     _write_step_summary(report_gha)
 
     log = _logger.report
-    target_config, stdout, stderr = make_sphinx_target_config()
+    target_config, output = make_sphinx_target_config()
     log.target_configs["sphinx"] = target_config
     log_html = log.render(target="sphinx")
     _logger.info(
-        "Log Generation",
-        mdit.element.rich(Text.from_ansi(stdout.getvalue())),
-        mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+        "Log Generation Logs",
+        mdit.element.rich(Text.from_ansi(output.getvalue())),
     )
     filename = (
         f"{github_context.repository_name}-workflow-run"

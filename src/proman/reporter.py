@@ -82,7 +82,7 @@ class Reporter:
             body.append(mdit.element.field_list_item("Event Description", self._event_description))
         body.extend(summary_table, self._context_summary)
         section = self._generate_sections()
-        target_config, stdout, stderr = make_sphinx_target_config()
+        target_config, output = make_sphinx_target_config()
         report = mdit.document(
             heading="Workflow Summary",
             body=body,
@@ -92,9 +92,8 @@ class Reporter:
         gha_summary = report.source(target="github", filters=["short, github"], separate_sections=False)
         full_summary = report.render(target="sphinx", filters=["full"], separate_sections=False)
         logger.info(
-            "Report Generation",
-            mdit.element.rich(Text.from_ansi(stdout.getvalue())),
-            mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+            "Report Generation Logs",
+            mdit.element.rich(Text.from_ansi(output.getvalue())),
         )
         return gha_summary, full_summary
 
@@ -307,13 +306,12 @@ def initialize_logger(
 
 
 def make_sphinx_target_config():
-    stdout = io.StringIO()
-    stderr = io.StringIO()
+    output = io.StringIO()
     target_config = mdit.target.sphinx(
         renderer=functools.partial(
             mdit.render.sphinx,
-            status=stdout,
-            warning=stderr,
+            status=output,
+            warning=output,
             config={
                 "extensions": [
                     'myst_nb',
@@ -348,4 +346,4 @@ def make_sphinx_target_config():
             }
         )
     )
-    return target_config, stdout, stderr
+    return target_config, output
