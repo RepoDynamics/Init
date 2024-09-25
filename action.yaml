@@ -204,10 +204,8 @@ runs:
       run: |
         # Action
         python -m proman
-        python "${{ github.action_path }}/heading.py" "3. Action Finalization"
-        python "${{ github.action_path }}/heading.py" "3.1. Report Upload"
 
-    - name: 'Artifact Upload'
+    - name: Artifact Upload
       uses: actions/upload-artifact@v4
       with:
         path: uploads

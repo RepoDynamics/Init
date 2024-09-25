@@ -1,5 +1,5 @@
 import proman
-from proman import logger
+from proman import reporter
 
-logger.initialize()
+reporter.initialize_logger(title_number=[2])
 proman.run()

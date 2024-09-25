@@ -2,6 +2,8 @@ from typing import Literal
 
 from loggerman import logger
 from github_contexts import GitHubContext
+import pyserials as ps
+import mdit
 
 from proman.data_manager import DataManager
 
@@ -93,7 +95,6 @@ class OutputWriter:
             )
         return
 
-    @logger.sectioner("Generate Outputs and Summary")
     def generate(self, failed: bool) -> dict:
         if failed:
             # Just to be safe, disable publish/deploy/release jobs if fail is True
@@ -129,6 +130,11 @@ class OutputWriter:
             "test-pypi": self._output_test_pypi,
             "finalize": self._output_finalize,
         }
+        output_yaml = ps.write.to_yaml_string(output)
+        logger.info(
+            "Action Outputs",
+            mdit.element.code_block(output_yaml, language="yaml"),
+        )
         return output
 
     def set_website(

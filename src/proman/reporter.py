@@ -1,12 +1,18 @@
 from pathlib import Path
-import re
+import functools
+import io
 from typing import Literal
-from loggerman import logger
+
 from github_contexts import github as _gh_context
 import mdit
 import htmp
+from loggerman import logger, style
+from mdit.target.rich import HeadingConfig, PanelConfig, StyleConfig, InlineHeadingConfig, RuleConfig
+from rich.text import Text
+
 
 from proman.datatype import TitledEmoji
+
 
 EMOJI = {
         "pass": TitledEmoji("Passed", "✅"),
@@ -65,23 +71,34 @@ class Reporter:
                 data["section"].extend(section)
         return
 
-    def generate(self) -> tuple[str, str, bool]:
-        status_badge, summary_table, failed = self._generate_summary()
+    @property
+    def failed(self):
+        return any(data["status"] == "fail" for data in self._info.values())
+
+    def generate(self) -> tuple[str, str]:
+        status_badge, summary_table = self._generate_summary()
         body = mdit.block_container(status_badge)
         if self._event_description:
             body.append(mdit.element.field_list_item("Event Description", self._event_description))
         body.extend(summary_table, self._context_summary)
         section = self._generate_sections()
+        target_config, stdout, stderr = make_sphinx_target_config()
         report = mdit.document(
             heading="Workflow Summary",
             body=body,
             section=section,
+            target_configs_md={"sphinx": target_config},
         )
         gha_summary = report.source(target="github", filters=["short, github"], separate_sections=False)
         full_summary = report.render(target="sphinx", filters=["full"], separate_sections=False)
-        return gha_summary, full_summary, failed
+        logger.info(
+            "Report Generation",
+            mdit.element.rich(Text.from_ansi(stdout.getvalue())),
+            mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+        )
+        return gha_summary, full_summary
 
-    def _generate_summary(self) -> tuple[mdit.element.InlineImage, mdit.element.Table, bool]:
+    def _generate_summary(self) -> tuple[mdit.element.InlineImage, mdit.element.Table]:
         failed = False
         skipped = False
         table_rows = [["Pipeline", "Status", "Summary"]]
@@ -123,7 +140,7 @@ class Reporter:
             style="for-the-badge",
             color=color,
         )
-        return status_badge, table, failed
+        return status_badge, table
 
     def _generate_context(self) -> list[mdit.element.DropDown]:
         output = []
@@ -184,3 +201,151 @@ class Reporter:
             )
             sections[section_id] = section_full
         return sections
+
+
+def initialize_logger(
+    title_number: int | list[int],
+):
+    logger.initialize(
+        realtime_levels=list(range(1, 7)),
+        github=True,
+        github_debug=True,
+        title_number=title_number,
+        level_style_debug=style.log_level(
+            color="muted",
+            icon="🔘",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(200, 255, 255), bold=True),
+            ),
+        ),
+        level_style_success=style.log_level(
+            color="success",
+            icon="✅",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(0, 250, 0), bold=True),
+            ),
+        ),
+        level_style_info=style.log_level(
+            color="info",
+            icon="ℹ️",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(0, 200, 255), bold=True),
+            ),
+        ),
+        level_style_notice=style.log_level(
+            color="warning",
+            icon="⚠️",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(255, 230, 0), bold=True),
+            ),
+        ),
+        level_style_warning=style.log_level(
+            color="warning",
+            icon="🚨",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(255, 185, 0), bold=True),
+            ),
+        ),
+        level_style_error=style.log_level(
+            color="danger",
+            icon="🚫",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(255, 100, 50), bold=True),
+            ),
+        ),
+        level_style_critical=style.log_level(
+            color="danger",
+            opened=True,
+            icon="⛔",
+            rich_config=PanelConfig(
+                title_style=StyleConfig(color=(255, 30, 30), bold=True),
+            ),
+        ),
+        target_configs_rich={
+            "console": mdit.target.console(
+                heading=(
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(255, 200, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(250, 250, 230))),
+                        )
+                    ),
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(235, 160, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(220, 220, 200))),
+                        )
+                    ),
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(215, 120, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(190, 190, 170))),
+                        )
+                    ),
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(195, 80, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(160, 160, 140))),
+                        )
+                    ),
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(175, 40, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(130, 130, 110))),
+                        )
+                    ),
+                    HeadingConfig(
+                        inline=InlineHeadingConfig(
+                            style=StyleConfig(color=(155, 0, 255), bold=True),
+                            rule=RuleConfig(style=StyleConfig(color=(100, 100, 80))),
+                        )
+                    ),
+                )
+            )
+        }
+    )
+
+
+def make_sphinx_target_config():
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    target_config = mdit.target.sphinx(
+        renderer=functools.partial(
+            mdit.render.sphinx,
+            status=stdout,
+            warning=stderr,
+            config={
+                "extensions": [
+                    'myst_nb',
+                    'sphinx_design',
+                    'sphinx_togglebutton',
+                    'sphinx_copybutton',
+                    'sphinxcontrib.mermaid',
+                    'sphinx_tippy',
+                ],
+                "myst_enable_extensions": [
+                    "amsmath",
+                    "attrs_inline",
+                    "colon_fence",
+                    "deflist",
+                    "dollarmath",
+                    "fieldlist",
+                    "html_admonition",
+                    "html_image",
+                    "linkify",
+                    "replacements",
+                    "smartquotes",
+                    "strikethrough",
+                    "substitution",
+                    "tasklist",
+                ],
+                "html_theme": "pydata_sphinx_theme",
+                "html_theme_options": {
+                    "pygments_light_style": "default",
+                    "pygments_dark_style": "monokai",
+                },
+                "html_title": "ProMan Report",
+            }
+        )
+    )
+    return target_config, stdout, stderr

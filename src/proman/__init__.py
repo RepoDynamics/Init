@@ -6,11 +6,11 @@ import github_contexts as _github_contexts
 from github_contexts.github.enum import EventType as _EventType
 from loggerman import logger as _logger
 import mdit
-import pyserials as ps
+from rich.text import Text
 
 from proman.datatype import TemplateType as _TemplateType
 from proman import exception as _exception, event_handler as _handler
-from proman.reporter import Reporter as _Reporter
+from proman.reporter import Reporter as _Reporter, make_sphinx_target_config
 from proman.output_writer import OutputWriter as _OutputWriter
 
 
@@ -92,13 +92,23 @@ def run():
     return
 
 
-@_logger.sectioner("Action Output")
+@_logger.sectioner("Action Finalization")
 def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporter, output_writer: _OutputWriter):
-    report_gha, report_full, failed = reporter.generate()
-    _write_step_summary(report_gha)
-    output = output_writer.generate(failed=failed)
+    output = output_writer.generate(failed=reporter.failed)
     _write_step_outputs(output)
-    log = _logger.report.render(target="sphinx")
+
+    report_gha, report_full = reporter.generate()
+    _write_step_summary(report_gha)
+
+    log = _logger.report
+    target_config, stdout, stderr = make_sphinx_target_config()
+    log.target_configs["sphinx"] = target_config
+    log_html = log.render(target="sphinx")
+    _logger.info(
+        "Log Generation",
+        mdit.element.rich(Text.from_ansi(stdout.getvalue())),
+        mdit.element.rich(Text.from_ansi(stderr.getvalue())),
+    )
     filename = (
         f"{github_context.repository_name}-workflow-run"
         f"-{github_context.run_id}-{github_context.run_attempt}.{{}}.html"
@@ -108,13 +118,13 @@ def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporte
     with open(dir_path / filename.format("report"), "w") as f:
         f.write(report_full)
     with open(dir_path / filename.format("log"), "w") as f:
-        f.write(log)
+        f.write(log_html)
+    _logger.section("Report Upload")
     return
 
 
 def _write_step_outputs(kwargs: dict) -> None:
-    output_yaml = ps.write.to_yaml_string(kwargs)
-    log_outputs = [mdit.element.code_block(output_yaml, language="yaml")]
+    log_outputs = []
     for name, value in kwargs.items():
         output_name = name.lower().replace("_", "-")
         written_output = _actionman.step_output.write(name=output_name, value=value)
@@ -124,11 +134,11 @@ def _write_step_outputs(kwargs: dict) -> None:
                 caption=f"{output_name} [{type(value).__name__}]",
             )
         )
-    _logger.debug("GHA Outputs", *log_outputs)
+    _logger.debug("GHA Step Outputs", *log_outputs)
     return
 
 
 def _write_step_summary(content: str) -> None:
-    _logger.debug("GHA Summary", mdit.element.code_block(content))
+    _logger.debug("GHA Summary Output", mdit.element.code_block(content))
     _actionman.step_summary.write(content)
     return
