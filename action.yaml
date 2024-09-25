@@ -158,21 +158,6 @@ runs:
         python -m pip list
         echo "::endgroup::"
 
-    - shell: python
-      run: |
-        from rich.syntax import Syntax
-        from rich.console import Console
-        
-        yaml_str = """
-        test: true
-        examples:
-            ex1: 1
-            ex2: 2
-        """
-        x = Syntax(yaml_str, lexer="yaml")
-        console = Console(force_terminal=True)
-        console.print(x)
-
     - name: Cache Load
       id: cache
       shell: bash
