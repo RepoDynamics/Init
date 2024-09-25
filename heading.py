@@ -174,14 +174,14 @@ def heading(content: str):
     num_dashes_left = num_dashes // 2
     num_dashes_right = num_dashes - num_dashes_left
     line_char = "–"
-    heading_text = apply_style(content.strip(), HEADING_COLORS[level - 1])
-    line_left = apply_style(line_char * num_dashes_left, LINE_COLORS[level - 1])
-    line_right = apply_style(line_char * num_dashes_right, LINE_COLORS[level - 1])
+    heading_text = apply_style(content.strip(), HEADING_COLORS[level - 1], bold=True)
+    line_left = apply_style(line_char * num_dashes_left, LINE_COLORS[level - 1], bold=True)
+    line_right = apply_style(line_char * num_dashes_right, LINE_COLORS[level - 1], bold=True)
     return f"{line_left} {heading_text} {line_right}"
 
 
-def apply_style(text: str, color: tuple[int, int, int]):
-    return f"\033[1;38;2;{color[0]};{color[1]};{color[2]}m{text}\033[0m"
+def apply_style(text: str, color: tuple[int, int, int], bold: bool = False):
+    return f"\033[{'1;' if bold else ''}38;2;{color[0]};{color[1]};{color[2]}m{text}\033[0m"
 
 
 if __name__ == "__main__":
