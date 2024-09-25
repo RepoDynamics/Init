@@ -15,7 +15,9 @@ data = {"fail": False,
        }
 yaml_str = ps.write.to_yaml_string(data)
 x = mdit.element.code_block(yaml_str, language="yaml")
-x.display("console")
+rich = x.source("console")
+logger._print(rich)
+
 logger.info("Action Output", x)
 
 proman.run()
