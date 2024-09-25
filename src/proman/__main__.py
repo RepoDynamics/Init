@@ -25,7 +25,6 @@ rich.print(x)
 
 from rich.console import Console
 console = Console(
-    color_system="truecolor",
     force_terminal=True,
 )
 console.print(x)
