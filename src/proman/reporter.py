@@ -349,4 +349,3 @@ def make_sphinx_target_config():
         )
     )
     return target_config, stdout, stderr
-from sphinx.util import progress_message

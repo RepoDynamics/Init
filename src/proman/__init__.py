@@ -134,11 +134,11 @@ def _write_step_outputs(kwargs: dict) -> None:
                 caption=f"{output_name} [{type(value).__name__}]",
             )
         )
-    _logger.debug("GHA Step Outputs", *log_outputs)
+    # _logger.debug("GHA Step Outputs", *log_outputs)
     return
 
 
 def _write_step_summary(content: str) -> None:
-    _logger.debug("GHA Summary Output", mdit.element.code_block(content))
+    # _logger.debug("GHA Summary Output", mdit.element.code_block(content))
     _actionman.step_summary.write(content)
     return
