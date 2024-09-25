@@ -203,7 +203,6 @@ runs:
       shell: bash
       run: |
         # Action
-        python "${{ github.action_path }}/heading.py" logo
         python -m proman
         python "${{ github.action_path }}/heading.py" "3. Action Finalization"
         python "${{ github.action_path }}/heading.py" "3.1. Report Upload"
