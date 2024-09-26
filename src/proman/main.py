@@ -111,12 +111,11 @@ class EventHandler:
     def run(self) -> None:
         if not (
             # Repository creation event conditions:
-            # self._context.event_name is _ghc_enum.EventType.PUSH
-            # and self._context.ref_type is _ghc_enum.RefType.BRANCH
-            # and self._context.event.action is _ghc_enum.ActionType.CREATED
-            # and self._context.ref_is_main
-            # and not bool(self._git_head.get_tags())
-            False
+            self._context.event_name is _ghc_enum.EventType.PUSH
+            and self._context.ref_type is _ghc_enum.RefType.BRANCH
+            and self._context.event.action is _ghc_enum.ActionType.CREATED
+            and self._context.ref_is_main
+            and not bool(self._git_head.get_tags())
         ):
             self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
             self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
@@ -226,7 +225,7 @@ class EventHandler:
         )
         return tuple(changed_filetypes.keys())
 
-    @logger.sectioner("Continuous Configuration Management")
+    @logger.sectioner("CCA")
     def _sync(
         self,
         action: InitCheckAction,
