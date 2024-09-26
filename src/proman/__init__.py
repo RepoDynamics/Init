@@ -14,8 +14,8 @@ from proman.reporter import Reporter as _Reporter, make_sphinx_target_config
 from proman.output_writer import OutputWriter as _OutputWriter
 
 
-@_logger.sectioner("Execution")
 def run():
+    _logger.section("Execution")
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
     )
