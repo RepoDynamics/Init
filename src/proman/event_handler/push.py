@@ -93,7 +93,7 @@ class PushEventHandler(EventHandler):
     def _run_repository_creation(self):
         _fileex.directory.delete_contents(
             path=self._path_head,
-            exclude=[".github", "template"],
+            exclude=[".git", ".github", "template"],
         )
         _fileex.directory.delete_contents(
             path=self._path_head / ".github",
