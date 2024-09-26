@@ -73,8 +73,12 @@ def run():
                     opened=True,
                 ),
             )
+            print("STORED SECTION LEVEL", current_log_section_level)
+            print("ACTUAL SECTION LEVEL", _logger.current_section_level)
             _logger.section_end(target_level=current_log_section_level)
+            print("SECOND CURRENT SECTION LEVEL", _logger.current_section_level)
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
+            print("THIRD CURRENT SECTION LEVEL", _logger.current_section_level)
             return
     else:
         supported_events = mdit.inline_container(
