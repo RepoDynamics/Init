@@ -39,6 +39,7 @@ def run():
     }
 
     handler_class = event_to_handler.get(github_context.event_name)
+    current_log_section_level = _logger.current_section_level
     if handler_class:
         try:
             handler_class(
@@ -50,6 +51,7 @@ def run():
                 path_repo_head=path_repo_head,
             ).run()
         except _exception.ProManException:
+            _logger.section_end(target_level=current_log_section_level)
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
         except Exception as e:
@@ -71,6 +73,7 @@ def run():
                     opened=True,
                 ),
             )
+            _logger.section_end(target_level=current_log_section_level)
             _finalize(github_context=github_context, reporter=reporter, output_writer=output_writer)
             return
     else:
@@ -118,7 +121,6 @@ def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporte
         f.write(report_full)
     with open(dir_path / filename.format("log"), "w") as f:
         f.write(log_html)
-    _logger.section("Report Upload")
     return
 
 
