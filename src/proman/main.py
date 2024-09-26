@@ -88,6 +88,7 @@ class EventHandler:
             committer=self._REPODYNAMICS_BOT_USER,
             committer_scope="local",
             committer_persistent=True,
+            logger=logger,
         )
         self._git_head = gittidy.Git(
             path=self._path_head,
@@ -96,6 +97,7 @@ class EventHandler:
             committer=self._REPODYNAMICS_BOT_USER,
             committer_scope="local",
             committer_persistent=True,
+            logger=logger,
         )
 
         self._ver = pkgdata.get_version_from_caller()
