@@ -12,6 +12,7 @@ from loggerman import logger
 import mdit
 import htmp
 import pylinks
+from pylinks.exception.api import WebAPIError as _WebAPIError
 import pyserials as _ps
 from github_contexts.github import enum as _ghc_enum
 import conventional_commits
@@ -62,43 +63,87 @@ class EventHandler:
         path_repo_base: str,
         path_repo_head: str,
     ):
+
+        logger.sectioner("GitHub API Initialization")
+        def init_github_api():
+            repo_user = self._context.repository_owner
+            repo_name = self._context.repository_name
+            link_gen = pylinks.site.github.user(repo_user).repo(repo_name)
+            api_admin, api_actions = (
+                pylinks.api.github(token=token).user(repo_user).repo(repo_name)
+                for token in (admin_token, self._context.token)
+            )
+            log_title = "Admin Token Verification"
+            if not admin_token:
+                logger.critical(
+                    log_title,
+                    "No admin token provided.",
+                )
+                reporter.add(
+                    name="main",
+                    status="fail",
+                    summary="No admin token provided.",
+                )
+                raise ProManException()
+            else:
+                try:
+                    api_admin.info
+                except _WebAPIError as e:
+                    details = e.report.body
+                    details.extend(*e.report.section["details"].content.body.elements())
+                    logger.critical(
+                        log_title,
+                        "Failed to verify the provided admin token.",
+                        details
+                    )
+                    reporter.add(
+                        name="main",
+                        status="fail",
+                        summary="Failed to verify the provided admin token.",
+                        section=mdit.document(
+                            heading="Admin Token Verification",
+                            body=details.elements(),
+                        )
+                    )
+                    raise ProManException()
+            return api_admin, api_actions, link_gen
+
+
+        logger.sectioner("Git API Initialization")
+        def init_git_api() -> tuple[gittidy.Git, gittidy.Git]:
+            apis = []
+            for path, title in ((path_repo_base, "Base Repo"), (path_repo_head, "Head Repo")):
+                with logger.sectioning(title):
+                    git_api = gittidy.Git(
+                        path=path,
+                        user=(self._context.event.sender.login, self._context.event.sender.github_email),
+                        user_scope="global",
+                        committer=self._REPODYNAMICS_BOT_USER,
+                        committer_scope="local",
+                        committer_persistent=True,
+                        logger=logger,
+                    )
+                    apis.append(git_api)
+            return apis
+
         self._context = github_context
-        self._path_base = Path(path_repo_base)
-        self._path_head = Path(path_repo_head)
         self._reporter = reporter
         self._output = output_writer
+        self._gh_api_admin, self._gh_api, self._gh_link = init_github_api()
 
-        repo_user = self._context.repository_owner
-        repo_name = self._context.repository_name
-        self._gh_api_admin = pylinks.api.github(token=admin_token).user(repo_user).repo(repo_name)
-        self._gh_api = pylinks.api.github(token=self._context.token).user(repo_user).repo(repo_name)
-        self._gh_link = pylinks.site.github.user(repo_user).repo(repo_name)
         self._has_admin_token = bool(admin_token)
         self._repo_config = RepoConfig(
             gh_api=self._gh_api_admin if self._has_admin_token else self._gh_api,
             default_branch_name=self._context.event.repository.default_branch
         )
+        self._git_base, self._git_head = init_git_api()
 
-        git_user = (self._context.event.sender.login, self._context.event.sender.github_email)
-        # TODO: Check again when gittidy is finalized; add section titles
-        self._git_base = gittidy.Git(
-            path=self._path_base,
-            user=git_user,
-            user_scope="global",
-            committer=self._REPODYNAMICS_BOT_USER,
-            committer_scope="local",
-            committer_persistent=True,
-            logger=logger,
-        )
-        self._git_head = gittidy.Git(
-            path=self._path_head,
-            user=git_user,
-            user_scope="global",
-            committer=self._REPODYNAMICS_BOT_USER,
-            committer_scope="local",
-            committer_persistent=True,
-            logger=logger,
-        )
+
+        self._path_base = self._git_base.repo_path
+        self._path_head = self._git_head.repo_path
+
+
+
 
         self._ver = pkgdata.get_version_from_caller()
 
