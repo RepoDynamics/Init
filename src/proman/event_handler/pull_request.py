@@ -1,7 +1,7 @@
 import time
 import re
 
-from pylinks.exceptions import WebAPIError
+from pylinks.exception.api import WebAPIError
 from github_contexts import github as _gh_context
 import conventional_commits
 from loggerman import logger
