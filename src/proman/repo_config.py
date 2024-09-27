@@ -1,7 +1,7 @@
 from typing import Literal
 
 from pyserials import NestedDict as _NestedDict
-from pylinks.exceptions import WebAPIError
+from pylinks.exception.api import WebAPIError
 from pylinks.api.github import Repo as GitHubRepoAPI
 from loggerman import logger
 

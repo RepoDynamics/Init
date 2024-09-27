@@ -126,6 +126,16 @@ class EventHandler:
                     apis.append(git_api)
             return apis
 
+        def in_repo_creation_event():
+            return (
+                self._context.event_name is _ghc_enum.EventType.PUSH
+                and self._context.ref_type is _ghc_enum.RefType.BRANCH
+                and self._context.event.action is _ghc_enum.ActionType.CREATED
+                and self._context.ref_is_main
+            )
+
+
+
         self._context = github_context
         self._reporter = reporter
         self._output = output_writer
