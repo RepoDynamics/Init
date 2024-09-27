@@ -64,7 +64,7 @@ class EventHandler:
         path_repo_head: str,
     ):
 
-        logger.sectioner("GitHub API Initialization")
+        @logger.sectioner("GitHub API Initialization")
         def init_github_api():
             repo_user = self._context.repository_owner
             repo_name = self._context.repository_name
@@ -75,6 +75,12 @@ class EventHandler:
             )
             log_title = "Admin Token Verification"
             if not admin_token:
+                # if in_repo_creation_event():
+                #     logger.info(
+                #         log_title,
+                #         "Repository creation event detected; no admin token required.",
+                #     )
+                # else:
                 logger.critical(
                     log_title,
                     "No admin token provided.",
@@ -106,10 +112,14 @@ class EventHandler:
                         )
                     )
                     raise ProManException()
+                logger.info(
+                    log_title,
+                    "Admin token verified successfully.",
+                )
             return api_admin, api_actions, link_gen
 
 
-        logger.sectioner("Git API Initialization")
+        @logger.sectioner("Git API Initialization")
         def init_git_api() -> tuple[gittidy.Git, gittidy.Git]:
             apis = []
             for path, title in ((path_repo_base, "Base Repo"), (path_repo_head, "Head Repo")):
