@@ -44,7 +44,7 @@ def run(
     if not version_result.succeeded:
         logger.critical("pre-commit is not installed.")
     else:
-        logger.info("pre-commit version", version_result.output)
+        logger.info("pre-commit version", version_result.out)
 
     hook_runner = PreCommitHooks(
         git=git,
@@ -152,11 +152,11 @@ class PreCommitHooks:
             mdit.element.rich(result)
         )
         error_intro = "Unexpected Pre-Commit Error"
-        if result.error:
+        if result.err:
             self.remove_temp_config_file()
-            logger.critical(error_intro, result.error)
-            raise _exception.ProManException(error_intro, sgr.remove_sequence(result.error))
-        out_plain = sgr.remove_sequence(result.output)
+            logger.critical(error_intro, result.err)
+            raise _exception.ProManException(error_intro, sgr.remove_sequence(result.err))
+        out_plain = sgr.remove_sequence(result.out)
         for line in out_plain.splitlines():
             for prefix in ("An error has occurred", "An unexpected error has occurred", "[ERROR]"):
                 if line.startswith(prefix):

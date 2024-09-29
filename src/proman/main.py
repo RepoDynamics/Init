@@ -352,50 +352,50 @@ class EventHandler:
                 section=e.report.section,
                 section_is_container=True,
             )
-            logger.critical("CCA Error", e.report.body)
             raise ProManException()
         # Push/pull if changes are made and action is not 'fail' or 'report'
         commit_hash = None
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
-            cc_manager.apply_changes()
-            commit_msg = commit_msg or conventional_commits.message.create(
-                typ=self._data_main["commit.auto.sync.type"],
-                description="Sync dynamic files with control center configurations.",
-            )
-            commit_hash_before = git.commit_hash_normal()
-            commit_hash_after = git.commit(
-                message=str(commit_msg),
-                stage="all",
-                amend=(action == InitCheckAction.AMEND),
-            )
-            commit_hash = self._action_hooks(
-                action=InitCheckAction.AMEND,
-                data=cc_manager.generate_data(),
-                base=base,
-                ref_range=(commit_hash_before, commit_hash_after),
-                internal=True,
-            ) or commit_hash_after
-            description = "These were synced and changes were applied to "
-            if action == InitCheckAction.PULL:
-                git.push(target="origin", set_upstream=True)
-                pull_data = self._gh_api_admin.pull_create(
-                    head=pr_branch_name,
-                    base=self._branch_name_memory_autoupdate,
-                    title=commit_msg.summary,
-                    body=commit_msg.body,
+            with logger.sectioning("Synchronization"):
+                cc_manager.apply_changes()
+                commit_msg = commit_msg or conventional_commits.message.create(
+                    typ=self._data_main["commit.auto.sync.type"],
+                    description="Sync dynamic files with control center configurations.",
                 )
-                self.switch_back_from_autoupdate_branch(git=git)
-                commit_hash = None
-                link = f'[\#{pull_data["number"]}]({pull_data["url"]})'
-                description += f"branch {htmp.element.code(pr_branch_name)} in PR {link}."
-            else:
-                link = f"[`{commit_hash[:7]}`]({self._gh_link.commit(commit_hash)})"
-                description += "the current branch " + (
-                    f"in commit {link}."
-                    if action == InitCheckAction.COMMIT
-                    else f"by amending the latest commit (new hash: {link})."
+                commit_hash_before = git.commit_hash_normal()
+                commit_hash_after = git.commit(
+                    message=str(commit_msg),
+                    stage="all",
+                    amend=(action == InitCheckAction.AMEND),
                 )
-            reporter.body["summary"].content += f" {description}"
+                commit_hash = self._action_hooks(
+                    action=InitCheckAction.AMEND,
+                    data=cc_manager.generate_data(),
+                    base=base,
+                    ref_range=(commit_hash_before, commit_hash_after),
+                    internal=True,
+                ) or commit_hash_after
+                description = "These were synced and changes were applied to "
+                if action == InitCheckAction.PULL:
+                    git.push(target="origin", set_upstream=True)
+                    pull_data = self._gh_api_admin.pull_create(
+                        head=pr_branch_name,
+                        base=self._branch_name_memory_autoupdate,
+                        title=commit_msg.summary,
+                        body=commit_msg.body,
+                    )
+                    self.switch_back_from_autoupdate_branch(git=git)
+                    commit_hash = None
+                    link = f'[\#{pull_data["number"]}]({pull_data["url"]})'
+                    description += f"branch {htmp.element.code(pr_branch_name)} in PR {link}."
+                else:
+                    link = f"[`{commit_hash[:7]}`]({self._gh_link.commit(commit_hash)})"
+                    description += "the current branch " + (
+                        f"in commit {link}."
+                        if action == InitCheckAction.COMMIT
+                        else f"by amending the latest commit (new hash: {link})."
+                    )
+                reporter.body["summary"].content += f" {description}"
         self._reporter.add(
             name="cca",
             status="fail" if reporter.has_changes and action in [
@@ -418,7 +418,6 @@ class EventHandler:
         ref_range: tuple[str, str] | None = None,
         internal: bool = False,
     ) -> str | None:
-        logger.info(f"Action: {action.value}")
         if action == InitCheckAction.NONE:
             self._reporter.add(
                 name="hooks",
