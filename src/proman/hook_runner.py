@@ -12,7 +12,6 @@ import ansi_sgr as sgr
 from proman import exception as _exception
 
 
-@logger.sectioner("Run Hooks")
 def run(
     git: gittidy.Git,
     config: dict,
@@ -20,20 +19,15 @@ def run(
     action: Literal["report", "amend", "commit"] = "amend",
     commit_message: str = "",
 ):
-    if action not in ["report", "amend", "commit"]:
-        logger.critical(
-            f"Argument 'action' must be one of 'report', 'amend', or 'commit', but got '{action}'."
-        )
-    if action == "commit" and not commit_message:
-        logger.critical("Argument 'commit_message' must be specified if action is 'commit'.")
-    if ref_range and (
-        not isinstance(ref_range, (tuple, list))
-        or len(ref_range) != 2
-        or not all(isinstance(ref, str) for ref in ref_range)
-    ):
-        logger.critical(
-            f"Argument 'ref_range' must be a list or tuple of two strings, but got {ref_range}."
-        )
+    assert action in ["report", "amend", "commit"], f"Invalid action '{action}'."
+    if action == "commit":
+        assert bool(commit_message), "Argument 'commit_message' must be specified if action is 'commit'."
+    if ref_range:
+        assert (
+            isinstance(ref_range, (tuple, list))
+            and len(ref_range) != 2
+            and all(isinstance(ref, str) for ref in ref_range)
+        ), f"Argument 'ref_range' must be a list or tuple of two strings, but got {ref_range}."
     version_result = _pyshellman.run(
         command=["pre-commit", "--version"],
         raise_execution=False,
@@ -41,11 +35,11 @@ def run(
         raise_stderr=False,
         text_output=True,
     )
-    if not version_result.succeeded:
-        logger.critical("pre-commit is not installed.")
-    else:
-        logger.info("pre-commit version", version_result.out)
-
+    logger.log(
+        "success" if version_result.succeeded else "critical",
+        "Pre-Commit: Check Version",
+        version_result.report(),
+    )
     hook_runner = PreCommitHooks(
         git=git,
         config=config,
@@ -94,6 +88,13 @@ class PreCommitHooks:
             "--config",
             str(self._config_filepath),
         ]
+        self._shell_runner = _pyshellman.Runner(
+            pre_command=self._command,
+            cwd=self._path_root,
+            raise_exit_code=False,
+            logger=logger,
+            stack_up=1,
+        )
         self._emoji = {"Passed": "✅", "Failed": "❌", "Skipped": "⏭️", "Modified": "✏️️"}
         self._dropdown_color = {"Passed": "success", "Failed": "danger", "Skipped": "muted", "Modified": "warning"}
         self._commit_hash: str = ""
@@ -114,7 +115,7 @@ class PreCommitHooks:
         return self._run_check() if self._action == "report" else self._run_fix()
 
     def _run_check(self):
-        logger.info("Run mode", "Validation only")
+        logger.info("Run Mode", "Validation only")
         self._git.stash(include="all")
         raw_output = self._run_hooks(validation_run=True)
         output = self._create_summary(output_validation=raw_output)
@@ -123,12 +124,10 @@ class PreCommitHooks:
         return output
 
     def _run_fix(self):
-        logger.info("Run mode", "Fix and validation")
-        logger.section("Fix Run")
+        logger.info("Run Mode", "Fix and validation")
         output_fix = self._run_hooks(validation_run=False)
         if output_fix["passed"] or not output_fix["modified"]:
             output = self._create_summary(output_fix=output_fix)
-            logger.section_end()
             return output
         # There were fixes
         self._commit_hash = self._git.commit(
@@ -137,19 +136,16 @@ class PreCommitHooks:
             amend=self._action == "amend",
             allow_empty=self._action == "amend",
         )
-        logger.section_end()
-        logger.section("Validation Run")
         output_validate = self._run_hooks(validation_run=True)
         output_validate["commit_hash"] = self._commit_hash
         output = self._create_summary(output_validation=output_validate, output_fix=output_fix)
-        logger.section_end()
         return output
 
     def _run_hooks(self, validation_run: bool) -> dict:
-        result = _pyshellman.run(command=self._command, cwd=self._path_root, raise_exit_code=False)
-        logger.debug(
-            f"Pre-Commit {"Validation" if validation_run else "Fix"} Run Output",
-            mdit.element.rich(result)
+        result = self._shell_runner.run(
+            command=[],
+            log_title=f"{"Validation" if validation_run else "Fix"} Run",
+            log_level_exit_code="error" if validation_run else "notice",
         )
         error_intro = "Unexpected Pre-Commit Error"
         if result.err:
@@ -168,7 +164,6 @@ class PreCommitHooks:
         results = _process_shell_output(out_plain)
         return self._process_results(results, validation_run=validation_run)
 
-    @logger.sectioner("Process Results")
     def _process_results(self, results: tuple[dict[str, dict], str], validation_run: bool) -> dict:
         hook_details = []
         count = {"Failed": 0, "Modified": 0, "Skipped": 0, "Passed": 0}
@@ -216,7 +211,6 @@ class PreCommitHooks:
         }
         return output
 
-    @logger.sectioner("Create Summary")
     def _create_summary(self, output_validation: dict = None, output_fix: dict = None) -> dict:
         if output_validation and not output_fix:
             output = output_validation
@@ -266,7 +260,6 @@ class PreCommitHooks:
         return final_output
 
 
-@logger.sectioner("Process Shell Output")
 def _process_shell_output(output: str) -> tuple[dict[str, dict[str, str | bool]], str]:
 
     def process_last_entry(details: str) -> tuple[str, str]:
