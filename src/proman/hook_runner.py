@@ -25,7 +25,7 @@ def run(
     if ref_range:
         assert (
             isinstance(ref_range, (tuple, list))
-            and len(ref_range) != 2
+            and len(ref_range) == 2
             and all(isinstance(ref, str) for ref in ref_range)
         ), f"Argument 'ref_range' must be a list or tuple of two strings, but got {ref_range}."
     version_result = _pyshellman.run(

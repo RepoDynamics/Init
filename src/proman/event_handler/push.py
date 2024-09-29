@@ -122,7 +122,8 @@ class PushEventHandler(EventHandler):
             commit_msg=f"init: Create repository from RepoDynamics template.",
         )
         data = cc_manager.generate_data()
-        self._git_head.push()
+        with logger.sectioning("Repository Update"):
+            self._git_head.push()
         self._repo_config.reset_labels(data=data)
         self._reporter.add(
             name="event",
