@@ -123,7 +123,7 @@ class PushEventHandler(EventHandler):
         )
         data = cc_manager.generate_data()
         with logger.sectioning("Repository Update"):
-            self._git_head.push()
+            self._git_head.push(force_with_lease=True)
         self._repo_config.reset_labels(data=data)
         self._reporter.add(
             name="event",
