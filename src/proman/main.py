@@ -356,6 +356,7 @@ class EventHandler:
         # Push/pull if changes are made and action is not 'fail' or 'report'
         commit_hash = None
         report = reporter.report()
+        summary = report.body["summary"].content
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
                 cc_manager.apply_changes()
@@ -396,7 +397,7 @@ class EventHandler:
                         if action == InitCheckAction.COMMIT
                         else f"by amending the latest commit (new hash: {link})."
                     )
-                report.body["summary"].content += f" {description}"
+                summary += f" {description}"
         self._reporter.add(
             name="cca",
             status="fail" if reporter.has_changes and action in [
@@ -404,7 +405,7 @@ class EventHandler:
                InitCheckAction.REPORT,
                InitCheckAction.PULL
             ] else "pass",
-            summary=report.body["summary"].content,
+            summary=summary,
             section=report.section,
             section_is_container=True,
         )
