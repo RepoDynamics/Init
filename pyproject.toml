@@ -17,7 +17,7 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev36"
+version = "0.0.0.dev37"
 name = "ProMan"
 dependencies = [
     "pre-commit == 3.8.0",
@@ -38,6 +38,7 @@ dependencies = [
     "PySerials == 0.0.0.dev19",
     "FileEx == 0.0.0.dev1",
     "ANSI-SGR == 0.0.0.dev10",
+    "PyColorIT",
 ]
 requires-python = ">=3.10"
 

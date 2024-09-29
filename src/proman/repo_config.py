@@ -5,6 +5,7 @@ from pylinks.exception.api import WebAPIError
 from pylinks.api.github import Repo as GitHubRepoAPI
 from loggerman import logger
 import mdit
+import pycolorit as pcit
 
 
 class RepoConfig:
@@ -101,7 +102,8 @@ class RepoConfig:
             self._make_labels_table(current_labels, "Deleted Labels"),
         )
         for label in data["label.all"]:
-            self._gh_api.label_create(name=label["name"], description=label["description"], color=label["color"])
+            label_color = pcit.color.css(label["color"]).css_hex().removeprefix("#")
+            self._gh_api.label_create(name=label["name"], description=label["description"], color=label_color)
         logger.success(
             "Created Labels",
             "Following labels have been created:",
