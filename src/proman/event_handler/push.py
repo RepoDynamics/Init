@@ -88,6 +88,7 @@ class PushEventHandler(EventHandler):
                 # User is signaling the end of initialization phase
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
+            self._reporter.event("Repository initialization phase")
             return self._run_init_phase()
         return self._run_branch_edited_main_normal()
 
@@ -131,7 +132,6 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
-        self._reporter.event("Repository initialization phase")
         new_data, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT,
             future_versions={self._context.ref_name: "0.0.0"},
