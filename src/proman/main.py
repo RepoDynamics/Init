@@ -75,22 +75,28 @@ class EventHandler:
             )
             log_title = "Admin Token Verification"
             if not admin_token:
-                # if in_repo_creation_event():
-                #     logger.info(
-                #         log_title,
-                #         "Repository creation event detected; no admin token required.",
-                #     )
-                # else:
-                logger.critical(
-                    log_title,
-                    "No admin token provided.",
-                )
-                reporter.add(
-                    name="main",
-                    status="fail",
-                    summary="No admin token provided.",
-                )
-                raise ProManException()
+                has_admin_token = False
+                if in_repo_creation_event():
+                    logger.info(
+                        log_title,
+                        "Repository creation event detected; no admin token required.",
+                    )
+                elif self._context.event.repository.fork:
+                    logger.info(
+                        log_title,
+                        "Forked repository detected; no admin token required.",
+                    )
+                else:
+                    logger.critical(
+                        log_title,
+                        "No admin token provided.",
+                    )
+                    reporter.add(
+                        name="main",
+                        status="fail",
+                        summary="No admin token provided.",
+                    )
+                    raise ProManException()
             else:
                 try:
                     api_admin.info
@@ -112,12 +118,12 @@ class EventHandler:
                         )
                     )
                     raise ProManException()
-                logger.info(
+                has_admin_token = True
+                logger.success(
                     log_title,
                     "Admin token verified successfully.",
                 )
-            return api_admin, api_actions, link_gen
-
+            return api_admin, api_actions, link_gen, has_admin_token
 
         @logger.sectioner("Git API Initialization")
         def init_git_api() -> tuple[gittidy.Git, gittidy.Git]:
@@ -134,7 +140,59 @@ class EventHandler:
                         logger=logger,
                     )
                     apis.append(git_api)
-            return apis
+            return tuple(apis)
+
+        @logger.sectioner("Metadata Load")
+        def load_metadata() -> tuple[DataManager | None, DataManager | None]:
+
+            def load(path, name: str):
+                log_title = f"{name.capitalize()} Repo Metadata Load"
+                err_msg = f"Failed to load metadata from the {name} repository."
+                try:
+                    data = DataManager(controlman.from_json_file(repo_path=path))
+                except controlman.exception.load.ControlManInvalidMetadataError as e:
+                    logger.critical(
+                        log_title,
+                        err_msg,
+                        e.report.body["problem"].content,
+                    )
+                    reporter.add(
+                        name="main",
+                        status="fail",
+                        summary="Failed to load metadata from the base repository.",
+                        section="",
+                    )
+                    raise ProManException()
+                except controlman.exception.load.ControlManSchemaValidationError as e:
+                    logger.critical(
+                        log_title,
+                        err_msg,
+                        e.report.body["problem"].content,
+                    )
+                    reporter.add(
+                        name="main",
+                        status="fail",
+                        summary="Failed to load metadata from the base repository.",
+                        section="",
+                    )
+                    raise ProManException()
+                else:
+                    logger.success(
+                        log_title,
+                        "Metadata loaded successfully.",
+                    )
+                    return data
+
+            if in_repo_creation_event():
+                logger.info(
+                    "Metadata Load",
+                    "Repository creation event detected; no metadata to load.",
+                )
+                return None, None
+
+            data_main = load(path=self._path_base, name="base")
+            data_branch_before = data_main if self._context.ref_is_main else load(path=self._path_head, name="head")
+            return data_main, data_branch_before
 
         def in_repo_creation_event():
             return (
@@ -144,53 +202,25 @@ class EventHandler:
                 and self._context.ref_is_main
             )
 
-
-
         self._context = github_context
         self._reporter = reporter
         self._output = output_writer
-        self._gh_api_admin, self._gh_api, self._gh_link = init_github_api()
-
-        self._has_admin_token = bool(admin_token)
+        self._gh_api_admin, self._gh_api, self._gh_link, self._has_admin_token = init_github_api()
+        self._git_base, self._git_head = init_git_api()
+        self._path_base = self._git_base.repo_path
+        self._path_head = self._git_head.repo_path
+        self._data_main, self._data_branch_before = load_metadata()
         self._repo_config = RepoConfig(
             gh_api=self._gh_api_admin if self._has_admin_token else self._gh_api,
             default_branch_name=self._context.event.repository.default_branch
         )
-        self._git_base, self._git_head = init_git_api()
-
-
-        self._path_base = self._git_base.repo_path
-        self._path_head = self._git_head.repo_path
-
-
-
-
         self._ver = pkgdata.get_version_from_caller()
-
-        self._data_main: DataManager | None = None
-        self._data_branch_before: DataManager | None = None
         self._data_branch: DataManager | None = None
         self._failed = False
         self._branch_name_memory_autoupdate: str | None = None
         return
 
-    @logger.sectioner("Event Handler Execution")
     def run(self) -> None:
-        if not (
-            # Repository creation event conditions:
-            self._context.event_name is _ghc_enum.EventType.PUSH
-            and self._context.ref_type is _ghc_enum.RefType.BRANCH
-            and self._context.event.action is _ghc_enum.ActionType.CREATED
-            and self._context.ref_is_main
-            and not bool(self._git_head.get_tags())
-        ):
-            self._data_main = DataManager(controlman.from_json_file(repo_path=self._path_base))
-            self._data_branch_before = self._data_main if self._context.ref_is_main else DataManager(
-                controlman.from_json_file(repo_path=self._path_head)
-            )
-        return self._run_event()
-
-    def _run_event(self) -> None:
         ...
 
     def run_sync_fix(
@@ -325,7 +355,6 @@ class EventHandler:
             logger.critical("CCA Error", e.report.body)
             raise ProManException()
         # Push/pull if changes are made and action is not 'fail' or 'report'
-        report = reporter.report()
         commit_hash = None
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             cc_manager.apply_changes()
@@ -366,7 +395,7 @@ class EventHandler:
                     if action == InitCheckAction.COMMIT
                     else f"by amending the latest commit (new hash: {link})."
                 )
-            report.body["summary"].content += f" {description}"
+            reporter.body["summary"].content += f" {description}"
         self._reporter.add(
             name="cca",
             status="fail" if reporter.has_changes and action in [
@@ -374,8 +403,8 @@ class EventHandler:
                InitCheckAction.REPORT,
                InitCheckAction.PULL
             ] else "pass",
-            summary=report.body["summary"].content,
-            section=report.section,
+            summary=reporter.body["summary"].content,
+            section=reporter.section,
             section_is_container=True,
         )
         return commit_hash
@@ -448,12 +477,12 @@ class EventHandler:
                 body=commit_msg.body,
             )
             self.switch_back_from_autoupdate_branch(git=git)
-            link = html.elem.a(href=pull_data["url"], content=pull_data["number"])
+            link = htmp.element.a(pull_data["number"], href=pull_data["url"])
             target = f"branch <code>{pr_branch}</code> and a pull request ({link}) was created"
             hooks_output["summary"] += summary_addon_template.format(target=target)
         if action in [InitCheckAction.COMMIT, InitCheckAction.AMEND] and modified:
             commit_hash = hooks_output["commit_hash"]
-            link = html.elem.a(href=str(self._gh_link.commit(commit_hash)), content=commit_hash[:7])
+            link = htmp.element.a(commit_hash[:7], href=str(self._gh_link.commit(commit_hash)))
             target = "the current branch " + (
                 f"in a new commit (hash: {link})"
                 if action == InitCheckAction.COMMIT
@@ -476,14 +505,18 @@ class EventHandler:
         data_before: _ps.NestedDict | None = None,
         data_main: _ps.NestedDict | None = None,
         future_versions: dict[str, str | PEP440SemVer] | None = None,
+        control_center_path: str | None = None,
+        log_title: str = "Control Center Manager Initialization",
     ) -> controlman.CenterManager:
-        return controlman.manager(
-            repo=self._git_base if base else self._git_head,
-            data_before=data_before or self._data_branch_before,
-            data_main=data_main or self._data_main,
-            github_token=self._context.token,
-            future_versions=future_versions,
-        )
+        with logger.sectioning(log_title):
+            return controlman.manager(
+                repo=self._git_base if base else self._git_head,
+                data_before=data_before or self._data_branch_before,
+                data_main=data_main or self._data_main,
+                github_token=self._context.token,
+                future_versions=future_versions,
+                control_center_path=control_center_path,
+            )
 
     def _get_latest_version(
         self,

@@ -26,7 +26,6 @@ def run():
     path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
 
     admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
-    _logger.info("Admin Token", f"Provided ({len(admin_token)} characters)" if admin_token else "Not provided")
 
     event_to_handler = {
         _EventType.ISSUES: _handler.IssuesEventHandler,

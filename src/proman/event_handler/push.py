@@ -25,7 +25,8 @@ class PushEventHandler(EventHandler):
         self._payload: _gh_context.payload.PushPayload = self._context.event
         return
 
-    def _run_event(self):
+    @logger.sectioner("Push Handler Execution")
+    def run(self):
         if self._context.ref_type is not _gh_context.enum.RefType.BRANCH:
             self._reporter.event(
                 f"Push to tag `{self._context.ref_name}`"
@@ -91,24 +92,27 @@ class PushEventHandler(EventHandler):
         return self._run_branch_edited_main_normal()
 
     def _run_repository_creation(self):
-        _fileex.directory.delete_contents(
-            path=self._path_head,
-            exclude=[".git", ".github", "template"],
-        )
-        _fileex.directory.delete_contents(
-            path=self._path_head / ".github",
-            exclude=["workflows"],
-        )
-        template_dir = self._path_head / "template"
-        for item in template_dir.iterdir():
-            shutil.move(item, self._path_head)
-        shutil.rmtree(template_dir)
-        self._git_head.commit(message="temp", amend=True, stage="all")
-        cc_manager = controlman.manager(
-            repo=self._git_head,
-            github_token=self._context.token,
+        with logger.sectioning("Repository Preparation"):
+            _fileex.directory.delete_contents(
+                path=self._path_head,
+                exclude=[".git", ".github", "template"],
+            )
+            _fileex.directory.delete_contents(
+                path=self._path_head / ".github",
+                exclude=["workflows"],
+            )
+            template_dir = self._path_head / "template"
+            for item in template_dir.iterdir():
+                shutil.move(item, self._path_head)
+            shutil.rmtree(template_dir)
+            self._git_head.commit(
+                message="init: Create repository from RepoDynamics template files.",
+                amend=True,
+                stage="all"
+            )
+        cc_manager = self.get_cc_manager(
             future_versions={self._context.event.repository.default_branch: "0.0.0"},
-            control_center_path=self._path_head / ".control"
+            control_center_path=".control"
         )
         self._sync(
             action=InitCheckAction.AMEND,

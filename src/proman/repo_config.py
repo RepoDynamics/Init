@@ -4,6 +4,7 @@ from pyserials import NestedDict as _NestedDict
 from pylinks.exception.api import WebAPIError
 from pylinks.api.github import Repo as GitHubRepoAPI
 from loggerman import logger
+import mdit
 
 
 class RepoConfig:
@@ -89,13 +90,41 @@ class RepoConfig:
                 logger.debug(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
         return
 
-    @logger.sectioner("Reset Repository Labels")
+    @logger.sectioner("Repository Labels Reset")
     def reset_labels(self, data: _NestedDict | None = None):
-        for label in self._gh_api.labels:
-            self._gh_api.label_delete(label["name"])
+        current_labels = self._gh_api.labels
+        for current_label in current_labels:
+            self._gh_api.label_delete(current_label["name"])
+        logger.success(
+            "Deleted Labels",
+            "All current repository labels have been deleted:",
+            self._make_labels_table(current_labels, "Deleted Labels"),
+        )
         for label in data["label.all"]:
             self._gh_api.label_create(name=label["name"], description=label["description"], color=label["color"])
+        logger.success(
+            "Created Labels",
+            "Following labels have been created:",
+            self._make_labels_table(self._gh_api.labels, "Created Labels"),
+        )
         return
+
+    @staticmethod
+    def _make_labels_table(labels: list[dict], caption: str):
+        rows = [["Name", "ID", "Node ID", "URL", "Default", "Description", "Color"]]
+        for label in labels:
+            rows.append(
+                [
+                    label["name"],
+                    label["id"],
+                    label["node_id"],
+                    label["url"],
+                    label["default"],
+                    label["description"],
+                    label["color"],
+                ]
+            )
+        return mdit.element.table(rows=rows, caption=caption, num_rows_header=1)
 
     @logger.sectioner("Update Repository Labels")
     def update_labels(self, data_new: _NestedDict, data_old: _NestedDict):
