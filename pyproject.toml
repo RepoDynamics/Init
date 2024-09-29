@@ -38,7 +38,7 @@ dependencies = [
     "PySerials == 0.0.0.dev19",
     "FileEx == 0.0.0.dev1",
     "ANSI-SGR == 0.0.0.dev10",
-    "PyColorIT",
+    "PyColorIT == 0.0.0.dev7",
 ]
 requires-python = ">=3.10"
 
