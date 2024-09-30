@@ -1,5 +1,6 @@
 from typing import Literal
 
+import pyserials as _ps
 from pyserials import NestedDict as _NestedDict
 from pylinks.exception.api import WebAPIError
 from pylinks.api.github import Repo as GitHubRepoAPI
@@ -15,7 +16,7 @@ class RepoConfig:
         self._default_branch_name = default_branch_name
         return
 
-    @logger.sectioner("Update Repository Configurations")
+    @logger.sectioner("GitHub Repository Configuration")
     def update_all(
         self,
         data_new: _NestedDict,
@@ -32,7 +33,6 @@ class RepoConfig:
             )
         return
 
-    @logger.sectioner("Update Repository Settings")
     def update_settings(self, data: _NestedDict):
         """Update repository settings.
 
@@ -49,13 +49,30 @@ class RepoConfig:
             )
         }
         if repo_config:
-            self._gh_api.repo_update(**repo_config)
+            results = self._gh_api.repo_update(**repo_config)
+            logger.success(
+                "Repository Settings",
+                "Updated repository settings.",
+                mdit.element.code_block(
+                    content=_ps.write.to_yaml_string(results),
+                    language="yaml",
+                    caption="Settings",
+                )
+            )
         topics = data["repo.topics"]
         if topics:
             self._gh_api.repo_topics_replace(topics=topics)
+            logger.success(
+                "Repository Topics",
+                "Updated repository topics.",
+                mdit.element.code_block(
+                    content=_ps.write.to_yaml_string(topics),
+                    language="yaml",
+                    caption="Topics",
+                )
+            )
         return
 
-    @logger.sectioner("Activate GitHub Pages")
     def activate_gh_pages(self):
         """Activate GitHub Pages for the repository if not activated.
 
@@ -64,10 +81,18 @@ class RepoConfig:
         - The GitHub API Token must have write access to 'Pages' scope.
         """
         if not self._gh_api.info["has_pages"]:
-            self._gh_api.pages_create(build_type="workflow")
+            results = self._gh_api.pages_create(build_type="workflow")
+            logger.success(
+                "GitHub Pages Activation",
+                "GitHub Pages has been activated for the repository.",
+                mdit.element.code_block(
+                    content=_ps.write.to_yaml_string(results),
+                    language="yaml",
+                    caption="GitHub Pages Details",
+                )
+            )
         return
 
-    @logger.sectioner("Update GitHub Pages Settings")
     def update_gh_pages(self, data: _NestedDict) -> None:
         """Activate GitHub Pages if not activated, and update custom domain.
 
@@ -76,19 +101,42 @@ class RepoConfig:
         - The GitHub API Token must have write access to 'Pages' scope.
         """
         self.activate_gh_pages()
-        cname = data.get("web.url.custom.name", "")
+        cname = data.get("web.url.custom.name", "").removeprefix("https://").removeprefix("http://")
         try:
             self._gh_api.pages_update(
-                cname=cname.removeprefix("https://").removeprefix("http://"),
+                cname=cname,
                 build_type="workflow",
             )
+            logger.success(
+                "GitHub Pages Custom Domain",
+                mdit.inline_container(
+                    "Updated custom domain for GitHub Pages to ",
+                    mdit.element.code_span(cname),
+                )
+            )
         except WebAPIError as e:
-            logger.debug(f"Failed to update custom domain for GitHub Pages", str(e))
+            if cname:
+                logger.error(
+                    "GitHub Pages Custom Domain",
+                    f"Failed to update custom domain for GitHub Pages",
+                    logger.traceback(e)
+                )
         if cname:
             try:
                 self._gh_api.pages_update(https_enforced=data["web.url.custom.enforce_https"])
+                logger.success(
+                    "GitHub Pages HTTPS Enforcement",
+                    mdit.inline_container(
+                        "Updated HTTPS enforcement for GitHub Pages to ",
+                        mdit.element.code_span(data["web.url.custom.enforce_https"]),
+                    )
+                )
             except WebAPIError as e:
-                logger.debug(f"Failed to update HTTPS enforcement for GitHub Pages", str(e))
+                logger.error(
+                    "GitHub Pages HTTPS Enforcement",
+                    f"Failed to update HTTPS enforcement for GitHub Pages",
+                    logger.traceback(e)
+                )
         return
 
     @logger.sectioner("Repository Labels Reset")
@@ -128,7 +176,7 @@ class RepoConfig:
             )
         return mdit.element.table(rows=rows, caption=caption, num_rows_header=1)
 
-    @logger.sectioner("Update Repository Labels")
+    @logger.sectioner("Labels")
     def update_labels(self, data_new: _NestedDict, data_old: _NestedDict):
 
         def format_labels(labels: list[dict]) -> tuple[
@@ -206,7 +254,7 @@ class RepoConfig:
                     )
         return
 
-    @logger.sectioner("Update Repository Branch Names")
+    @logger.sectioner("Branch Names")
     def update_branch_names(
         self,
         data_new: _NestedDict,
@@ -237,7 +285,7 @@ class RepoConfig:
                     old_to_new_map[branch_name] = new_branch_name
         return old_to_new_map
 
-    @logger.sectioner("Update Repository Rulesets")
+    @logger.sectioner("Rulesets")
     def update_rulesets(
         self,
         data_new: _NestedDict,
@@ -306,9 +354,27 @@ class RepoConfig:
                 if existing_ruleset['name'] == name:
                     args["ruleset_id"] = existing_ruleset["id"]
                     args["require_status_checks"] = bool(status_check)
-                    self._gh_api.ruleset_update(**args)
+                    new_ruleset = self._gh_api.ruleset_update(**args)
+                    logger.success(
+                        "Ruleset Update",
+                        f"Updated ruleset: {name}",
+                        mdit.element.code_block(
+                            content=_ps.write.to_yaml_string(new_ruleset),
+                            language="yaml",
+                            caption="New Ruleset",
+                        )
+                    )
                     return
-            self._gh_api.ruleset_create(**args)
+            new_ruleset = self._gh_api.ruleset_create(**args)
+            logger.success(
+                "Ruleset Creation",
+                f"Created ruleset: {name}",
+                mdit.element.code_block(
+                    content=_ps.write.to_yaml_string(new_ruleset),
+                    language="yaml",
+                    caption="New Ruleset",
+                )
+            )
             return
 
         existing_rulesets = self._gh_api.rulesets(include_parents=False)
@@ -321,6 +387,10 @@ class RepoConfig:
                 for existing_ruleset in existing_rulesets:
                     if existing_ruleset['name'] == ruleset_name:
                         self._gh_api.ruleset_delete(ruleset_id=existing_ruleset["id"])
+                        logger.success(
+                            "Ruleset Deletion",
+                            f"Deleted branch ruleset: {ruleset_name}",
+                        )
                 continue
             apply(
                 name=ruleset_name,
