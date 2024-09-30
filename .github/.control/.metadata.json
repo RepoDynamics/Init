@@ -1,0 +1,10 @@
+{
+   "version": "0.1.0",
+   "theme": {
+      "logo": {
+         "full": {
+            "ascii": "docs/media/logo/full.txt"
+         }
+      }
+   }
+}
