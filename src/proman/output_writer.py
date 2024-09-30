@@ -169,6 +169,7 @@ class OutputWriter:
         data_branch: DataManager,
         ref: str | None = None,
         ref_before: str | None = None,
+        ref_name: str | None = None,
     ):
         if "pkg" not in data_branch:
             return
@@ -177,16 +178,13 @@ class OutputWriter:
                 "repository": self._repository,
                 "ref": ref or self.ref,
                 "ref-before": ref_before or self.ref_before,
+                "ref-name": ref_name or self._context.ref_name,
                 "os": [
-                    {"name": name, "runner": runner} for name, runner in zip(
-                        data_branch["package"]["os_titles"],
-                        data_branch["package"]["github_runners"]
-                    )
+                    {"name": os["name"], "runner": os["runner"]} for os in data_branch["pkg"]["os"].values()
                 ],
-                "package-name": data_branch["package"]["name"],
-                "python-versions": data_branch["package"]["python_versions"],
-                "python-max-ver": data_branch["package"]["python_version_max"],
-                "path-source": data_branch["path"]["dir"]["source"],
+                "pkg": data_branch["pkg"],
+                "python-ver-max": data_branch["pkg"]["python"]["version"]["micros"][-1],
+                "tool": data_branch["tool"],
             }
         )
         return
