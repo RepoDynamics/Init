@@ -112,7 +112,8 @@ runs:
         python "${{ github.action_path }}/heading.py" "1.1. Repository Checkout"
         python "${{ github.action_path }}/heading.py" "1.1.1. Base Repo"
 
-    - uses: actions/checkout@v4
+    - name: Base Repository Checkout
+      uses: actions/checkout@v4  # https://github.com/actions/checkout
       with:
         token: ${{ inputs.admin-token || github.token }}
         repository: ${{ github.repository }}
