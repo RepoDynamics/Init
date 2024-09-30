@@ -264,7 +264,10 @@ class EventHandler:
             base=False,
             ref_range=(self._context.hash_before, self._context.hash_after),
         ) if data["tool.pre-commit.config.file.content"] else None
-        latest_hash = self._git_head.push() if hash_hooks or hash_sync else self._context.hash_after
+        if hash_hooks or hash_sync:
+            with logger.sectioning("Repository Update"):
+                self._git_head.push()
+        latest_hash = hash_hooks or hash_sync or self._context.hash_after
         job_runs = decide_jobs()
         return data, job_runs, latest_hash
 
