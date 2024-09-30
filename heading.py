@@ -4,29 +4,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 import re
+import json
 
 if TYPE_CHECKING:
     from typing import Sequence
 
-
-LOGO_COLOR_PRO = (75, 100, 160)
-LOGO_COLOR_MAN = (220, 50, 0)
-LOGO_PRO = """
-╭━━━╮     
-┃╭━╮┃     
-┃╰━╯┣━┳━━╮
-┃╭━━┫╭┫╭╮┃
-┃┃  ┃┃┃╰╯┃
-╰╯  ╰╯╰━━╯
-"""
-LOGO_MAN = """
-╭━╮╭━╮
-┃┃╰╯┃┃
-┃╭╮╭╮┣━━┳━╮
-┃┃┃┃┃┃╭╮┃╭╮╮
-┃┃┃┃┃┃╭╮┃┃┃┃
-╰╯╰╯╰┻╯╰┻╯╰╯
-"""
 
 PATH_PYPROJECT = Path(__file__).parent / "pyproject.toml"
 LEN_CONSOLE_LINE = 88
@@ -84,6 +66,20 @@ LOGO_DYNAMICS = """
     ╰━━╯                 
 """
 
+def heading(content: str):
+    number, title = content.split(" ", 1)
+    level = min(len(number.removesuffix(".").split(".")), len(HEADING_COLORS))
+    len_heading = len(content)
+    len_margin = 2
+    num_dashes = LEN_CONSOLE_LINE - len_heading - len_margin
+    num_dashes_left = num_dashes // 2
+    num_dashes_right = num_dashes - num_dashes_left
+    line_char = "–"
+    heading_text = _apply_style(content.strip(), HEADING_COLORS[level - 1], bold=True)
+    line_left = _apply_style(line_char * num_dashes_left, LINE_COLORS[level - 1], bold=True)
+    line_right = _apply_style(line_char * num_dashes_right, LINE_COLORS[level - 1], bold=True)
+    return f"{line_left} {heading_text} {line_right}"
+
 
 def logo(
     brand_parts: Sequence[tuple[str, tuple[int, int, int]]] = (
@@ -120,26 +116,26 @@ def logo(
     total_hor_spaces = box_len - logo_len - 2
     spaces_left = (total_hor_spaces // 2)
     spaces_right = total_hor_spaces - spaces_left
-    ver_margin_lines = [apply_style(f'{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}', BOX_COLOR)] * MARGIN_VER
+    ver_margin_lines = [_apply_style(f'{BOX_LEFT}{" " * (box_len - 2)}{BOX_RIGHT}', BOX_COLOR)] * MARGIN_VER
     boxed_logo = [
         "",
-        apply_style(f"{BOX_TOP_LEFT}{BOX_TOP * (box_len - 2)}{BOX_TOP_RIGHT}", BOX_COLOR),
+        _apply_style(f"{BOX_TOP_LEFT}{BOX_TOP * (box_len - 2)}{BOX_TOP_RIGHT}", BOX_COLOR),
         *ver_margin_lines,
     ]
     for line in full_logo:
         boxed_logo.append(
-            f'{apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{apply_style(BOX_RIGHT, BOX_COLOR, bold=True)}'
+            f'{_apply_style(BOX_LEFT, BOX_COLOR)}{spaces_left * " "}{line}{spaces_right * " "}{_apply_style(BOX_RIGHT, BOX_COLOR, bold=True)}'
         )
 
     pyproject = PATH_PYPROJECT.read_text()
     version = re.findall(r'^version\s+=\s*"([^"]*)"', pyproject, re.MULTILINE)[0]
-    version_str = f" {apply_style(VERSION_PREFIX, VERSION_COLOR_PREFIX)}{apply_style(version, VERSION_COLOR_VERSION)} "
+    version_str = f" {_apply_style(VERSION_PREFIX, VERSION_COLOR_PREFIX)}{_apply_style(version, VERSION_COLOR_VERSION)} "
     version_str_len = len(VERSION_PREFIX) + len(version) + 2
     num_chars = box_len - version_str_len - 2
     chars_left = num_chars // 2
     chars_right = num_chars - chars_left
-    line_left = apply_style(f"{BOX_BOTTOM_LEFT}{BOX_BOTTOM * chars_left}", BOX_COLOR)
-    line_right = apply_style(f"{BOX_BOTTOM * chars_right}{BOX_BOTTOM_RIGHT}", BOX_COLOR)
+    line_left = _apply_style(f"{BOX_BOTTOM_LEFT}{BOX_BOTTOM * chars_left}", BOX_COLOR)
+    line_right = _apply_style(f"{BOX_BOTTOM * chars_right}{BOX_BOTTOM_RIGHT}", BOX_COLOR)
     boxed_logo.extend(
         [*ver_margin_lines, f"{line_left}{version_str}{line_right}", ""]
     )
@@ -159,28 +155,13 @@ def _logo_prepare_part(part: str, color: tuple[int, int, int]):
     lines = [line.rstrip() for line in part.strip().splitlines()]
     max_len = max(len(line) for line in lines)
     out_lines = [
-        apply_style(line.ljust(max_len), color)
+        _apply_style(line.ljust(max_len), color)
         for line in lines
     ]
     return out_lines, max_len
 
 
-def heading(content: str):
-    number, title = content.split(" ", 1)
-    level = min(len(number.removesuffix(".").split(".")), len(HEADING_COLORS))
-    len_heading = len(content)
-    len_margin = 2
-    num_dashes = LEN_CONSOLE_LINE - len_heading - len_margin
-    num_dashes_left = num_dashes // 2
-    num_dashes_right = num_dashes - num_dashes_left
-    line_char = "–"
-    heading_text = apply_style(content.strip(), HEADING_COLORS[level - 1], bold=True)
-    line_left = apply_style(line_char * num_dashes_left, LINE_COLORS[level - 1], bold=True)
-    line_right = apply_style(line_char * num_dashes_right, LINE_COLORS[level - 1], bold=True)
-    return f"{line_left} {heading_text} {line_right}"
-
-
-def apply_style(text: str, color: tuple[int, int, int], bold: bool = False):
+def _apply_style(text: str, color: tuple[int, int, int], bold: bool = False):
     return f"\033[{'1;' if bold else ''}38;2;{color[0]};{color[1]};{color[2]}m{text}\033[0m"
 
 
