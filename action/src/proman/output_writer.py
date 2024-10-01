@@ -171,15 +171,18 @@ class OutputWriter:
     ):
         if "pkg" not in data_branch:
             return
-        print(data_branch["pkg"]["os"])
         self._output_lint.append(
             {
                 "repository": self._repository,
                 "ref": ref or self.ref,
                 "ref-before": ref_before or self.ref_before,
                 "ref-name": ref_name or self._context.ref_name,
+                "os-name": [data_branch[f"pkg.os.{key}.name"] for key in ("linux", "macos", "windows")],
                 "os": [
-                    {"name": os["name"], "runner": os["runner"]} for os in data_branch["pkg"]["os"].values()
+                    {
+                        "name": data_branch[f"pkg.os.{key}.name"],
+                        "runner": data_branch[f"pkg.os.{key}.runner"],
+                    } for key in ("linux", "macos", "windows")
                 ],
                 "pkg": data_branch["pkg"],
                 "python-ver-max": data_branch["pkg"]["python"]["version"]["micros"][-1],
@@ -222,7 +225,8 @@ class OutputWriter:
 
         def cibw_platforms():
             platforms = []
-            for os in data_branch["pkg.os"].values():
+            for os_key in ("linux", "macos", "windows"):
+                os = data_branch["pkg.os"].get(os_key, {})
                 ci_build = os.get("cibuild")
                 if not ci_build:
                     continue
@@ -337,7 +341,10 @@ class OutputWriter:
             "overrides": ps.write.to_json_string(overrides) if overrides else "",
         }
         out = []
-        for os in ccm_branch["pkg"]["os"].values():
+        for os_key in ("linux", "macos", "windows"):
+            os = ccm_branch["pkg.os"].get(os_key)
+            if not os:
+                continue
             for python_version in ccm_branch["pkg"]["python"]["version"]["minors"]:
                 out.append(
                     {
