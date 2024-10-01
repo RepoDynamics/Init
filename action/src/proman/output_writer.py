@@ -185,7 +185,7 @@ class OutputWriter:
                     } for key in ("linux", "macos", "windows")
                 ],
                 "pkg": data_branch["pkg"],
-                "python-ver-max": data_branch["pkg"]["python"]["version"]["micros"][-1],
+                "python-ver-max": data_branch["pkg"]["python"]["version"]["minors"][-1],
                 "tool": data_branch["tool"],
             }
         )
