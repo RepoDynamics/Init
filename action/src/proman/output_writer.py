@@ -171,6 +171,7 @@ class OutputWriter:
     ):
         if "pkg" not in data_branch:
             return
+        print(data_branch["pkg"]["os"])
         self._output_lint.append(
             {
                 "repository": self._repository,
