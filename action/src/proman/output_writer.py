@@ -147,8 +147,6 @@ class OutputWriter:
     ):
         if "web" not in data_branch:
             return
-        if not url:
-            raise RuntimeError("No URL provided for setting website job output")
         path_pkg = data_branch.get("pkg.path.root", "") if data_branch["web.sphinx.needs_package"] else ""
         self._output_website.append(
             {
