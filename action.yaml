@@ -106,8 +106,6 @@ runs:
         # Initialization
         printf "\n$(cat ${{github.action_path}}/docs/media/logo/full.txt)\n\n"
         python "${{ github.action_path }}/action/script/log.py" "1. Initialization"
-        # Copy ProMan requirements file to the workspace so that it can be used by SetupPython for caching
-        cp "${{ github.action_path }}/action/requirements.txt" .
         python "${{ github.action_path }}/action/script/log.py" "1.1. Repository Checkout"
         python "${{ github.action_path }}/action/script/log.py" "1.1.1. Base Repo"
 
@@ -137,9 +135,11 @@ runs:
       run: |
         # Python Setup
         python "${{ github.action_path }}/action/script/log.py" "1.2. Python Setup"
+        # Copy ProMan requirements file to the workspace so that it can be used by SetupPython for caching
+        cp "${{ github.action_path }}/action/requirements.txt" .
     - uses: actions/setup-python@v5
       with:
-        python-version: 3.12
+        python-version: 3.x
         cache: pip
         cache-dependency-path: requirements.txt
 
@@ -148,12 +148,19 @@ runs:
       run: |
         # Environment Setup
         python "${{ github.action_path }}/action/script/log.py" "1.3. Environment Setup"
+        
+        echo "::group::Pip Upgrade"
+        python -m pip install --upgrade pip
+        echo "::endgroup::"
+        
         echo "::group::Requirements Installation"
         python -m pip install -r requirements.txt
         echo "::endgroup::"
+        
         echo "::group::Action Installation"
         python -m pip install ${{ github.action_path }}/action
         echo "::endgroup::"
+        
         echo "::group::Environment Overview"
         python -m pip list
         echo "::endgroup::"

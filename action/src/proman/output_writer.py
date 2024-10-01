@@ -193,10 +193,10 @@ class OutputWriter:
         self,
         data_branch: DataManager,
         ref: str | None = None,
-        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
+        source: Literal["github", "pypi", "testpypi"] = "github",
         version: str | None = None,
-        retry_sleep_seconds: str = "30",
-        retry_sleep_seconds_total: str = "900",
+        retries: int = 40,
+        retry_sleep_seconds: int = 15,
     ):
         self._output_test.extend(
             self._create_output_package_test(
@@ -205,7 +205,7 @@ class OutputWriter:
                 source=source,
                 version=version,
                 retry_sleep_seconds=retry_sleep_seconds,
-                retry_sleep_seconds_total=retry_sleep_seconds_total,
+                retries=retries,
             )
         )
         return
@@ -221,60 +221,28 @@ class OutputWriter:
         artifact_name: str = "Package"
     ):
 
-        def _package_operating_systems(self):
-            output = {
-                "os_titles": [],
-                "os_independent": True,
-                "pure_python": True,
-                "github_runners": [],
-                "cibw_matrix_platform": [],
-                "cibw_matrix_python": [],
-            }
-            os_title = {
-                "linux": "Linux",
-                "macos": "macOS",
-                "windows": "Windows",
-            }
-            data_os = self._data["pkg.os"]
-
-            if not self._data["package"].get("operating_systems"):
-                _logger.info("No operating systems provided; package is platform independent.")
-                output["github_runners"].extend(["ubuntu-latest", "macos-latest", "windows-latest"])
-                output["os_titles"].extend(list(os_title.values()))
-                _logger.section_end()
-                return output
-            output["os_independent"] = False
-            for os_name, specs in self._data["package"]["operating_systems"].items():
-                output["os_titles"].append(os_title[os_name])
-                default_runner = f"{os_name if os_name != 'linux' else 'ubuntu'}-latest"
-                if not specs:
-                    _logger.info(f"No specifications provided for operating system '{os_name}'.")
-                    output["github_runners"].append(default_runner)
+        def cibw_platforms():
+            platforms = []
+            for os in data_branch["pkg.os"].values():
+                ci_build = os.get("cibuild")
+                if not ci_build:
                     continue
-                runner = default_runner if not specs.get("runner") else specs["runner"]
-                output["github_runners"].append(runner)
-                if specs.get("cibw_build"):
-                    for cibw_platform in specs["cibw_build"]:
-                        output["cibw_matrix_platform"].append(
-                            {"runner": runner, "cibw_platform": cibw_platform})
-            if output["cibw_matrix_platform"]:
-                output["pure_python"] = False
-                output["cibw_matrix_python"].extend(
-                    [f"cp{ver.replace('.', '')}" for ver in self._data["package"]["python_versions"]]
-                )
-            _logger.debug("Generated data:", code=str(output))
-            return output
-
+                for cibw_platform in ci_build:
+                    platforms.append({"runner": os["runner"], "cibw_platform": cibw_platform})
+            return platforms
 
         self._output_build.append(
             {
                 "repository": self._repository,
                 "ref": ref or self.ref,
                 "artifact-name": artifact_name,
-                "pure-python": data_branch["package"]["pure_python"],
-                "cibw-matrix-platform": data_branch["package"]["cibw_matrix_platform"],
-                "cibw-matrix-python": data_branch["package"]["cibw_matrix_python"],
-                "path-readme": data_branch["path"]["file"]["readme_pypi"],
+                "pure-python": data_branch["pkg.python.pure"],
+                "path-pkg": data_branch["pkg.path.root"],
+                "path-readme": data_branch["pkg.readme.path"],
+                "cibw-platforms": cibw_platforms(),
+                "cibw-pythons": [
+                    f"cp{ver.replace('.', '')}" for ver in data_branch["pkg.python.version.minors"]
+                ] if not data_branch["pkg.python.pure"] else [],
             }
         )
         if publish_testpypi or publish_pypi:
@@ -287,32 +255,32 @@ class OutputWriter:
                 self._create_output_package_test(
                     ccm_branch=data_branch,
                     ref=ref,
-                    source="GitHub",
+                    source="github",
                 )
             )
             self._output_publish_testpypi = {
                 "platform": "TestPyPI",
                 "upload-url": "https://test.pypi.org/legacy/",
-                "download-url": f'https://test.pypi.org/project/{data_branch["package"]["name"]}/{version}',
+                "download-url": f'https://test.pypi.org/project/{data_branch["pkg"]["name"]}/{version}',
                 "artifact-name": artifact_name,
             }
             self._output_test_testpypi = self._create_output_package_test(
                 ccm_branch=data_branch,
                 ref=ref,
-                source="TestPyPI",
+                source="testpypi",
                 version=version,
             )
         if publish_pypi:
             self._output_publish_pypi = {
                 "platform": "PyPI",
                 "upload-url": "https://upload.pypi.org/legacy/",
-                "download-url": f'https://pypi.org/project/{data_branch["package"]["name"]}/{version}',
+                "download-url": f'https://pypi.org/project/{data_branch["pkg"]["name"]}/{version}',
                 "artifact-name": artifact_name,
             }
             self._output_test_pypi = self._create_output_package_test(
                 ccm_branch=data_branch,
                 ref=ref,
-                source="PyPI",
+                source="pypi",
                 version=version,
             )
         return
@@ -344,40 +312,41 @@ class OutputWriter:
         self,
         ccm_branch: DataManager,
         ref: str | None = None,
-        source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
+        source: Literal["github", "pypi", "testpypi"] = "github",
         version: str | None = None,
-        retry_sleep_seconds_total: str = "900",
-        retry_sleep_seconds: str = "30",
+        retries: int = 40,
+        retry_sleep_seconds: int = 15,
+        pyargs: list[str] | None = None,
+        args: list[str] | None = None,
+        overrides: dict[str, str] | None = None,
+        report_artifact_name: str = "Test-Suite Report",
     ) -> list[dict]:
         common = {
             "repository": self._repository,
             "ref": ref or self.ref,
-            "path-setup-testsuite": ccm_branch["test.path.root"],
-            "path-setup-package": ccm_branch["pkg.path.root"],
-            "testsuite-import-name": ccm_branch["test.import_name"],
-            "package-source": source,
-            "package-name": ccm_branch["pkg.name"],
-            "package-version": version or "",
-            "path-requirements-package": ccm_branch["pkg.dependency.env.pip.path"],
-            "path-report-pytest": ccm_branch["path"]["dir"]["local"]["report"]["pytest"],
-            "path-report-coverage": ccm_branch["path"]["dir"]["local"]["report"]["coverage"],
-            "path-cache-pytest": ccm_branch["path"]["dir"]["local"]["cache"]["pytest"],
-            "path-cache-coverage": ccm_branch["path"]["dir"]["local"]["cache"]["coverage"],
-            "retry-sleep-seconds": retry_sleep_seconds,
-            "retry-sleep-seconds-total": retry_sleep_seconds_total,
+            "tests-path": ccm_branch["test.path.root"],
+            "tests-name": ccm_branch["test.import_name"],
+            "pkg-src": source.lower(),
+            "pkg-path": ccm_branch["pkg.path.root"],
+            "pkg-name": ccm_branch["pkg.name"],
+            "pkg-version": version or "",
+            "pkg-req-path": ccm_branch["pkg.dependency.env.pip.path"] if source.lower() == "testpypi" else "",
+            "retries": str(retries),
+            "retry-sleep-seconds": str(retry_sleep_seconds),
+            "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
+            "args": ps.write.to_json_string(args) if args else "",
+            "overrides": ps.write.to_json_string(overrides) if overrides else "",
         }
         out = []
-        for github_runner, os in zip(
-            ccm_branch["package"]["github_runners"],
-            ccm_branch["package"]["os_titles"]
-        ):
-            for python_version in ccm_branch["package"]["python_versions"]:
+        for os in ccm_branch["pkg"]["os"].values():
+            for python_version in ccm_branch["pkg"]["python"]["version"]["minors"]:
                 out.append(
                     {
                         **common,
-                        "runner": github_runner,
-                        "os": os,
+                        "runner": os["runner"],
+                        "os-name": os["name"],
                         "python-version": python_version,
+                        "report-artifact-name": f"{report_artifact_name} ({os['name']}, Py {python_version})",
                     }
                 )
         return out
