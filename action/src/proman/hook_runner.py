@@ -137,7 +137,6 @@ class PreCommitHooks:
             allow_empty=self._action == "amend",
         )
         output_validate = self._run_hooks(validation_run=True)
-        output_validate["commit_hash"] = self._commit_hash
         output = self._create_summary(output_validation=output_validate, output_fix=output_fix)
         return output
 
@@ -256,6 +255,7 @@ class PreCommitHooks:
             "summary": summary,
             "body": body,
             "section": [output["report"] for output in outputs],
+            "commit_hash": self._commit_hash,
         }
         return final_output
 
