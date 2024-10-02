@@ -52,7 +52,7 @@ class OutputWriter:
         package_publish_pypi: bool = False,
         package_release: bool = False,
     ):
-        package_artifact_name = f"Package ({version})" if version else "Package"
+        package_artifact_name = f"Distribution Package (v{version})" if version else "Distribution Package"
         if website_build or website_deploy:
             self.set_website(
                 data_branch=data_branch,
