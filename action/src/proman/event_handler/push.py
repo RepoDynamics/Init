@@ -164,29 +164,29 @@ class PushEventHandler(EventHandler):
                 head_commit_msg_final = "\n".join(head_commit_msg_lines)
             return conventional_commits.parser.create(types=["init"]).parse(head_commit_msg_final)
 
-        def parse_version() -> str:
-            if commit_msg.footer.get("version"):
-                version_input = commit_msg.footer["version"]
-                try:
-                    return str(PEP440SemVer(version_input))
-                except ValueError:
-                    logger.critical(f"Invalid version string in commit footer: {version_input}")
-                    raise ProManException()
-            return "0.0.0"
+        def parse_version(commit_msg: conventional_commits.message.ConventionalCommitMessage) -> str:
+            version_input = commit_msg.footer.get("version")
+            if not version_input:
+                return "0.0.0"
+            try:
+                return str(PEP440SemVer(version_input))
+            except ValueError:
+                logger.critical(f"Invalid version string in commit footer: {version_input}")
+                raise ProManException()
 
         self._reporter.event("Project initialization")
-        commit_msg = parse_commit_msg()
-        version = parse_version()
+        commit_message = parse_commit_msg()
+        version = parse_version(commit_msg=commit_message)
         new_data, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT,
             future_versions={self._context.ref_name: version},
         )
-        if commit_msg.footer.get("squash", True):
+        if commit_message.footer.get("squash", True):
             # Squash all commits into a single commit
             # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
             #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
             self._git_head.checkout("temp", orphan=True)
-            self._git_head.commit(message=commit_msg.footerless)
+            self._git_head.commit(message=commit_message.footerless)
             self._git_head.branch_delete(self._context.ref_name, force=True)
             self._git_head.branch_rename(self._context.ref_name, force=True)
             latest_hash = self._git_head.push(
