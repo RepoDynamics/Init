@@ -360,7 +360,7 @@ class RepoConfig:
                 if existing_ruleset['name'] == name:
                     args["ruleset_id"] = existing_ruleset["id"]
                     args["require_status_checks"] = bool(status_check)
-                    new_ruleset = self._gh_api.ruleset_update(**args)
+                    new_ruleset = self._gh_api_admin.ruleset_update(**args)
                     logger.success(
                         "Ruleset Update",
                         f"Updated ruleset: {name}",
@@ -371,7 +371,7 @@ class RepoConfig:
                         )
                     )
                     return
-            new_ruleset = self._gh_api.ruleset_create(**args)
+            new_ruleset = self._gh_api_admin.ruleset_create(**args)
             logger.success(
                 "Ruleset Creation",
                 f"Created ruleset: {name}",
@@ -383,7 +383,7 @@ class RepoConfig:
             )
             return
 
-        existing_rulesets = self._gh_api.rulesets(include_parents=False)
+        existing_rulesets = self._gh_api_admin.rulesets(include_parents=False)
 
         for branch_key in ("main", "release", "pre", "dev", "auto"):
             branch_name = data_new[f"branch.{branch_key}.name"]
@@ -392,7 +392,7 @@ class RepoConfig:
             if not branch_ruleset:
                 for existing_ruleset in existing_rulesets:
                     if existing_ruleset['name'] == ruleset_name:
-                        self._gh_api.ruleset_delete(ruleset_id=existing_ruleset["id"])
+                        self._gh_api_admin.ruleset_delete(ruleset_id=existing_ruleset["id"])
                         logger.success(
                             "Ruleset Deletion",
                             f"Deleted branch ruleset: {ruleset_name}",
