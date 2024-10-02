@@ -10,6 +10,7 @@ from versionman.pep440_semver import PEP440SemVer
 import fileex as _fileex
 
 from proman.datatype import InitCheckAction
+from proman.exception import ProManException
 from proman.main import EventHandler
 
 
@@ -170,6 +171,7 @@ class PushEventHandler(EventHandler):
                     return str(PEP440SemVer(version_input))
                 except ValueError:
                     logger.critical(f"Invalid version string in commit footer: {version_input}")
+                    raise ProManException()
             return "0.0.0"
 
         self._reporter.event("Project initialization")

@@ -348,6 +348,7 @@ class OutputWriter:
             "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
             "args": ps.write.to_json_string(args) if args else "",
             "overrides": ps.write.to_json_string(overrides) if overrides else "",
+            "codecov-yml-path": ccm_branch["tool.codecov.config.file.path"],
         }
         out = []
         for os_key in ("linux", "macos", "windows"):
