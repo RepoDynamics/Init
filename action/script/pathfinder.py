@@ -26,14 +26,11 @@ def get_local_dir_paths():
                 has_set = set_pre_commit_config_path(metadata=meta, repo_path=repo_path, repo_name=repo_name)
                 needs_sec["pre-commit"] = has_set
     curr_section_num = 1
-    first_sec = None
     for key in ("base", "head", "pre-commit"):
         if needs_sec[key]:
             actionman.step_output.write(f"secnum_cache_{key}", curr_section_num)
-            if not first_sec:
-                first_sec = key
             curr_section_num += 1
-    return first_sec
+    return
 
 
 def set_pre_commit_config_path(metadata, repo_path: str, repo_name: str) -> bool:
@@ -55,17 +52,17 @@ def set_pre_commit_config_path(metadata, repo_path: str, repo_name: str) -> bool
 
 
 def set_local_dir_path(metadata, repo_path: str, repo_name: str) -> bool:
-    local_dir_path = metadata["local.path"]
+    local_dir_path = metadata["local.cache.path"]
     if not local_dir_path:
         logger.warning(
-            "Cache Load: Missing Local Directory Path"
-            f"Could not find the key `local.path` in the metadata file of the {repo_name} repository. "
+            "Cache Load: Missing Local Cache Directory Path"
+            f"Could not find the key `local.cache.path` in the metadata file of the {repo_name} repository. "
             "The local cache will not be restored."
         )
         return False
     logger.info(
-        "Cache Load: Local Directory Path",
-        f"Located the local directory path for the {repo_name} repository at `{local_dir_path}`.",
+        "Cache Load: Local Cache Directory Path",
+        f"Located the local cache directory path for the {repo_name} repository at `{local_dir_path}`.",
     )
     actionman.step_output.write(f"local_dirpath_{repo_name}", f"{repo_path}/{local_dir_path}")
     return True
@@ -74,12 +71,5 @@ def set_local_dir_path(metadata, repo_path: str, repo_name: str) -> bool:
 if __name__ == "__main__":
     proman_logger_initialize(title_number=[1, 4])
     logger.section("Cache Load")
-    first_sub_sec_key = get_local_dir_paths()
-    if first_sub_sec_key:
-        log_title = {
-            "base": "Base Cache",
-            "head": "Head Cache",
-            "pre-commit": "Pre-Commit Cache",
-        }
-        logger.section(log_title[first_sub_sec_key])
+    get_local_dir_paths()
     sys.exit(0)

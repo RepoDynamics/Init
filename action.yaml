@@ -173,6 +173,11 @@ runs:
         python "${{ github.action_path }}/action/script/pathfinder.py"
     - name: Base Cache
       if: ${{ steps.cache.outputs.local_dirpath_base }}
+      shell: bash
+      run: |
+        # Base Cache
+        python "${{ github.action_path }}/action/script/log.py" "1.4.${{ steps.cache.outputs.secnum_cache_base }}. Base Cache"
+    - if: ${{ steps.cache.outputs.local_dirpath_base }}
       uses: actions/cache@v4
       with:
         path: ${{ steps.cache.outputs.local_dirpath_base }}

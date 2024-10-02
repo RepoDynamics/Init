@@ -158,6 +158,7 @@ class OutputWriter:
                 "path-pkg": path_pkg,
                 "artifact-name": artifact_name,
                 "deploy": deploy,
+                "job-suffix": "",
             }
         )
         return
@@ -187,6 +188,7 @@ class OutputWriter:
                 "pkg": data_branch["pkg"],
                 "python-ver-max": data_branch["pkg"]["python"]["version"]["minors"][-1],
                 "tool": data_branch["tool"],
+                "job-suffix": "",
             }
         )
         return
@@ -200,15 +202,18 @@ class OutputWriter:
         retries: int = 40,
         retry_sleep_seconds: int = 15,
     ):
-        self._output_test.extend(
-            self._create_output_package_test(
-                ccm_branch=data_branch,
-                ref=ref,
-                source=source,
-                version=version,
-                retry_sleep_seconds=retry_sleep_seconds,
-                retries=retries,
-            )
+        self._output_test.append(
+            {
+                "config": self._create_output_package_test(
+                    ccm_branch=data_branch,
+                    ref=ref,
+                    source=source,
+                    version=version,
+                    retry_sleep_seconds=retry_sleep_seconds,
+                    retries=retries,
+                ),
+                "job-suffix": "",
+            }
         )
         return
 
@@ -246,6 +251,7 @@ class OutputWriter:
                 "cibw-pythons": [
                     f"cp{ver.replace('.', '')}" for ver in data_branch["pkg.python.version.minors"]
                 ] if not data_branch["pkg.python.pure"] else [],
+                "job-suffix": "",
             }
         )
         if publish_testpypi or publish_pypi:
@@ -254,12 +260,15 @@ class OutputWriter:
                 ref=ref,
                 ref_before=ref_before,
             )
-            self._output_test.extend(
-                self._create_output_package_test(
-                    ccm_branch=data_branch,
-                    ref=ref,
-                    source="github",
-                )
+            self._output_test.append(
+                {
+                    "config": self._create_output_package_test(
+                        ccm_branch=data_branch,
+                        ref=ref,
+                        source="github",
+                    ),
+                    "job-suffix": "",
+                }
             )
             self._output_publish_testpypi = {
                 "platform": "TestPyPI",
