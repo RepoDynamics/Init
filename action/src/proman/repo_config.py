@@ -11,8 +11,14 @@ import pycolorit as pcit
 
 class RepoConfig:
 
-    def __init__(self, gh_api: GitHubRepoAPI, default_branch_name: str):
+    def __init__(
+        self,
+        gh_api: GitHubRepoAPI,
+        gh_api_admin: GitHubRepoAPI,
+        default_branch_name: str
+    ):
         self._gh_api = gh_api
+        self._gh_api_admin = gh_api_admin
         self._default_branch_name = default_branch_name
         return
 
@@ -40,7 +46,7 @@ class RepoConfig:
         -----
         - The GitHub API Token must have write access to 'Administration' scope.
         """
-        self._gh_api.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
+        self._gh_api_admin.actions_permissions_workflow_default_set(can_approve_pull_requests=True)
         repo_config = {
             k: v for k, v in data.get("repo", {}).items() if k not in (
                 "topics", "gitattributes", "gitignore",
@@ -49,7 +55,7 @@ class RepoConfig:
             )
         }
         if repo_config:
-            results = self._gh_api.repo_update(**repo_config)
+            results = self._gh_api_admin.repo_update(**repo_config)
             logger.success(
                 "Repository Settings",
                 "Updated repository settings.",
@@ -61,7 +67,7 @@ class RepoConfig:
             )
         topics = data["repo.topics"]
         if topics:
-            self._gh_api.repo_topics_replace(topics=topics)
+            self._gh_api_admin.repo_topics_replace(topics=topics)
             logger.success(
                 "Repository Topics",
                 "Updated repository topics.",
@@ -80,8 +86,8 @@ class RepoConfig:
         -----
         - The GitHub API Token must have write access to 'Pages' scope.
         """
-        if not self._gh_api.info["has_pages"]:
-            results = self._gh_api.pages_create(build_type="workflow")
+        if not self._gh_api_admin.info["has_pages"]:
+            results = self._gh_api_admin.pages_create(build_type="workflow")
             logger.success(
                 "GitHub Pages Activation",
                 "GitHub Pages has been activated for the repository.",
@@ -103,7 +109,7 @@ class RepoConfig:
         self.activate_gh_pages()
         cname = data.get("web.url.custom.name", "").removeprefix("https://").removeprefix("http://")
         try:
-            self._gh_api.pages_update(
+            self._gh_api_admin.pages_update(
                 cname=cname,
                 build_type="workflow",
             )
@@ -123,7 +129,7 @@ class RepoConfig:
                 )
         if cname:
             try:
-                self._gh_api.pages_update(https_enforced=data["web.url.custom.enforce_https"])
+                self._gh_api_admin.pages_update(https_enforced=data["web.url.custom.enforce_https"])
                 logger.success(
                     "GitHub Pages HTTPS Enforcement",
                     mdit.inline_container(

@@ -211,7 +211,8 @@ class EventHandler:
         self._path_head = self._git_head.repo_path
         self._data_main, self._data_branch_before = load_metadata()
         self._repo_config = RepoConfig(
-            gh_api=self._gh_api_admin if self._has_admin_token else self._gh_api,
+            gh_api=self._gh_api,
+            gh_api_admin=self._gh_api_admin,
             default_branch_name=self._context.event.repository.default_branch
         )
         self._ver = pkgdata.get_version_from_caller()
