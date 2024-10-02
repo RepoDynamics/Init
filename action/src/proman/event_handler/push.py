@@ -189,9 +189,10 @@ class PushEventHandler(EventHandler):
             self._git_head.commit(message=commit_message.footerless)
             self._git_head.branch_delete(self._context.ref_name, force=True)
             self._git_head.branch_rename(self._context.ref_name, force=True)
-            latest_hash = self._git_head.push(
+            self._git_head.push(
                 target="origin", ref=self._context.ref_name, force_with_lease=True
             )
+            latest_hash = self._git_head.commit_hash_normal()
         data_main_before = self._data_main
         self._data_main = new_data
         self._tag_version(ver=version, msg=f"Release Version {version}", base=False)
