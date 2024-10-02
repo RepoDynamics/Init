@@ -324,6 +324,7 @@ class OutputWriter:
         self,
         ccm_branch: DataManager,
         ref: str | None = None,
+        ref_name: str | None = None,
         source: Literal["github", "pypi", "testpypi"] = "github",
         version: str | None = None,
         retries: int = 40,
@@ -351,6 +352,15 @@ class OutputWriter:
             "codecov-yml-path": ccm_branch["tool.codecov.config.file.path"],
         }
         out = []
+        if source == "github":
+            artifact_name_part_source = "GitHub"
+            artifact_name_part_ref = ref_name or self._context.ref_name
+        elif source == "pypi":
+            artifact_name_part_source = "PyPI"
+            artifact_name_part_ref = version
+        else:
+            artifact_name_part_source = "TestPyPI"
+            artifact_name_part_ref = version
         for os_key in ("linux", "macos", "windows"):
             os = ccm_branch["pkg.os"].get(os_key)
             if not os:
@@ -362,7 +372,7 @@ class OutputWriter:
                         "runner": os["runner"],
                         "os-name": os["name"],
                         "python-version": python_version,
-                        "report-artifact-name": f"{report_artifact_name} ({os['name']}, Py {python_version})",
+                        "report-artifact-name": f"{report_artifact_name} ({artifact_name_part_source} {artifact_name_part_ref} {os['name']} py{python_version})",
                     }
                 )
         return out
