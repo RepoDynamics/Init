@@ -6,7 +6,7 @@ from loggerman import logger
 import controlman
 from proman.datatype import IssueStatus
 
-from proman.datatype import TemplateType
+from proman.datatype import TemplateType, LabelType, Label
 from proman.main import EventHandler
 
 
@@ -17,22 +17,22 @@ class IssuesEventHandler(EventHandler):
         self._payload: gh_context.payload.IssuesPayload = self._context.event
         self._issue = self._payload.issue
 
-        self._label_groups: dict[controlman.datatype.LabelType, list[controlman.datatype.Label]] = {}
+        self._label_groups: dict[LabelType, list[Label]] = {}
         return
 
-    def _run_event(self):
+    @logger.sectioner("Issues Handler Execution")
+    def run(self):
         action = self._payload.action
-        logger.info("Action", action.value)
         if action == gh_context.enum.ActionType.OPENED:
             return self._run_opened()
         if action == gh_context.enum.ActionType.LABELED:
             label = self._data_main.resolve_label(self._payload.label.name)
-            if label.category is not controlman.datatype.LabelType.STATUS:
+            if label.category is not LabelType.STATUS:
                 return
             self._label_groups = self._data_main.resolve_labels(self._issue.label_names)
             self._update_issue_status_labels(
                 issue_nr=self._issue.number,
-                labels=self._label_groups[controlman.datatype.LabelType.STATUS],
+                labels=self._label_groups[LabelType.STATUS],
                 current_label=label,
             )
             return self._run_labeled_status(label.type)

@@ -16,17 +16,6 @@ from proman.output_writer import OutputWriter as _OutputWriter
 
 def run():
     _logger.section("Execution")
-    github_context = _github_contexts.github.create(
-        context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
-    )
-    reporter = _Reporter(github_context=github_context)
-    output_writer = _OutputWriter(github_context=github_context)
-
-    path_repo_base = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_BASE", typ=str)
-    path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
-
-    admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
-
     event_to_handler = {
         _EventType.ISSUES: _handler.IssuesEventHandler,
         _EventType.ISSUE_COMMENT: _handler.IssueCommentEventHandler,
@@ -36,7 +25,14 @@ def run():
         _EventType.SCHEDULE: _handler.ScheduleEventHandler,
         _EventType.WORKFLOW_DISPATCH: _handler.WorkflowDispatchEventHandler,
     }
-
+    path_repo_base = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_BASE", typ=str)
+    path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
+    admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
+    github_context = _github_contexts.github.create(
+        context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
+    )
+    reporter = _Reporter(github_context=github_context)
+    output_writer = _OutputWriter(github_context=github_context, repo_path=path_repo_head)
     handler_class = event_to_handler.get(github_context.event_name)
     current_log_section_level = _logger.current_section_level
     if handler_class:

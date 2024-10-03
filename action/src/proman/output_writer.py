@@ -1,18 +1,30 @@
-from typing import Literal
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+from pathlib import Path
 
 from loggerman import logger
 from github_contexts import GitHubContext
 import pyserials as ps
 import mdit
+import versioningit
 
 from proman.data_manager import DataManager
+
+if TYPE_CHECKING:
+    from typing import Literal
 
 
 class OutputWriter:
 
-    def __init__(self, github_context: GitHubContext):
+    def __init__(
+        self,
+        github_context: GitHubContext,
+        repo_path: str | Path,
+    ):
         self._context = github_context
         self._repository = self._context.target_repo_fullname
+        self._repo_path = Path(repo_path)
 
         self.ref = self._context.ref_name
         self.ref_before = self._context.hash_before
@@ -31,6 +43,7 @@ class OutputWriter:
     def set(
         self,
         data_branch: DataManager,
+        repo_path: str | Path | None = None,
         ref: str = "",
         ref_before: str = "",
         version: str = "",
@@ -52,7 +65,15 @@ class OutputWriter:
         package_publish_pypi: bool = False,
         package_release: bool = False,
     ):
-        package_artifact_name = f"Distribution Package (v{version})" if version else "Distribution Package"
+        if not version and (
+            package_build or package_publish_testpypi or package_publish_pypi or package_release
+        ) and "pkg" in data_branch:
+            repo_path = Path(repo_path) if repo_path else self._repo_path
+            version = versioningit.get_version(
+                project_dir=repo_path / data_branch["pkg.path.root"],
+                config=data_branch["pkg.build.tool.versioningit"],
+            )
+        package_artifact_name = f"Package - v{version}"
         if website_build or website_deploy:
             self.set_website(
                 data_branch=data_branch,
@@ -333,7 +354,7 @@ class OutputWriter:
         pyargs: list[str] | None = None,
         args: list[str] | None = None,
         overrides: dict[str, str] | None = None,
-        report_artifact_name: str = "Test-Suite Report",
+        report_artifact_name: str = "Test Report",
     ) -> list[dict]:
         common = {
             "repository": self._repository,
@@ -373,7 +394,7 @@ class OutputWriter:
                         "runner": os["runner"],
                         "os-name": os["name"],
                         "python-version": python_version,
-                        "report-artifact-name": f"{report_artifact_name} ({artifact_name_part_source} {artifact_name_part_ref} {os['name']} py{python_version})",
+                        "report-artifact-name": f"{report_artifact_name} - {artifact_name_part_source} - {artifact_name_part_ref} - {os['name']} - py{python_version}",
                     }
                 )
         return out
