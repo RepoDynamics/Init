@@ -298,7 +298,7 @@ def _process_shell_output(output: str) -> tuple[dict[str, dict[str, str | bool]]
         """,
         re.VERBOSE | re.MULTILINE,
     )
-    matches = list(pattern.finditer(output))
+    matches = list(pattern.finditer(output + "\n"))  # Add a newline for when the last entry ends with the "hook id" line.
     results = {}
     git_diff = ""
     for idx, match in enumerate(matches):
