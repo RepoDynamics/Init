@@ -130,6 +130,12 @@ class PreCommitHooks:
             output = self._create_summary(output_fix=output_fix)
             return output
         # There were fixes
+        if self._git.has_changes(path=".github/workflows"):
+            logger.warning(
+                "Modified Workflow Files",
+                "Hooks have modified the GitHub workflows. Changes will be reverted.",
+            )
+            self._git.restore(path=".github/workflows")
         self._commit_hash = self._git.commit(
             message=self._commit_message,
             stage="all",
