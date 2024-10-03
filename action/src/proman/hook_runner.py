@@ -274,15 +274,21 @@ def _process_shell_output(output: str) -> tuple[dict[str, dict[str, str | bool]]
         - [Pre-commit run source code](https://github.com/pre-commit/pre-commit/blob/de8590064e181c0ad45d318a0c80db605bf62a60/pre_commit/commands/run.py#L303-L319)
         """
         info_text = (
-            '\npre-commit hook(s) made changes.\n'
+            'pre-commit hook(s) made changes.\n'
             'If you are seeing this message in CI, '
             'reproduce locally with: `pre-commit run --all-files`.\n'
             'To run `pre-commit` as part of git workflow, use '
             '`pre-commit install`.'
         )
-        details.replace(info_text, "")
-        parts = details.split("\nAll changes made by hooks:\n")
-        return parts[0].strip(), parts[1].strip() if len(parts) > 1 else ""
+        details_cleaned = details.replace(info_text, "").strip()
+        lines = details_cleaned.splitlines()
+        diff_line_indices = [idx for idx, line in enumerate(lines) if line.strip() == "All changes made by hooks:"]
+        if not diff_line_indices:
+            return details_cleaned, ""
+        last_idx = diff_line_indices[-1]
+        hook_details = "\n".join(lines[:last_idx]).strip()
+        git_diff = "\n".join(lines[last_idx + 1 :]).strip()
+        return hook_details, git_diff
 
     pattern = re.compile(
         r"""
