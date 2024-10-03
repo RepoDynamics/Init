@@ -392,7 +392,7 @@ class EventHandler:
                     )
                     self.switch_back_from_autoupdate_branch(git=git)
                     commit_hash = None
-                    link = f'[\#{pull_data["number"]}]({pull_data["url"]})'
+                    link = f'[#{pull_data["number"]}]({pull_data["url"]})'
                     description += f"branch {htmp.element.code(pr_branch_name)} in PR {link}."
                 else:
                     link = f"[`{commit_hash[:7]}`]({self._gh_link.commit(commit_hash)})"
