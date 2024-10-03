@@ -246,7 +246,8 @@ class OutputWriter:
                 "artifact-name": artifact_name,
                 "pure-python": data_branch["pkg.python.pure"],
                 "path-pkg": data_branch["pkg.path.root"],
-                "path-readme": data_branch["pkg.readme.path"],
+                "path-readme": data_branch["pkg.readme.path"] or "",
+                "path-license": data_branch["license.path"] or "",
                 "cibw-platforms": cibw_platforms(),
                 "cibw-pythons": [
                     f"cp{ver.replace('.', '')}" for ver in data_branch["pkg.python.version.minors"]
