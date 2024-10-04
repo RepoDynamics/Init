@@ -64,7 +64,7 @@ class IssuesEventHandler(EventHandler):
                 entry=f"The issue entered the <code>{status.value}</code> phase (actor: @{self._payload.sender.login})."
             )
             return
-        if status is controlman.datatype.IssueStatus.IMPLEMENTATION:
+        if status is IssueStatus.IMPLEMENTATION:
             return self._run_labeled_status_implementation()
         return
 
@@ -76,17 +76,15 @@ class IssuesEventHandler(EventHandler):
         base_branches_and_labels: list[tuple[str, list[str]]] = []
         common_labels = []
         for label_group, group_labels in self._label_groups.items():
-            if label_group not in [
-                controlman.datatype.LabelType.BRANCH, controlman.datatype.LabelType.VERSION
-            ]:
+            if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
                 common_labels.extend([label.name for label in group_labels])
-        if self._label_groups.get(controlman.datatype.LabelType.VERSION):
-            for version_label in self._label_groups[controlman.datatype.LabelType.VERSION]:
+        if self._label_groups.get(LabelType.VERSION):
+            for version_label in self._label_groups[LabelType.VERSION]:
                 branch_label = self._data_main.create_label_branch(source=version_label)
                 labels = common_labels + [version_label.name, branch_label.name]
                 base_branches_and_labels.append((branch_label.suffix, labels))
         else:
-            for branch_label in self._label_groups[controlman.datatype.LabelType.BRANCH]:
+            for branch_label in self._label_groups[LabelType.BRANCH]:
                 base_branches_and_labels.append((branch_label.suffix, common_labels + [branch_label.name]))
         implementation_branches_info = []
         for base_branch_name, labels in base_branches_and_labels:
@@ -104,7 +102,7 @@ class IssuesEventHandler(EventHandler):
             self._git_head.checkout(head_branch_name)
             self._git_head.commit(
                 message=(
-                    f"init: Create implementation branch '{head_branch_name}' "
+                    f"init: Create development branch '{head_branch_name}' "
                     f"from base branch '{base_branch_name}' for issue #{self._issue.number}"
                 ),
                 allow_empty=True,

@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 from enum import Enum
 
 import github_contexts
@@ -10,9 +13,11 @@ import controlman
 # )
 # from repodynamics.control.manager import ControlCenterManager
 
-from proman.datatype import TemplateType
 from proman.main import EventHandler
 from proman.changelog_manager import ChangelogManager
+
+if TYPE_CHECKING:
+    from github_contexts.github.payload import WorkflowDispatchPayload
 
 
 class ConfigLintAction(Enum):
@@ -46,7 +51,11 @@ class WorkflowDispatchEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: github_contexts.github.payloads.WorkflowDispatchPayload = self._context.event
+        self._payload: WorkflowDispatchPayload = self._context.event
+        logger.info(
+            "User Inputs",
+            str(self._payload.inputs),
+        )
         self._inputs = {
             WorkflowDispatchInput(k): _WORKFLOW_DISPATCH_INPUT_TYPE[WorkflowDispatchInput(k)](v)
             for k, v in self._payload.inputs.items()
@@ -62,7 +71,6 @@ class WorkflowDispatchEventHandler(EventHandler):
         return self._action_default()
 
     def _action_default(self):
-
         return
 
     def _release_first_major_version(self):

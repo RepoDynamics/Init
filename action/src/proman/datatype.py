@@ -105,10 +105,9 @@ class PrimaryActionCommitType(_Enum):
 
 
 class SecondaryActionCommitType(_Enum):
+    SYNC = "sync"
+    MAINTAIN = "maintain"
     AUTO_UPDATE = "auto-update"
-    META_SYNC = "meta_sync"
-    REVERT = "revert"
-    HOOK_FIX = "hook_fix"
 
 
 class GroupedCommit:

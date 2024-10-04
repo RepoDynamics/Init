@@ -571,7 +571,7 @@ class EventHandler:
         commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
         logger.info("Read commits from git history", json.dumps(commits, indent=4))
         parser = conventional_commits.parser.create(
-            types=self._data_main.get_all_conventional_commit_types(secondary_custom_only=False),
+            types=self._data_main.get_all_conventional_commit_types(secondary_only=False),
         )
         parsed_commits = []
         for commit in commits:

@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from github_contexts import github as _gh_context
 
 from loggerman import logger
@@ -8,20 +12,19 @@ from proman.datatype import (
 from proman.datatype import TemplateType
 from proman.main import EventHandler
 
+if TYPE_CHECKING:
+    from github_contexts.github.payload import PullRequestPayload
+    from github_contexts.github.payload.object import PullRequest
+
 
 class PullRequestTargetEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: _gh_context.payload.PullRequestPayload = self._context.event
-        self._pull = self._payload.pull_request
+        self._payload: PullRequestPayload = self._context.event
+        self._pull: PullRequest = self._payload.pull_request
         self._branch_base = self.resolve_branch(self._context.base_ref)
-        logger.info(
-            "Resolve base branch",
-            self._branch_base.type.value,
-            code_title="Branch details",
-            code=self._branch_base,
-        )
+        logger.info("Base Branch Resolution", str(self._branch_base))
         self._branch_head = self.resolve_branch(self._context.head_ref)
         logger.info(
             "Resolve head branch",
@@ -31,7 +34,7 @@ class PullRequestTargetEventHandler(EventHandler):
         )
         return
 
-    def _run_event(self):
+    def run(self):
         if self._payload.internal:
             return
         action = self._payload.action
@@ -47,5 +50,4 @@ class PullRequestTargetEventHandler(EventHandler):
         if self._branch_head.name != self._branch_base.name:
             # Update base branch to corresponding dev branch and inform user
             pass
-
         return

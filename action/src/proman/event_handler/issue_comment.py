@@ -1,6 +1,6 @@
 """Event handler for comments on issues and pull requests."""
-
-from typing import Callable
+from __future__ import annotations
+from typing import TYPE_CHECKING
 from functools import partial
 
 import github_contexts
@@ -10,6 +10,10 @@ import pysyntax
 
 from proman.datatype import TemplateType, RepoDynamicsBotCommand
 from proman.main import EventHandler
+
+if TYPE_CHECKING:
+    from typing import Callable
+    from github_contexts.github.payload import IssueCommentPayload
 
 
 class IssueCommentEventHandler(EventHandler):
@@ -21,10 +25,9 @@ class IssueCommentEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: github_contexts.github.payloads.IssueCommentPayload = self._context.event
+        self._payload: IssueCommentPayload = self._context.event
         self._comment = self._payload.comment
         self._issue = self._payload.issue
-
         self._command_runner = {
             "pull": {
                 RepoDynamicsBotCommand.CREATE_DEV_BRANCH: self._create_dev_branch,
@@ -33,12 +36,12 @@ class IssueCommentEventHandler(EventHandler):
         }
         return
 
-    def _run_event(self):
+    @logger.sectioner("Issue-Comment Handler Execution")
+    def run(self):
         action = self._payload.action
-        logger.info("Action", action.value)
         is_pull = self._payload.is_on_pull
         logger.info("Comment source", "pull request" if is_pull else "issue")
-        action_type = github_contexts.github.enums.ActionType
+        action_type = github_contexts.github.enum.ActionType
         if action in (action_type.CREATED, action_type.EDITED):
             command_runner = self._process_comment()
             if command_runner:
@@ -114,7 +117,7 @@ class IssueCommentEventHandler(EventHandler):
         if not body.startswith("@RepoDynamicsBot"):
             logger.info("Comment is not a command as it does not start with '@RepoDynamicsBot'.")
             return
-        author_association = github_contexts.github.enums.AuthorAssociation
+        author_association = github_contexts.github.enum.AuthorAssociation
         if self._comment.author_association not in (
             author_association.OWNER, author_association.MEMBER, author_association.CONTRIBUTOR
         ):

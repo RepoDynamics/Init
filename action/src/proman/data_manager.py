@@ -108,26 +108,25 @@ class DataManager(_ps.NestedDict):
     def get_branch_from_version(self, version: str) -> str:
         return self["project.version"][version]["branch"]
 
-    def get_all_conventional_commit_types(self, secondary_custom_only: bool = False) -> list[str]:
+    def get_all_conventional_commit_types(self, secondary_only: bool = False) -> list[str]:
         if not self._commit_data:
             self._commit_data = self._initialize_commit_data()
-        if not secondary_custom_only:
-            return list(self._commit_data.keys())
-        return [
-            conv_type for conv_type, commit_data in self._commit_data.items()
-            if commit_data.group is _CommitGroup.SECONDARY_CUSTOM
-        ]
+        if secondary_only:
+            return [
+                conv_type for conv_type, commit_data in self._commit_data.items()
+                if commit_data.group is _CommitGroup.SECONDARY_CUSTOM
+            ]
+        return list(self._commit_data.keys())
 
     def get_commit_type_from_conventional_type(
         self, conv_type: str
     ) -> _PrimaryActionCommit | _PrimaryCustomCommit | _SecondaryActionCommit | _SecondaryCustomCommit:
-        if self._commit_data:
-            return self._commit_data[conv_type]
-        self._commit_data = self._initialize_commit_data()
+        if not self._commit_data:
+            self._commit_data = self._initialize_commit_data()
         return self._commit_data[conv_type]
 
     def create_label_branch(self, source: _Label | str) -> _Label:
-        prefix = self._data["label"]["auto_group"]["branch"]["prefix"]
+        prefix = self._data["label.branch.prefix"]
         if isinstance(source, str):
             branch_name = source
         elif isinstance(source, _Label):
@@ -144,26 +143,27 @@ class DataManager(_ps.NestedDict):
 
     def _initialize_commit_data(self):
         commit_type = {}
-        for group_id, group_data in self._data["commit"]["primary_action"].items():
-            commit_type[group_data["type"]] = _PrimaryActionCommit(
-                action=_PrimaryActionCommitType(group_id),
-                conv_type=group_data["type"],
-            )
-        for group_id, group_data in self._data["commit"]["primary_custom"].items():
-            commit_type[group_data["type"]] = _PrimaryCustomCommit(
-                group_id=group_id,
-                conv_type=group_data["type"],
-            )
-        for group_id, group_data in self._data["commit"]["secondary_action"].items():
-            commit_type[group_data["type"]] = _SecondaryActionCommit(
-                action=_SecondaryActionCommitType(group_id),
-                conv_type=group_data["type"],
-            )
-        for conv_type, group_data in self._data["commit"]["secondary_custom"].items():
+        for group_id, group_data in self._data["commit.primary"].items():
+            if group_id in self.primary_action_commit_type_ids:
+                commit_type[group_data["type"]] = _PrimaryActionCommit(
+                    action=_PrimaryActionCommitType(group_id),
+                    conv_type=group_data["type"],
+                )
+            else:
+                commit_type[group_data["type"]] = _PrimaryCustomCommit(
+                    group_id=group_id,
+                    conv_type=group_data["type"],
+                )
+        for conv_type, group_data in self._data["commit.secondary"].items():
             commit_type[conv_type] = _SecondaryCustomCommit(
                 conv_type=conv_type,
                 changelog_id=group_data["changelog_id"],
                 changelog_section_id=group_data["changelog_section_id"],
+            )
+        for group_id, group_data in self._data["commit.auto"].items():
+            commit_type[group_data["type"]] = _SecondaryActionCommit(
+                action=_SecondaryActionCommitType(group_id),
+                conv_type=group_data["type"],
             )
         return commit_type
 
