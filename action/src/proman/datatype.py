@@ -78,20 +78,6 @@ class BranchType(_Enum):
 
 
 
-class EventType(_Enum):
-    PUSH_MAIN = "push_main"
-    PUSH_RELEASE = "push_release"
-    PUSH_DEV = "push_dev"
-    PUSH_CI_PULL = "push_ci_pull"
-    PUSH_OTHER = "push_other"
-    PULL_MAIN = "pull_main"
-    PULL_RELEASE = "pull_release"
-    PULL_DEV = "pull_dev"
-    PULL_OTHER = "pull_other"
-    SCHEDULE = "schedule"
-    DISPATCH = "dispatch"
-
-
 
 
 
@@ -111,12 +97,11 @@ class CommitGroup(_Enum):
 
 
 class PrimaryActionCommitType(_Enum):
-    RELEASE_MAJOR = "release_major"
-    RELEASE_MINOR = "release_minor"
-    RELEASE_PATCH = "release_patch"
-    RELEASE_POST = "release_post"
-    WEBSITE = "website"
-    META = "meta"
+    RELEASE_MAJOR = "major"
+    RELEASE_MINOR = "minor"
+    RELEASE_PATCH = "patch"
+    RELEASE_POST = "post"
+    WEBSITE = "web"
 
 
 class SecondaryActionCommitType(_Enum):
@@ -281,13 +266,13 @@ class IssueStatus(_Enum):
 
 
 class LabelType(_Enum):
-    VERSION = "version"
-    BRANCH = "branch"
-    TYPE = "primary_type"
+    TYPE = "type"
     SUBTYPE = "subtype"
     STATUS = "status"
+    VERSION = "version"
+    BRANCH = "branch"
     CUSTOM_GROUP = "custom_group"
-    SINGLE = "single"
+    CUSTOM_SINGLE = "single"
     UNKNOWN = "unknown"
 
 
@@ -295,7 +280,7 @@ class Label(_NamedTuple):
     category: LabelType
     name: str
     prefix: str = ""
-    type: PrimaryActionCommitType | IssueStatus | str = None
+    type: PrimaryActionCommitType | IssueStatus | str | None = None
 
     @property
     def suffix(self) -> str:

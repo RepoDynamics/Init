@@ -3,10 +3,10 @@ import datetime
 
 from github_contexts import github as gh_context
 from loggerman import logger
-import controlman
-from proman.datatype import IssueStatus
+from controlman.file_gen.forms import pre_process_existence
+import mdit
 
-from proman.datatype import TemplateType, LabelType, Label
+from proman.datatype import LabelType, Label, IssueStatus
 from proman.main import EventHandler
 
 
@@ -47,9 +47,7 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_labeled_status(self, status: IssueStatus):
-        self._reporter.event(
-            f"Issue #{self._issue.number} status changed to <code>{status.value}</code>"
-        )
+        self._reporter.event(f"Issue #{self._issue.number} status changed to `{status.value}`")
         if status in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
             description = {
                 IssueStatus.REJECTED: "rejected",
@@ -155,17 +153,41 @@ class IssuesEventHandler(EventHandler):
         comment = comments[0]
         return comment
 
-    @logger.sectioner("Process Issue")
+    @logger.sectioner("Issue Processing")
     def process_issue(self) -> str:
-        logger.info(code_title="Issue labels", code=self._issue.label_names)
+
+        def assign_creator():
+            assignment = issue_form["post_process"].get("assign_creator")
+            if not assignment:
+                return
+            if_checkbox = assignment.get("if_checkbox")
+            if if_checkbox:
+                checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
+                if checkbox.startswith("- [X]"):
+                    checked = True
+                elif checkbox.startswith("- [ ]"):
+                    checked = False
+                else:
+                    logger.warning(
+                        "Issue Assignment",
+                        "Could not match checkbox in issue body to pattern defined in metadata.",
+                    )
+                    return
+                if (if_checkbox["is_checked"] and checked) or (
+                    not if_checkbox["is_checked"] and not checked):
+                    self._gh_api.issue_add_assignees(
+                        number=self._issue.number, assignees=self._issue.user.login
+                    )
+            return
+
+        logger.info("Labels", str(self._issue.label_names))
         issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
-        logger.debug(code_title="Issue form", code=issue_form)
         issue_entries = self._extract_entries_from_issue_body(issue_form["body"])
         labels = []
-        branch_label_prefix = self._data_main["label"]["auto_group"]["branch"]["prefix"]
+        branch_label_prefix = self._data_main["label.branch.prefix"]
         if "version" in issue_entries:
             versions = [version.strip() for version in issue_entries["version"].split(",")]
-            version_label_prefix = self._data_main["label"]["auto_group"]["version"]["prefix"]
+            version_label_prefix = self._data_main["label.version.prefix"]
             for version in versions:
                 labels.append(f"{version_label_prefix}{version}")
                 branch = self._data_main.get_branch_from_version(version)
@@ -180,25 +202,9 @@ class IssuesEventHandler(EventHandler):
             )
         self._gh_api.issue_labels_add(self._issue.number, labels)
         if "post_process" not in issue_form:
-            logger.info("Skip", "No post-process action defined in issue form.")
+            logger.info("Issue Post Processing", "No post-process action defined in issue form.")
             return self._issue.body
-        assign_creator = issue_form["post_process"].get("assign_creator")
-        if assign_creator:
-            if_checkbox = assign_creator.get("if_checkbox")
-            if if_checkbox:
-                checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
-                if checkbox.startswith("- [X]"):
-                    checked = True
-                elif not checkbox.startswith("- [ ]"):
-                    logger.critical(
-                        "Could not match checkbox in issue body to pattern defined in metadata.",
-                    )
-                else:
-                    checked = False
-                if (if_checkbox["is_checked"] and checked) or (not if_checkbox["is_checked"] and not checked):
-                    self._gh_api.issue_add_assignees(
-                        number=self._issue.number, assignees=self._issue.user.login
-                    )
+        assign_creator()
         post_body = issue_form["post_process"].get("body")
         if post_body:
             new_body = post_body.format(**issue_entries)
@@ -225,7 +231,7 @@ class IssuesEventHandler(EventHandler):
             if elem["type"] == "markdown":
                 continue
             pre_process = elem.get("pre_process")
-            if not pre_process or controlman.pre_process_existence(pre_process):
+            if not pre_process or pre_process_existence(pre_process):
                 optional = False
             else:
                 optional = True
@@ -233,16 +239,19 @@ class IssuesEventHandler(EventHandler):
         pattern = create_pattern(parts)
         compiled_pattern = re.compile(pattern, re.S)
         # Search for the pattern in the markdown
-        logger.debug(code_title="Issue body", code=self._issue.body)
+        logger.debug("Issue body", mdit.element.code_block(self._issue.body))
         match = re.search(compiled_pattern, self._issue.body)
         if not match:
-            logger.critical("Could not match the issue body to pattern defined in control center settings.")
+            logger.critical(
+                "Issue Body Pattern Matching",
+                "Could not match the issue body to pattern defined in control center settings."
+            )
         # Create a dictionary with titles as keys and matched content as values
         sections = {
             section_id: content.strip() if content else None
             for section_id, content in match.groupdict().items()
         }
-        logger.debug(code_title="Matched sections", code=sections)
+        logger.debug("Matched sections", str(sections))
         return sections
 
     def _create_dev_protocol(self, issue_body: str) -> str:
@@ -260,7 +269,7 @@ class IssuesEventHandler(EventHandler):
             "references": f"{self._MARKER_REFERENCES_START}\n\n{self._MARKER_REFERENCES_END}",
             "timeline": f"{self._MARKER_TIMELINE_START}\n{timeline_entry}\n{self._MARKER_TIMELINE_END}",
         }
-        dev_protocol_template = self._data_main["issue"]["dev_protocol"]["template"]
+        dev_protocol_template = self._data_main["document.template"]
         dev_protocol_title = dev_protocol_template["title"]
         dev_protocol_body = dev_protocol_template["body"].format(**args).strip()
         return f"# {dev_protocol_title}\n\n{dev_protocol_body}\n"

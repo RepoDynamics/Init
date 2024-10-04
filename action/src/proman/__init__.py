@@ -8,7 +8,6 @@ from loggerman import logger as _logger
 import mdit
 from rich.text import Text
 
-from proman.datatype import TemplateType as _TemplateType
 from proman import exception as _exception, event_handler as _handler
 from proman.reporter import Reporter as _Reporter, make_sphinx_target_config
 from proman.output_writer import OutputWriter as _OutputWriter

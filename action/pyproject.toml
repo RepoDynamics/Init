@@ -17,14 +17,14 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev51"
+version = "0.0.0.dev52"
 name = "ProMan"
 dependencies = [
     "pre-commit == 3.8.0",
     "rich >= 13.5",
     "versioningit >= 3.1.2, < 4",
     "ActionMan == 0.0.0.dev24",
-    "ControlMan == 0.0.0.dev315",
+    "ControlMan == 0.0.0.dev316",
     "ConventionalCommits == 0.0.0.dev19",
     "GitHub-Contexts == 0.0.0.dev8",
     "LoggerMan == 0.0.0.dev49",

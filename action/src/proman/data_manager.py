@@ -1,5 +1,6 @@
 from versionman.pep440_semver import PEP440SemVer as _PEP440SemVer
 import pyserials as _ps
+from loggerman import logger
 
 from proman.datatype import (
     BranchType as _BranchType,
@@ -19,38 +20,14 @@ from proman.datatype import (
 
 
 class DataManager(_ps.NestedDict):
+
     def __init__(self, data: dict | _ps.NestedDict):
         if isinstance(data, _ps.NestedDict):
             data = data()
         super().__init__(data)
         self._commit_data: dict = {}
         self._issue_data: dict = {}
-        self._version_to_branch_map: dict[str, str] = {}
         return
-
-    def get_label_grouped(self, group_id: str, label_id: str) -> dict[str, str]:
-        """
-        Get information for a label in a label group.
-
-        Returns
-        -------
-        A dictionary with the following keys:
-
-        name : str
-            Name of the label.
-        color: str
-            Color of the label in hex format.
-        description: str
-            Description of the label.
-        """
-        group = self._data["label"]["group"][group_id]
-        label = group["labels"][label_id]
-        out = {
-            "name": f"{group['prefix']}{label['suffix']}",
-            "color": group["color"],
-            "description": label["description"],
-        }
-        return out
 
     def resolve_labels(self, names: list[str]) -> dict[_LabelType, list[_Label]]:
         """
@@ -76,158 +53,39 @@ class DataManager(_ps.NestedDict):
         name : str
             Name of the label.
         """
-        def get_label_id():
-            for label_id, label_data in group["labels"].items():
-                if label_data["suffix"] == label_suffix:
-                    break
-            else:
-                raise ValueError(f"Unknown label suffix '{label_suffix}' for group '{group_id}'.")
-            return label_id
-
-        for autogroup_id, autogroup in self._data["label"]["auto_group"].items():
-            prefix = autogroup["prefix"]
-            if name.startswith(prefix):
-                return _Label(
-                    category=_LabelType(autogroup_id),
-                    name=name,
-                    prefix=prefix,
-                )
-        for group_id, group in self._data["label"]["group"].items():
-            prefix = group["prefix"]
-            if name.startswith(prefix):
-                label_suffix = name.removeprefix(prefix)
-                if group_id == "primary_type":
-                    category = _LabelType.TYPE
-                    label_id = get_label_id()
-                    try:
-                        suffix_type = _PrimaryActionCommitType(label_id)
-                    except ValueError:
-                        suffix_type = label_id
-                elif group_id == "subtype":
-                    category = _LabelType.SUBTYPE
-                    suffix_type = get_label_id()
-                elif group_id == "status":
-                    category = _LabelType.STATUS
-                    suffix_type = _IssueStatus(get_label_id())
-                else:
-                    category = _LabelType.CUSTOM_GROUP
-                    suffix_type = get_label_id()
-                return _Label(
-                    category=category,
-                    name=name,
-                    prefix=prefix,
-                    type=suffix_type,
-                )
-        for label_id, label in self._data["label"]["single"].items():
-            if name == label["name"]:
-                return _Label(
-                    category=_LabelType.SINGLE,
-                    name=name,
-                    type=label_id,
-                )
-        return _Label(category=_LabelType.UNKNOWN, name=name)
-
-    def get_primary_action_label_name(self, action_type: _PrimaryActionCommitType) -> str:
-        """
-        Get the label name for a primary action commit type.
-
-        Parameters
-        ----------
-        action_type : PrimaryActionCommitType
-            Primary action commit type.
-
-        Returns
-        -------
-        The label name.
-        """
-        prefix = self._data["label"]["group"]["primary_type"]["prefix"]
-        suffix = self._data["label"]["group"]["primary_type"]["labels"][action_type.value]["suffix"]
-        return f"{prefix}{suffix}"
-
-    def get_issue_form_identifying_labels(self, issue_form_id: str) -> tuple[str, str | None]:
-        """
-        Get the identifying labels for an issue form.
-
-        Each issue form is uniquely identified by a primary type label, and if necessary, a subtype label.
-
-        Returns
-        -------
-        A tuple of (primary_type, subtype) label names for the issue.
-        Note that `subtype` may be `None`.
-        """
-        for form in self._data["issue"]["forms"]:
-            if form["id"] == issue_form_id:
-                issue_form = form
+        for label_data in self["label.all"]:
+            if name == label_data["name"]:
+                label = label_data
                 break
         else:
-            raise ValueError(f"Unknown issue form ID: {issue_form_id}")
-        primary_type = issue_form["primary_type"]
-        primary_type_label_name = self.get_label_grouped("primary_type", primary_type)["name"]
-        subtype = issue_form.get("subtype")
-        if subtype:
-            subtype_label_name = self.get_label_grouped("subtype", subtype)["name"]
+            logger.warning(
+                "Label Resolution",
+                f"Could not find label '{name}' in label data.",
+            )
+            return _Label(category=_LabelType.UNKNOWN, name=name)
+
+        label_type = label["type"]
+        label_group_name = label["group_name"]
+        label_id = label["id"]
+        if label_type == "defined" and label_group_name == "status":
+            suffix_type = _IssueStatus(label_id)
+        elif label_type == "defined" and label_group_name == "type" and label_id in self.primary_action_commit_type_ids:
+            suffix_type = _PrimaryActionCommitType(label_id)
         else:
-            subtype_label_name = None
-        return primary_type_label_name, subtype_label_name
-
-    def get_issue_form_from_labels(self, label_names: list[str]) -> dict:
-        """
-        Get the issue form from a list of label names.
-
-        This is done by finding the primary type and subtype labels in the list of labels,
-        finding their IDs, and then finding the issue form with the corresponding `primary_type`
-        and `subtype`.
-
-        Parameters
-        ----------
-        label_names : list[str]
-            List of label names.
-
-        Returns
-        -------
-        The corresponding form metadata in `issue.forms`.
-        """
-        prefix = {
-            "primary_type": self._data["label"]["group"]["primary_type"]["prefix"],
-            "subtype": self._data["label"]["group"].get("subtype", {}).get("prefix"),
-        }
-        suffix = {}
-        for label_name in label_names:
-            for label_type, prefix in prefix.items():
-                if prefix and label_name.startswith(prefix):
-                    if suffix.get(label_type) is not None:
-                        raise ValueError(f"Label '{label_name}' with type {label_type} is a duplicate.")
-                    suffix[label_type] = label_name.removeprefix(prefix)
-                    break
-        label_ids = {"primary_type": "", "subtype": ""}
-        for label_id, label in self._data["label"]["group"]["primary_type"]["labels"].items():
-            if label["suffix"] == suffix["primary_type"]:
-                label_ids["primary_type"] = label_id
-                break
-        else:
-            raise ValueError(f"Unknown primary type label suffix '{suffix['primary_type']}'.")
-        if suffix["subtype"]:
-            for label_id, label in self._data["label"]["group"]["subtype"]["labels"].items():
-                if label["suffix"] == suffix["subtype"]:
-                    label_ids["subtype"] = label_id
-                    break
-            else:
-                raise ValueError(f"Unknown sub type label suffix '{suffix['subtype']}'.")
-        for form in self._data["issue"]["forms"]:
-            if (
-                form["primary_type"] == label_ids["primary_type"]
-                and form.get("subtype", "") == label_ids["subtype"]
-            ):
-                return form
-        raise ValueError(
-            f"Could not find issue form with primary type '{label_ids['primary_type']}' "
-            f"and sub type '{label_ids['subtype']}'."
+            suffix_type = label_id
+        return _Label(
+            category=_LabelType(label["group_name" if label["type"] in ("defined", "auto") else "type"]),
+            name=name,
+            prefix=label["prefix"],
+            type=suffix_type,
         )
 
     def get_issue_data_from_labels(self, label_names: list[str]) -> _Issue:
+        if not self._issue_data:
+            self._issue_data = self._initialize_issue_data()
         type_prefix = {
-            "primary_type": self._data["label"]["group"]["primary_type"]["prefix"],
-            "subtype": self._data["label"]["group"].get("subtype", {}).get("prefix"),
+            "type": self["label.type.prefix"],
+            "subtype": self["label.subtype.prefix"],
         }
         label = {}
         for label_name in label_names:
@@ -237,16 +95,9 @@ class DataManager(_ps.NestedDict):
                         raise ValueError(f"Label '{label_name}' with type '{label_type}' is a duplicate.")
                     label[label_type] = label_name
                     break
-        if "primary_type" not in label:
-            raise ValueError(f"Could not find primary type label in {label_names}.")
-
-        key = (label["primary_type"], label.get("subtype"))
-
-        if not self._issue_data:
-            self._issue_data = self._initialize_issue_data()
-
-        issue_data = self._issue_data.get(key)
-
+        if "type" not in label:
+            raise ValueError(f"Could not find type label in {label_names}.")
+        issue_data = self._issue_data.get((label["type"], label.get("subtype")))
         if not issue_data:
             raise ValueError(
                 f"Could not find issue type with primary type '{label['primary_type']}' "
@@ -254,42 +105,8 @@ class DataManager(_ps.NestedDict):
             )
         return issue_data
 
-    def _get_issue_labels(self, issue_number: int) -> tuple[dict[str, str | list[str]], list[str]]:
-        label_prefix = {
-            group_id: group_data["prefix"] for group_id, group_data in self._data["label"]["group"].items()
-        }
-        version_label_prefix = self._data["label"]["auto_group"]["version"]["prefix"]
-        labels = (
-            self._github_api.user(self._data["repo"]["owner"])
-            .repo(self._data["repo"]["name"])
-            .issue_labels(number=issue_number)
-        )
-        out_dict = {}
-        out_list = []
-        for label in labels:
-            if label["name"].startswith(version_label_prefix):
-                versions = out_dict.setdefault("version", [])
-                versions.append(label["name"].removeprefix(version_label_prefix))
-                continue
-            for group_id, prefix in label_prefix.items():
-                if label["name"].startswith(prefix):
-                    if group_id in out_dict:
-                        _logger.error(
-                            f"Duplicate label group '{group_id}' found for issue {issue_number}.",
-                            label["name"],
-                        )
-                    else:
-                        out_dict[group_id] = label["name"].removeprefix(prefix)
-                        break
-            else:
-                out_list.append(label["name"])
-        for group_id in ("primary_type", "status"):
-            if group_id not in out_dict:
-                _logger.error(
-                    f"Missing label group '{group_id}' for issue {issue_number}.",
-                    out_dict,
-                )
-        return out_dict, out_list
+    def get_branch_from_version(self, version: str) -> str:
+        return self[f"project.version.{version}.branch"]
 
     def get_all_conventional_commit_types(self, secondary_custom_only: bool = False) -> list[str]:
         if not self._commit_data:
@@ -308,27 +125,6 @@ class DataManager(_ps.NestedDict):
             return self._commit_data[conv_type]
         self._commit_data = self._initialize_commit_data()
         return self._commit_data[conv_type]
-
-    def get_branch_from_version(self, version: str) -> str:
-        if self._version_to_branch_map:
-            return self._version_to_branch_map[version]
-        if not self._data.get("package"):
-            raise ValueError("No package metadata found.")
-        self._version_to_branch_map = {
-            release["version"]: release["branch"]
-            for release in self._data["package"]["releases"]["per_branch"]
-        }
-        return self._version_to_branch_map[version]
-
-    def get_issue_status_from_status_label(self, label_name: str):
-        status_prefix = self._data["label"]["group"]["status"]["prefix"]
-        if not label_name.startswith(status_prefix):
-            raise ValueError(f"Label '{label_name}' is not a status label.")
-        status = label_name.removeprefix(status_prefix)
-        for status_label_id, status_label_info in self._data["label"]["group"]["status"]["labels"].items():
-            if status_label_info["suffix"] == status:
-                return _IssueStatus(status_label_id)
-        raise ValueError(f"Unknown status label suffix '{status}'.")
 
     def create_label_branch(self, source: _Label | str) -> _Label:
         prefix = self._data["label"]["auto_group"]["branch"]["prefix"]
@@ -373,37 +169,205 @@ class DataManager(_ps.NestedDict):
 
     def _initialize_issue_data(self):
         issue_data = {}
-        for issue in self._data["issue"]["forms"]:
-            prim_id = issue["primary_type"]
-
-            prim_label_prefix = self._data["label"]["group"]["primary_type"]["prefix"]
-            prim_label_suffix = self._data["label"]["group"]["primary_type"]["labels"][prim_id]["suffix"]
-            prim_label = f"{prim_label_prefix}{prim_label_suffix}"
-
-            type_labels = [prim_label]
-
-            sub_id = issue.get("subtype")
+        for issue_form in self["issue.forms"]:
+            type_label_id = issue_form["type"]
+            type_label_prefix = self["label.type.prefix"]
+            type_label_suffix = self[f"label.type.label.{type_label_id}.suffix"]
+            type_label = f"{type_label_prefix}{type_label_suffix}"
+            type_labels = [type_label]
+            sub_id = issue_form.get("subtype")
             if sub_id:
-                sub_label_prefix = self._data["label"]["group"]["subtype"]["prefix"]
-                sub_label_suffix = self._data["label"]["group"]["subtype"]["labels"][sub_id]["suffix"]
-                sub_label = f"{sub_label_prefix}{sub_label_suffix}"
-                type_labels.append(sub_label)
+                subtype_label_prefix = self["label.subtype.prefix"]
+                subtype_label_suffix = self[f"label.subtype.label.{sub_id}.suffix"]
+                subtype_label = f"{subtype_label_prefix}{subtype_label_suffix}"
+                type_labels.append(subtype_label)
             else:
-                sub_label = None
+                subtype_label = None
 
-            key = (prim_label, sub_label)
-
-            prim_commit = self._data["commit"]["primary_action"].get(prim_id)
-            if prim_commit:
+            primary_commit = self[f"commit.primary.{type_label_id}"]
+            if type_label_id in self.primary_action_commit_type_ids:
                 commit = _PrimaryActionCommit(
-                    action=_PrimaryActionCommitType(prim_id),
-                    conv_type=prim_commit["type"],
+                    action=_PrimaryActionCommitType(type_label_id),
+                    conv_type=primary_commit["type"],
                 )
             else:
                 commit = _PrimaryCustomCommit(
-                    group_id=prim_id,
-                    conv_type=self._data["commit"]["primary_custom"][prim_id]["type"],
+                    group_id=type_label_id,
+                    conv_type=primary_commit["type"],
                 )
-
-            issue_data[key] = _Issue(group_data=commit, type_labels=type_labels, form=issue)
+            issue_data[(type_label, subtype_label)] = _Issue(
+                group_data=commit, type_labels=type_labels, form=issue_form
+            )
         return issue_data
+
+    @property
+    def primary_action_commit_type_ids(self) -> list[str]:
+        return [enum.value for enum in _PrimaryActionCommitType]
+
+    # def _get_issue_labels(self, issue_number: int) -> tuple[dict[str, str | list[str]], list[str]]:
+    #     label_prefix = {
+    #         group_id: group_data["prefix"] for group_id, group_data in self._data["label"]["group"].items()
+    #     }
+    #     version_label_prefix = self._data["label"]["auto_group"]["version"]["prefix"]
+    #     labels = (
+    #         self._github_api.user(self._data["repo"]["owner"])
+    #         .repo(self._data["repo"]["name"])
+    #         .issue_labels(number=issue_number)
+    #     )
+    #     out_dict = {}
+    #     out_list = []
+    #     for label in labels:
+    #         if label["name"].startswith(version_label_prefix):
+    #             versions = out_dict.setdefault("version", [])
+    #             versions.append(label["name"].removeprefix(version_label_prefix))
+    #             continue
+    #         for group_id, prefix in label_prefix.items():
+    #             if label["name"].startswith(prefix):
+    #                 if group_id in out_dict:
+    #                     _logger.error(
+    #                         f"Duplicate label group '{group_id}' found for issue {issue_number}.",
+    #                         label["name"],
+    #                     )
+    #                 else:
+    #                     out_dict[group_id] = label["name"].removeprefix(prefix)
+    #                     break
+    #         else:
+    #             out_list.append(label["name"])
+    #     for group_id in ("primary_type", "status"):
+    #         if group_id not in out_dict:
+    #             _logger.error(
+    #                 f"Missing label group '{group_id}' for issue {issue_number}.",
+    #                 out_dict,
+    #             )
+    #     return out_dict, out_list
+    #
+    # def get_issue_form_from_labels(self, label_names: list[str]) -> dict:
+    #     """
+    #     Get the issue form from a list of label names.
+    #
+    #     This is done by finding the primary type and subtype labels in the list of labels,
+    #     finding their IDs, and then finding the issue form with the corresponding `primary_type`
+    #     and `subtype`.
+    #
+    #     Parameters
+    #     ----------
+    #     label_names : list[str]
+    #         List of label names.
+    #
+    #     Returns
+    #     -------
+    #     The corresponding form metadata in `issue.forms`.
+    #     """
+    #     prefix = {
+    #         "primary_type": self._data["label"]["group"]["primary_type"]["prefix"],
+    #         "subtype": self._data["label"]["group"].get("subtype", {}).get("prefix"),
+    #     }
+    #     suffix = {}
+    #     for label_name in label_names:
+    #         for label_type, prefix in prefix.items():
+    #             if prefix and label_name.startswith(prefix):
+    #                 if suffix.get(label_type) is not None:
+    #                     raise ValueError(f"Label '{label_name}' with type {label_type} is a duplicate.")
+    #                 suffix[label_type] = label_name.removeprefix(prefix)
+    #                 break
+    #     label_ids = {"primary_type": "", "subtype": ""}
+    #     for label_id, label in self._data["label"]["group"]["primary_type"]["labels"].items():
+    #         if label["suffix"] == suffix["primary_type"]:
+    #             label_ids["primary_type"] = label_id
+    #             break
+    #     else:
+    #         raise ValueError(f"Unknown primary type label suffix '{suffix['primary_type']}'.")
+    #     if suffix["subtype"]:
+    #         for label_id, label in self._data["label"]["group"]["subtype"]["labels"].items():
+    #             if label["suffix"] == suffix["subtype"]:
+    #                 label_ids["subtype"] = label_id
+    #                 break
+    #         else:
+    #             raise ValueError(f"Unknown sub type label suffix '{suffix['subtype']}'.")
+    #     for form in self._data["issue"]["forms"]:
+    #         if (
+    #             form["primary_type"] == label_ids["primary_type"]
+    #             and form.get("subtype", "") == label_ids["subtype"]
+    #         ):
+    #             return form
+    #     raise ValueError(
+    #         f"Could not find issue form with primary type '{label_ids['primary_type']}' "
+    #         f"and sub type '{label_ids['subtype']}'."
+    #     )
+    #
+    # def get_issue_status_from_status_label(self, label_name: str):
+    #     status_prefix = self._data["label"]["group"]["status"]["prefix"]
+    #     if not label_name.startswith(status_prefix):
+    #         raise ValueError(f"Label '{label_name}' is not a status label.")
+    #     status = label_name.removeprefix(status_prefix)
+    #     for status_label_id, status_label_info in self._data["label"]["group"]["status"]["labels"].items():
+    #         if status_label_info["suffix"] == status:
+    #             return _IssueStatus(status_label_id)
+    #     raise ValueError(f"Unknown status label suffix '{status}'.")
+    #
+    # def get_primary_action_label_name(self, action_type: _PrimaryActionCommitType) -> str:
+    #     """
+    #     Get the label name for a primary action commit type.
+    #
+    #     Parameters
+    #     ----------
+    #     action_type : PrimaryActionCommitType
+    #         Primary action commit type.
+    #
+    #     Returns
+    #     -------
+    #     The label name.
+    #     """
+    #     prefix = self._data["label"]["group"]["primary_type"]["prefix"]
+    #     suffix = self._data["label"]["group"]["primary_type"]["labels"][action_type.value]["suffix"]
+    #     return f"{prefix}{suffix}"
+    #
+    # def get_issue_form_identifying_labels(self, issue_form_id: str) -> tuple[str, str | None]:
+    #     """
+    #     Get the identifying labels for an issue form.
+    #
+    #     Each issue form is uniquely identified by a primary type label, and if necessary, a subtype label.
+    #
+    #     Returns
+    #     -------
+    #     A tuple of (primary_type, subtype) label names for the issue.
+    #     Note that `subtype` may be `None`.
+    #     """
+    #     for form in self._data["issue"]["forms"]:
+    #         if form["id"] == issue_form_id:
+    #             issue_form = form
+    #             break
+    #     else:
+    #         raise ValueError(f"Unknown issue form ID: {issue_form_id}")
+    #     primary_type = issue_form["primary_type"]
+    #     primary_type_label_name = self.get_label_grouped("primary_type", primary_type)["name"]
+    #     subtype = issue_form.get("subtype")
+    #     if subtype:
+    #         subtype_label_name = self.get_label_grouped("subtype", subtype)["name"]
+    #     else:
+    #         subtype_label_name = None
+    #     return primary_type_label_name, subtype_label_name
+    #
+    # def get_label_grouped(self, group_id: str, label_id: str) -> dict[str, str]:
+    #     """
+    #     Get information for a label in a label group.
+    #
+    #     Returns
+    #     -------
+    #     A dictionary with the following keys:
+    #
+    #     name : str
+    #         Name of the label.
+    #     color: str
+    #         Color of the label in hex format.
+    #     description: str
+    #         Description of the label.
+    #     """
+    #     group = self._data["label"]["group"][group_id]
+    #     label = group["labels"][label_id]
+    #     out = {
+    #         "name": f"{group['prefix']}{label['suffix']}",
+    #         "color": group["color"],
+    #         "description": label["description"],
+    #     }
+    #     return out
