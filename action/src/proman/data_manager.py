@@ -106,7 +106,7 @@ class DataManager(_ps.NestedDict):
         return issue_data
 
     def get_branch_from_version(self, version: str) -> str:
-        return self[f"project.version.{version}.branch"]
+        return self["project.version"][version]["branch"]
 
     def get_all_conventional_commit_types(self, secondary_custom_only: bool = False) -> list[str]:
         if not self._commit_data:
