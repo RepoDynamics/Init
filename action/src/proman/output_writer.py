@@ -59,7 +59,7 @@ class OutputWriter:
         website_deploy: bool = False,
         package_lint: bool = False,
         package_test: bool = False,
-        package_test_source: Literal["GitHub", "PyPI", "TestPyPI"] = "GitHub",
+        package_test_source: Literal["github", "pypi", "testpypi"] = "github",
         package_build: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
