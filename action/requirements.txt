@@ -2,19 +2,19 @@ pre-commit == 3.8.0
 rich >= 13.5
 versioningit >= 3.1.2, < 4
 ActionMan == 0.0.0.dev24
-ControlMan == 0.0.0.dev320
-ConventionalCommits == 0.0.0.dev22
+ControlMan == 0.0.0.dev321
+ConventionalCommits == 0.0.0.dev23
 GitHub-Contexts == 0.0.0.dev8
-LoggerMan == 0.0.0.dev52
-MDit == 0.0.0.dev23
+LoggerMan == 0.0.0.dev53
+MDit == 0.0.0.dev24
 HTMP == 0.0.0.dev5
-PyLinks == 0.0.0.dev36
+PyLinks == 0.0.0.dev37
 PySyntax == 0.0.0.dev3
 VersionMan == 0.0.0.dev248
-GitTidy == 0.0.0.dev48
+GitTidy == 0.0.0.dev49
 PkgData == 0.0.0.dev5
-PyShellMan == 0.0.0.dev13
-PySerials == 0.0.0.dev26
+PyShellMan == 0.0.0.dev14
+PySerials == 0.0.0.dev27
 FileEx == 0.0.0.dev1
 ANSI-SGR == 0.0.0.dev10
 PyColorIT == 0.0.0.dev8
