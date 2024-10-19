@@ -50,18 +50,18 @@ class IssuesEventHandler(EventHandler):
         self._reporter.event(f"Issue #{self._issue.number} status changed to `{status.value}`")
         if status in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
             description = {
-                IssueStatus.REJECTED: "rejected",
-                IssueStatus.DUPLICATE: "marked as duplicate",
-                IssueStatus.INVALID: "marked as invalid",
+                IssueStatus.REJECTED: "Rejected",
+                IssueStatus.DUPLICATE: "Marked as duplicate",
+                IssueStatus.INVALID: "Marked as invalid",
             }
             self._add_to_issue_timeline(
-                entry=f"The issue was {description[status]} and closed (actor: @{self._payload.sender.login})."
+                entry=f"{description[status]} and closed by {self.make_user_mention(self._payload.sender)})."
             )
             self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
             return
         if status in [IssueStatus.PLANNING, IssueStatus.REQUIREMENT_ANALYSIS, IssueStatus.DESIGN]:
             self._add_to_issue_timeline(
-                entry=f"The issue entered the <code>{status.value}</code> phase (actor: @{self._payload.sender.login})."
+                entry=f"Entered the `{status.value}` phase by {self.make_user_mention(self._payload.sender)})."
             )
             return
         if status is IssueStatus.IMPLEMENTATION:
@@ -127,7 +127,7 @@ class IssuesEventHandler(EventHandler):
         )
         self._add_to_issue_timeline(
             entry=(
-                f"The issue entered the implementation phase (actor: @{self._payload.sender.login}).\n"
+                f"Entered the `implementation` phase by {self.make_user_mention(self._payload.sender)}).\n"
                 f"The implementation is tracked in the following pull requests:\n{timeline_entry_details}"
             )
         )
@@ -255,7 +255,7 @@ class IssuesEventHandler(EventHandler):
     def _create_dev_protocol(self, issue_body: str) -> str:
         now = datetime.datetime.now(tz=datetime.UTC).strftime("%Y.%m.%d %H:%M:%S")
         timeline_entry = (
-            f"- **{now}**: The issue was submitted (actor: @{self._issue.user.login})."
+            f"- **{now}**: Submitted by {self.make_user_mention(self._issue.user)})."
         )
         args = {
             "issue_number": f"{self._MARKER_ISSUE_NR_START}#{self._issue.number}{self._MARKER_ISSUE_NR_END}",
