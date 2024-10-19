@@ -860,3 +860,7 @@ class EventHandler:
         if not user.name:
             return linked_username
         return f"{user.name} ({linked_username})"
+
+    @staticmethod
+    def fill_jinja_template(template: str, env_vars: dict) -> str:
+        return
