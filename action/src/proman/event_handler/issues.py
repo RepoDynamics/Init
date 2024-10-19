@@ -253,6 +253,24 @@ class IssuesEventHandler(EventHandler):
         return sections
 
     def _create_dev_protocol(self, issue_body: str) -> str:
+
+        def make_data():
+            marker = self._data_main["doc.dev_protocol.marker"]
+            marker_start = marker["start"]
+            marker_end = marker["end"]
+            data = {}
+            for data_id, data_value in self._data_main["doc.dev_protocol.data"].items():
+                data[data_id] = f"{marker_start}{data_value}{marker_end}"
+            return data
+
+        env_vars = {
+            "ccc": self._data_main,
+            "issue": self._issue,
+            "payload": self._payload,
+            "context": self._context,
+            "now": datetime.datetime.now(tz=datetime.UTC),
+        }
+
         now = datetime.datetime.now(tz=datetime.UTC).strftime("%Y.%m.%d %H:%M:%S")
         timeline_entry = (
             f"- **{now}**: Submitted by {self.make_user_mention(self._issue.user)})."
