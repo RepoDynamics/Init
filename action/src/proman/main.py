@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from github_contexts import GitHubContext
     from proman.reporter import Reporter
     from proman.output_writer import OutputWriter
+    from github_contexts.github.payload.object.user import User as GitHubUser
 
 
 class EventHandler:
@@ -852,3 +853,10 @@ class EventHandler:
 
         write(entries)
         return "".join(string).rstrip()
+
+    @staticmethod
+    def make_user_mention(user: GitHubUser) -> str:
+        linked_username = f"[{user.login}]({user.html_url})"
+        if not user.name:
+            return linked_username
+        return f"{user.name} ({linked_username})"
