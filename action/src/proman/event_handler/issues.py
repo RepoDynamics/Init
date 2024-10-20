@@ -82,10 +82,16 @@ class IssuesEventHandler(EventHandler):
                 for branch in branches:
                     labels.append(f"{branch_label_prefix}{branch}")
             else:
-                logger.critical(
+                logger.warning(
+                    "Issue Label Update",
                     "Could not match branch or version in issue body to pattern defined in metadata.",
                 )
-            self._gh_api.issue_labels_add(self._issue.number, labels)
+                return
+            response = self._gh_api.issue_labels_add(self._issue.number, labels)
+            logger.info(
+                "Issue Labels Update",
+                logger.pretty(response)
+            )
             return
 
         def make_template_vars(body: str):
@@ -99,6 +105,7 @@ class IssuesEventHandler(EventHandler):
                 "payload": self._payload,
                 "context": self._context,
                 "data": data,
+                "form": issue_form,
                 "input": issue_entries,
                 "issue_body": body,
                 "now": datetime.datetime.now(tz=datetime.UTC),
