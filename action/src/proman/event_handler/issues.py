@@ -299,8 +299,8 @@ class IssuesEventHandler(EventHandler):
                     "pull_number": pull_data["number"],
                 }
             )
-        if self._data_main["doc.dev_protocol.data.pr_list"]:
-            template = self._data_main["doc.dev_protocol.pr_list_template"]
+        template = self._data_main["doc.dev_protocol.pr_list_template"]
+        if template and self._data_main["doc.dev_protocol.data.pr_list"]:
             env_vars = {"targets": implementation_branches_info}
             entry = self.fill_jinja_template(template=template, env_vars=env_vars)
             new_protocol = self.add_data_to_marked_document(data=entry, document=self._dev_protocol, data_id="pr_list")

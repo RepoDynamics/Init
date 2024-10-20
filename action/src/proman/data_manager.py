@@ -128,7 +128,7 @@ class DataManager(_ps.NestedDict):
         return self._commit_data[conv_type]
 
     def create_label_branch(self, source: _Label | str) -> _Label:
-        prefix = self._data["label.branch.prefix"]
+        prefix = self["label.branch.prefix"]
         if isinstance(source, str):
             branch_name = source
         elif isinstance(source, _Label):
@@ -145,7 +145,7 @@ class DataManager(_ps.NestedDict):
 
     def _initialize_commit_data(self):
         commit_type = {}
-        for group_id, group_data in self._data["commit.primary"].items():
+        for group_id, group_data in self["commit.primary"].items():
             if group_id in self.primary_action_commit_type_ids:
                 commit_type[group_data["type"]] = _PrimaryActionCommit(
                     action=_PrimaryActionCommitType(group_id),
@@ -156,13 +156,13 @@ class DataManager(_ps.NestedDict):
                     group_id=group_id,
                     conv_type=group_data["type"],
                 )
-        for conv_type, group_data in self._data["commit.secondary"].items():
+        for conv_type, group_data in self["commit.secondary"].items():
             commit_type[conv_type] = _SecondaryCustomCommit(
                 conv_type=conv_type,
                 changelog_id=group_data["changelog_id"],
                 changelog_section_id=group_data["changelog_section_id"],
             )
-        for group_id, group_data in self._data["commit.auto"].items():
+        for group_id, group_data in self["commit.auto"].items():
             commit_type[group_data["type"]] = _SecondaryActionCommit(
                 action=_SecondaryActionCommitType(group_id),
                 conv_type=group_data["type"],
@@ -208,12 +208,12 @@ class DataManager(_ps.NestedDict):
 
     # def _get_issue_labels(self, issue_number: int) -> tuple[dict[str, str | list[str]], list[str]]:
     #     label_prefix = {
-    #         group_id: group_data["prefix"] for group_id, group_data in self._data["label"]["group"].items()
+    #         group_id: group_data["prefix"] for group_id, group_data in self["label"]["group"].items()
     #     }
-    #     version_label_prefix = self._data["label"]["auto_group"]["version"]["prefix"]
+    #     version_label_prefix = self["label"]["auto_group"]["version"]["prefix"]
     #     labels = (
-    #         self._github_api.user(self._data["repo"]["owner"])
-    #         .repo(self._data["repo"]["name"])
+    #         self._github_api.user(self["repo"]["owner"])
+    #         .repo(self["repo"]["name"])
     #         .issue_labels(number=issue_number)
     #     )
     #     out_dict = {}
@@ -261,8 +261,8 @@ class DataManager(_ps.NestedDict):
     #     The corresponding form metadata in `issue.forms`.
     #     """
     #     prefix = {
-    #         "primary_type": self._data["label"]["group"]["primary_type"]["prefix"],
-    #         "subtype": self._data["label"]["group"].get("subtype", {}).get("prefix"),
+    #         "primary_type": self["label"]["group"]["primary_type"]["prefix"],
+    #         "subtype": self["label"]["group"].get("subtype", {}).get("prefix"),
     #     }
     #     suffix = {}
     #     for label_name in label_names:
@@ -273,20 +273,20 @@ class DataManager(_ps.NestedDict):
     #                 suffix[label_type] = label_name.removeprefix(prefix)
     #                 break
     #     label_ids = {"primary_type": "", "subtype": ""}
-    #     for label_id, label in self._data["label"]["group"]["primary_type"]["labels"].items():
+    #     for label_id, label in self["label"]["group"]["primary_type"]["labels"].items():
     #         if label["suffix"] == suffix["primary_type"]:
     #             label_ids["primary_type"] = label_id
     #             break
     #     else:
     #         raise ValueError(f"Unknown primary type label suffix '{suffix['primary_type']}'.")
     #     if suffix["subtype"]:
-    #         for label_id, label in self._data["label"]["group"]["subtype"]["labels"].items():
+    #         for label_id, label in self["label"]["group"]["subtype"]["labels"].items():
     #             if label["suffix"] == suffix["subtype"]:
     #                 label_ids["subtype"] = label_id
     #                 break
     #         else:
     #             raise ValueError(f"Unknown sub type label suffix '{suffix['subtype']}'.")
-    #     for form in self._data["issue"]["forms"]:
+    #     for form in self["issue"]["forms"]:
     #         if (
     #             form["primary_type"] == label_ids["primary_type"]
     #             and form.get("subtype", "") == label_ids["subtype"]
@@ -298,11 +298,11 @@ class DataManager(_ps.NestedDict):
     #     )
     #
     # def get_issue_status_from_status_label(self, label_name: str):
-    #     status_prefix = self._data["label"]["group"]["status"]["prefix"]
+    #     status_prefix = self["label"]["group"]["status"]["prefix"]
     #     if not label_name.startswith(status_prefix):
     #         raise ValueError(f"Label '{label_name}' is not a status label.")
     #     status = label_name.removeprefix(status_prefix)
-    #     for status_label_id, status_label_info in self._data["label"]["group"]["status"]["labels"].items():
+    #     for status_label_id, status_label_info in self["label"]["group"]["status"]["labels"].items():
     #         if status_label_info["suffix"] == status:
     #             return _IssueStatus(status_label_id)
     #     raise ValueError(f"Unknown status label suffix '{status}'.")
@@ -320,8 +320,8 @@ class DataManager(_ps.NestedDict):
     #     -------
     #     The label name.
     #     """
-    #     prefix = self._data["label"]["group"]["primary_type"]["prefix"]
-    #     suffix = self._data["label"]["group"]["primary_type"]["labels"][action_type.value]["suffix"]
+    #     prefix = self["label"]["group"]["primary_type"]["prefix"]
+    #     suffix = self["label"]["group"]["primary_type"]["labels"][action_type.value]["suffix"]
     #     return f"{prefix}{suffix}"
     #
     # def get_issue_form_identifying_labels(self, issue_form_id: str) -> tuple[str, str | None]:
@@ -335,7 +335,7 @@ class DataManager(_ps.NestedDict):
     #     A tuple of (primary_type, subtype) label names for the issue.
     #     Note that `subtype` may be `None`.
     #     """
-    #     for form in self._data["issue"]["forms"]:
+    #     for form in self["issue"]["forms"]:
     #         if form["id"] == issue_form_id:
     #             issue_form = form
     #             break
@@ -365,7 +365,7 @@ class DataManager(_ps.NestedDict):
     #     description: str
     #         Description of the label.
     #     """
-    #     group = self._data["label"]["group"][group_id]
+    #     group = self["label"]["group"][group_id]
     #     label = group["labels"][label_id]
     #     out = {
     #         "name": f"{group['prefix']}{label['suffix']}",
