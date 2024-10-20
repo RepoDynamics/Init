@@ -37,9 +37,9 @@ class IssuesEventHandler(EventHandler):
         else:
             self._dev_protocol = self._issue.body
             self._dev_protocol_issue_nr = self._issue.number
-        if action == gh_context.enum.ActionType.LABELED:
-            return self._run_labeled()
-        self.error_unsupported_triggering_action()
+        # if action == gh_context.enum.ActionType.LABELED:
+        #     return self._run_labeled()
+        # self.error_unsupported_triggering_action()
         return
 
     def _run_opened(self):
