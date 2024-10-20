@@ -148,19 +148,18 @@ class IssuesEventHandler(EventHandler):
         self._reporter.event(f"Issue #{self._issue.number} opened")
         logger.info("Labels", str(self._issue.label_names))
         body, issue_form = identify()
-        issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
-        issue_entries = self._extract_entries_from_issue_body(issue_form["body"])
+        issue_entries = self._extract_entries_from_issue_body(body, issue_form["body"])
         labels = add_labels()
         assignees = assign()
         body_template = issue_form.get("post_process", {}).get("body")
         if body_template:
             body_processed = self.fill_jinja_template(
                 template=body_template,
-                env_vars=make_template_vars(self._issue.body),
+                env_vars=make_template_vars(body),
             )
         else:
             logger.info("Issue Post Processing", "No post-process action defined in issue form.")
-            body_processed = self._issue.body
+            body_processed = body
         dev_protocol_env_vars = make_template_vars(body_processed)
         dev_protocol = self.fill_jinja_template(
             template=self._data_main["doc.dev_protocol.template"],
@@ -342,7 +341,7 @@ class IssuesEventHandler(EventHandler):
         }
 
     @logger.sectioner("Extract Entries from Issue Body")
-    def _extract_entries_from_issue_body(self, body_elems: list[dict]):
+    def _extract_entries_from_issue_body(self, body: str, body_elems: list[dict]):
         def create_pattern(parts_):
             pattern_sections = []
             for idx, part in enumerate(parts_):
@@ -368,13 +367,14 @@ class IssuesEventHandler(EventHandler):
         pattern = create_pattern(parts)
         compiled_pattern = re.compile(pattern, re.S)
         # Search for the pattern in the markdown
-        logger.debug("Issue body", mdit.element.code_block(self._issue.body))
-        match = re.search(compiled_pattern, self._issue.body)
+        logger.debug("Issue body", mdit.element.code_block(body))
+        match = re.search(compiled_pattern, body)
         if not match:
             logger.critical(
                 "Issue Body Pattern Matching",
                 "Could not match the issue body to pattern defined in control center settings."
             )
+            raise ProManException()
         # Create a dictionary with titles as keys and matched content as values
         sections = {
             section_id: content.strip() if content else None
