@@ -294,11 +294,20 @@ class IssuesEventHandler(EventHandler):
             self._add_readthedocs_reference_to_pr(pull_nr=pull_data["number"], pull_body=self._dev_protocol)
             implementation_branches_info.append(
                 {
-                    "branch_name": head_branch_name,
-                    "branch_url": self._gh_link.branch(head_branch_name).homepage,
-                    "pull_number": pull_data["number"],
+                    "head": {
+                        "name": head_branch_name,
+                        "url": self._gh_link.branch(head_branch_name).homepage,
+                    },
+                    "number": pull_data["number"],
                 }
             )
+        timeline_template = self._data_main["doc.dev_protocol.timeline_template.pull_opened"]
+        if timeline_template:
+            entry = self.fill_jinja_template(
+                template=timeline_template,
+                env_vars=self._make_template_env_vars() | {"pulls": implementation_branches_info},
+            )
+            self._add_to_issue_timeline(entry=entry)
         template = self._data_main["doc.dev_protocol.pr_list_template"]
         if template and self._data_main["doc.dev_protocol.data.pr_list"]:
             env_vars = {"targets": implementation_branches_info}

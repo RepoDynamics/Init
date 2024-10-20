@@ -87,13 +87,27 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 and self._primary_type_is_package_publish(commit_type=final_commit_type)
             ),
         )
-        new_body = self._add_to_pr_timeline(
-            entry=(
-                "New commits were pushed to the head branch "
-                f"(workflow run: [{self._context.run_id}]({self._gh_link.workflow_run(run_id=self._context.run_id)}), "
-                f"actor: @{self._payload.sender.login})."
+        body = self._pull.body
+        timeline_template = self._data_main["doc.dev_protocol.timeline_template.push"]
+        if timeline_template:
+            template_vars = self._make_template_env_vars() | {
+                "workflow_url": self._gh_link.workflow_run(run_id=self._context.run_id),
+                "head": {
+                    "type": self._branch_head.type.value,
+                    "name": self._branch_head.name,
+                    "prefix": self._branch_head.prefix,
+                    "suffix": self._branch_head.suffix,
+                    "url": self._gh_link.branch(self._branch_head.name).homepage,
+                }
+            }
+            entry = self.fill_jinja_template(template=timeline_template, env_vars=template_vars)
+            body = self._add_to_pr_timeline(
+                entry=(
+                    "New commits were pushed to the head branch "
+                    f"(workflow run: [{self._context.run_id}]({}), "
+                    f"actor: @{self._payload.sender.login})."
+                )
             )
-        )
         tasks_complete = self._update_implementation_tasklist(body=new_body)
         if tasks_complete and not self._reporter.failed:
             self._gh_api.pull_update(
@@ -791,6 +805,13 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             body=err_details,
         )
         return
+
+    def _make_template_env_vars(self):
+        return self.make_base_template_env_vars() | {
+            "actor": self._payload.sender,
+            "payload": self._payload,
+            "pull": self._pull,
+        }
 
     @staticmethod
     def _primary_type_is_package_publish(
