@@ -6,8 +6,8 @@ from pathlib import Path
 import json
 from typing import TYPE_CHECKING
 import re
-import datetime
 
+import jinja2
 from loggerman import logger
 import mdit
 import htmp
@@ -877,4 +877,4 @@ class EventHandler:
 
     @staticmethod
     def fill_jinja_template(template: str, env_vars: dict) -> str:
-        return
+        return jinja2.Template(template).render(env_vars)
