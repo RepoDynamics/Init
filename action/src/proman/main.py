@@ -684,8 +684,8 @@ class EventHandler:
                     'sublist': sublist
                 })
             return tasklist_entries
-
-        pattern = rf"{self._MARKER_TASKLIST_START}(.*?){self._MARKER_TASKLIST_END}"
+        marker_start, marker_end = self.make_text_marker("tasklist")
+        pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
         match = re.search(pattern, body, flags=re.DOTALL)
         return extract(match.group(1).strip()) if match else []
 

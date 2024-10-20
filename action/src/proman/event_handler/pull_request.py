@@ -101,14 +101,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 }
             }
             entry = self.fill_jinja_template(template=timeline_template, env_vars=template_vars)
-            body = self._add_to_pr_timeline(
-                entry=(
-                    "New commits were pushed to the head branch "
-                    f"(workflow run: [{self._context.run_id}]({}), "
-                    f"actor: @{self._payload.sender.login})."
-                )
-            )
-        tasks_complete = self._update_implementation_tasklist(body=new_body)
+            body = self.add_data_to_marked_document(data=entry, document=body, data_id="timeline")
+        tasks_complete = self._update_implementation_tasklist(body=body)
         if tasks_complete and not self._reporter.failed:
             self._gh_api.pull_update(
                 number=self._pull.number,
@@ -593,9 +587,12 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             `_extract_tasklist_entries`.
         """
         tasklist_string = self.write_tasklist(entries)
-        pattern = rf"({self._MARKER_TASKLIST_START}).*?({self._MARKER_TASKLIST_END})"
-        replacement = rf"\1\n{tasklist_string}\n\2"
-        new_body = re.sub(pattern, replacement, body or self._pull.body, flags=re.DOTALL)
+        new_body = self.add_data_to_marked_document(
+            data=f"\n{tasklist_string.strip()}\n",
+            document=body or self._pull.body,
+            data_id="tasklist",
+            replace=True
+        )
         self._gh_api.pull_update(
             number=number or self._pull.number,
             body=new_body,
