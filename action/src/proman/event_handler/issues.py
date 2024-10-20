@@ -268,6 +268,7 @@ class IssuesEventHandler(EventHandler):
             "issue": self._issue,
             "payload": self._payload,
             "context": self._context,
+            "data": make_data(),
             "now": datetime.datetime.now(tz=datetime.UTC),
         }
 
