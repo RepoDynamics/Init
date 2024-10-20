@@ -6,6 +6,7 @@ from github_contexts import github as gh_context
 from loggerman import logger
 from controlman.file_gen.forms import pre_process_existence
 import mdit
+import pylinks as pl
 
 from proman.datatype import LabelType, Label, IssueStatus
 from proman.main import EventHandler
@@ -37,38 +38,57 @@ class IssuesEventHandler(EventHandler):
         else:
             self._dev_protocol = self._issue.body
             self._dev_protocol_issue_nr = self._issue.number
-        # if action == gh_context.enum.ActionType.LABELED:
-        #     return self._run_labeled()
+        if action == gh_context.enum.ActionType.LABELED:
+            return self._run_labeled()
         # self.error_unsupported_triggering_action()
         return
 
     def _run_opened(self):
-        def assign_creator():
+        def assign():
+            assignees = []
+            maintainers = self._data_main.get("maintainer.issue", {})
+            if issue_form["id"] in maintainers.keys():
+                for maintainer in maintainers[issue_form["id"]]:
+                    assignees.append(
+                        pl.api.github(token=self._context.token).user(maintainer["github"]["id"]).info
+                    )
             assignment = issue_form.get("post_process", {}).get("assign_creator")
-            if not assignment:
-                return
-            if_checkbox = assignment.get("if_checkbox")
-            if if_checkbox:
-                checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
-                if checkbox.startswith("- [X]"):
-                    checked = True
-                elif checkbox.startswith("- [ ]"):
-                    checked = False
-                else:
-                    logger.warning(
-                        "Issue Assignment",
-                        "Could not match checkbox in issue body to pattern defined in metadata.",
-                    )
-                    return
-                if (if_checkbox["is_checked"] and checked) or (
-                    not if_checkbox["is_checked"] and not checked):
-                    self._gh_api.issue_add_assignees(
-                        number=self._issue.number, assignees=self._issue.user.login
-                    )
-            return
+            if assignment:
+                if_checkbox = assignment.get("if_checkbox")
+                if if_checkbox:
+                    checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
+                    if checkbox.startswith("- [X]"):
+                        checked = True
+                    elif checkbox.startswith("- [ ]"):
+                        checked = False
+                    else:
+                        logger.warning(
+                            "Issue Assignment",
+                            "Could not match checkbox in issue body to pattern defined in metadata.",
+                        )
+                        return
+                    if (if_checkbox["is_checked"] and checked) or (
+                        not if_checkbox["is_checked"] and not checked
+                    ):
+                        assignees.append(self._issue.user._user)
+            self._gh_api.issue_add_assignees(
+                number=self._issue.number, assignees=[assignee["login"] for assignee in assignees]
+            )
+            return assignees
 
         def add_labels():
             labels = []
+            type_label_prefix = self._data_main["label.type.prefix"]
+            type_label_suffix = self._data_main["label.type.label"][issue_form["type"]]["suffix"]
+            labels.append(f"{type_label_prefix}{type_label_suffix}")
+            if issue_form["subtype"]:
+                subtype_label_prefix = self._data_main["label.subtype.prefix"]
+                subtype_label_suffix = self._data_main["label.subtype.label"][issue_form["subtype"]]["suffix"]
+                labels.append(f"{subtype_label_prefix}{subtype_label_suffix}")
+            status_label_prefix = self._data_main["label.status.prefix"]
+            status_label_suffix = self._data_main["label.status.label.triage.suffix"]
+            labels.append(f"{status_label_prefix}{status_label_suffix}")
+
             branch_label_prefix = self._data_main["label.branch.prefix"]
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
@@ -86,29 +106,24 @@ class IssuesEventHandler(EventHandler):
                     "Issue Label Update",
                     "Could not match branch or version in issue body to pattern defined in metadata.",
                 )
-                return
-            response = self._gh_api.issue_labels_add(self._issue.number, labels)
+            labels.extend(issue_form.get("labels", []))
+            response = self._gh_api.issue_labels_set(self._issue.number, labels)
             logger.info(
                 "Issue Labels Update",
                 logger.pretty(response)
             )
-            return
+            return labels
 
         def make_template_vars(body: str):
             data = {}
             for data_id, data_value in self._data_main["doc.dev_protocol.data"].items():
                 marker_start, marker_end = self.make_text_marker(id=data_id)
                 data[data_id] = f"{marker_start}{data_value}{marker_end}"
-            env_vars = {
-                "ccc": self._data_main,
-                "issue": self._issue,
-                "payload": self._payload,
-                "context": self._context,
+            env_vars = self._make_template_env_vars() | {
                 "data": data,
                 "form": issue_form,
                 "input": issue_entries,
                 "issue_body": body,
-                "now": datetime.datetime.now(tz=datetime.UTC),
             }
             return env_vars
 
@@ -116,21 +131,52 @@ class IssuesEventHandler(EventHandler):
         logger.info("Labels", str(self._issue.label_names))
         issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
         issue_entries = self._extract_entries_from_issue_body(issue_form["body"])
-        add_labels()
-        assign_creator()
+        labels = add_labels()
+        assignees = assign()
         body_template = issue_form.get("post_process", {}).get("body")
         if body_template:
             body_processed = self.fill_jinja_template(
                 template=body_template,
-                env_vars=make_template_vars(self._issue.body)
+                env_vars=make_template_vars(self._issue.body),
             )
         else:
             logger.info("Issue Post Processing", "No post-process action defined in issue form.")
             body_processed = self._issue.body
+        dev_protocol_env_vars = make_template_vars(body_processed)
         dev_protocol = self.fill_jinja_template(
             template=self._data_main["doc.dev_protocol.template"],
-            env_vars=make_template_vars(body_processed)
+            env_vars=dev_protocol_env_vars,
         )
+        timeline_entries = []
+        timeline_template = self._data_main.get("doc.dev_protocol.timeline_template", {})
+        if "opened" in timeline_template:
+            entry = self.fill_jinja_template(
+                template=timeline_template["opened"],
+                env_vars=dev_protocol_env_vars,
+            )
+            timeline_entries.append(entry)
+        if "labeled" in timeline_template:
+            for label in labels:
+                label_env_var = self.make_label_env_var(self._data_main.resolve_label(label))
+                env_vars = dev_protocol_env_vars | {"label": label_env_var}
+                entry = self.fill_jinja_template(
+                    template=timeline_template["labeled"],
+                    env_vars=env_vars,
+                )
+                timeline_entries.append(entry)
+        if "assigned" in timeline_template:
+            for assignee in assignees:
+                env_vars = dev_protocol_env_vars | {"assignee": assignee}
+                entry = self.fill_jinja_template(
+                    template=timeline_template["assigned"],
+                    env_vars=env_vars,
+                )
+                timeline_entries.append(entry)
+        if timeline_entries:
+            timeline = "".join(timeline_entries)
+            dev_protocol = self.add_data_to_marked_document(
+                data=timeline, document=dev_protocol, data_id="timeline"
+            )
         logger.info(
             "Development Protocol",
             mdit.element.code_block(dev_protocol)
@@ -158,13 +204,8 @@ class IssuesEventHandler(EventHandler):
         label = self._data_main.resolve_label(self._payload.label.name)
         timeline_entry_template = self._data_main["doc.dev_protocol.timeline_template.labeled"]
         if timeline_entry_template:
-            env_vars = {
-                "label": {
-                    "category": label.category.value,
-                    "id": label.type.value if isinstance(label.type, Enum) else label.type,
-                },
-                "actor": self._payload.sender,
-                "now": datetime.datetime.now(tz=datetime.UTC),
+            env_vars = self._make_template_env_vars() | {
+                "label": self.make_label_env_var(label),
             }
             entry = self.fill_jinja_template(template=timeline_entry_template, env_vars=env_vars)
             self._add_to_issue_timeline(entry=entry)
@@ -267,6 +308,19 @@ class IssuesEventHandler(EventHandler):
         match = re.search(pattern, self._dev_protocol, flags=re.DOTALL)
         title = match.group(1).strip()
         return title or self._issue.title
+
+    def _make_template_env_vars(self):
+        return self.make_base_template_env_vars() | {
+            "actor": self._payload.sender,
+            "payload": self._payload,
+            "issue": self._issue,
+        }
+
+    def make_label_env_var(self, label: Label):
+        return {
+            "category": label.category.value,
+            "id": label.type.value if isinstance(label.type, Enum) else label.type,
+        }
 
     @logger.sectioner("Extract Entries from Issue Body")
     def _extract_entries_from_issue_body(self, body_elems: list[dict]):

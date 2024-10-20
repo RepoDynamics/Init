@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 from typing import TYPE_CHECKING
 import re
+import datetime
 
 import jinja2
 from loggerman import logger
@@ -820,6 +821,13 @@ class EventHandler:
         with open(path_root / announcement_data["path"], "w") as f:
             f.write(announcement)
         return
+
+    def make_base_template_env_vars(self):
+        return {
+            "ccc": self._data_main,
+            "context": self._context,
+            "now": datetime.datetime.now(tz=datetime.UTC),
+        }
 
     def make_text_marker(self, id: str):
         marker = self._data_main["doc.dev_protocol.marker"]

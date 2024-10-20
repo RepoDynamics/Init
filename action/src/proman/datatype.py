@@ -280,6 +280,8 @@ class Label(_NamedTuple):
     name: str
     prefix: str = ""
     type: PrimaryActionCommitType | IssueStatus | str | None = None
+    description: str = ""
+    color: str = ""
 
     @property
     def suffix(self) -> str:
