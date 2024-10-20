@@ -164,6 +164,7 @@ class IssuesEventHandler(EventHandler):
                     "id": label.type.value if isinstance(label.type, Enum) else label.type,
                 },
                 "actor": self._payload.sender,
+                "now": datetime.datetime.now(tz=datetime.UTC),
             }
             entry = self.fill_jinja_template(template=timeline_entry_template, env_vars=env_vars)
             self._add_to_issue_timeline(entry=entry)
