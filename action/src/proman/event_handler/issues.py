@@ -143,7 +143,7 @@ class IssuesEventHandler(EventHandler):
                 "actor": self._payload.sender,
             }
             entry = self.fill_jinja_template(template=timeline_entry_template, env_vars=env_vars)
-            self._dev_protocol = self._add_to_issue_timeline(entry=entry)
+            self._add_to_issue_timeline(entry=entry)
         if label.category is not LabelType.STATUS:
             return
         # Remove all other status labels
