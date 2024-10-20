@@ -604,7 +604,14 @@ class EventHandler:
     ) -> None:
         for label in labels:
             if label.name != current_label.name:
-                self._gh_api.issue_labels_remove(number=issue_nr, label=label.name)
+                try:
+                    self._gh_api.issue_labels_remove(number=issue_nr, label=label.name)
+                except _WebAPIError as e:
+                    logger.warning(
+                        "Status Label Updated",
+                        f"Failed to remove label '{label.name}' from issue #{issue_nr}.",
+                        e.report.body,
+                    )
         return
 
     def resolve_branch(self, branch_name: str | None = None) -> Branch:
