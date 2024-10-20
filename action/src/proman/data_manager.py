@@ -78,6 +78,8 @@ class DataManager(_ps.NestedDict):
             name=name,
             prefix=label["prefix"],
             type=suffix_type,
+            description=label["description"],
+            color=label["color"],
         )
 
     def get_issue_data_from_labels(self, label_names: list[str]) -> _Issue:
