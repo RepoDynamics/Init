@@ -688,13 +688,9 @@ class EventHandler:
         issue_nr: int | None = None,
         comment_id: int | None = None,
     ):
-        now = datetime.datetime.now(tz=datetime.UTC).strftime("%Y.%m.%d %H:%M:%S")
-        timeline_entry = (
-            f"- **{now}**: {entry}"
+        new_body = self.add_data_to_marked_document(
+            data=entry, document=body, data_id="timeline", replace=False
         )
-        pattern = rf"({self._MARKER_TIMELINE_START})(.*?)({self._MARKER_TIMELINE_END})"
-        replacement = r"\1\2" + timeline_entry + "\n" + r"\3"
-        new_body = re.sub(pattern, replacement, body, flags=re.DOTALL)
         if issue_nr:
             self._gh_api.issue_update(number=issue_nr, body=new_body)
         elif comment_id:
@@ -739,11 +735,22 @@ class EventHandler:
         logger.critical(action_err_msg, action_err_details)
         raise ProManException()
 
-    def _add_reference_to_dev_protocol(self, protocol: str, reference: str) -> str:
-        entry = f"- {reference}"
-        pattern = rf"({self._MARKER_REFERENCES_START})(.*?)({self._MARKER_REFERENCES_END})"
-        replacement = r"\1\2" + entry + "\n" + r"\3"
-        return re.sub(pattern, replacement, protocol, flags=re.DOTALL)
+    def _add_reference_to_dev_protocol(self, protocol: str, ref_url: str, ref_title: str) -> str:
+        template = self._data_main["doc.dev_protocol.reference_template"]
+        env_vars = {
+            "ref": {
+                "url": ref_url,
+                "title": ref_title,
+            }
+        }
+        entry = self.fill_jinja_template(template, env_vars)
+        return self.add_data_to_marked_document(data=entry, document=protocol, data_id="references", replace=False)
+
+    def add_data_to_marked_document(self, data: str, document: str, data_id: str, replace: bool = False):
+        marker_start, marker_end = self.make_text_marker(data_id)
+        pattern = rf"({re.escape(marker_start)})(.*?)({re.escape(marker_end)})"
+        replacement = r"\1" + data + r"\3" if replace else r"\1\2" + data + r"\3"
+        return re.sub(pattern, replacement, document, flags=re.DOTALL)
 
     def _add_readthedocs_reference_to_pr(
         self,
@@ -769,11 +776,13 @@ class EventHandler:
 
         if not self._data_main["tool.readthedocs"]:
             return
-        url = create_readthedocs_preview_url()
-        reference = f"[Website Preview on ReadTheDocs]({url})"
         if not pull_body:
             pull_body = self._gh_api.pull(number=pull_nr)["body"]
-        new_body = self._add_reference_to_dev_protocol(protocol=pull_body, reference=reference)
+        new_body = self._add_reference_to_dev_protocol(
+            protocol=pull_body,
+            ref_url=create_readthedocs_preview_url(),
+            ref_title="Website Preview on ReadTheDocs"
+        )
         if update:
             self._gh_api.pull_update(number=pull_nr, body=new_body)
         return new_body
@@ -811,6 +820,11 @@ class EventHandler:
         with open(path_root / announcement_data["path"], "w") as f:
             f.write(announcement)
         return
+
+    def make_text_marker(self, id: str):
+        marker = self._data_main["doc.dev_protocol.marker"]
+        template = "<!-- {pos}{id} -->"
+        return tuple(template.format(pos=marker[pos], id=id) for pos in ("start", "end"))
 
     @staticmethod
     def get_next_version(
