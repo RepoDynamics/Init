@@ -118,17 +118,33 @@ class IssuesEventHandler(EventHandler):
                 env_vars=make_template_vars(self._issue.body)
             )
         else:
-            logger.debug("Issue Post Processing", "No post-process action defined in issue form.")
+            logger.info("Issue Post Processing", "No post-process action defined in issue form.")
             body_processed = self._issue.body
         dev_protocol = self.fill_jinja_template(
             template=self._data_main["doc.dev_protocol.template"],
             env_vars=make_template_vars(body_processed)
         )
+        logger.info(
+            "Development Protocol",
+            mdit.element.code_block(dev_protocol)
+        )
         if self._data_main["doc.dev_protocol.as_comment"]:
-            self._gh_api.issue_update(number=self._issue.number, body=body_processed)
-            self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
+            response = self._gh_api.issue_update(number=self._issue.number, body=body_processed)
+            logger.info(
+                "Issue Body Update",
+                logger.pretty(response)
+            )
+            response = self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
+            logger.info(
+                "Dev Protocol Comment",
+                logger.pretty(response)
+            )
         else:
-            self._gh_api.issue_update(number=self._issue.number, body=dev_protocol)
+            response = self._gh_api.issue_update(number=self._issue.number, body=dev_protocol)
+            logger.info(
+                "Issue Body Update",
+                logger.pretty(response)
+            )
         return
 
     def _run_labeled(self):
