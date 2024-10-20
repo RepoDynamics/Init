@@ -9,6 +9,7 @@ import mdit
 import pylinks as pl
 
 from proman.datatype import LabelType, Label, IssueStatus
+from proman.exception import ProManException
 from proman.main import EventHandler
 
 
@@ -44,6 +45,23 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_opened(self):
+
+        def identify():
+            ids = [form["id"] for form in self._data_main["issue.forms"]]
+            id_pattern = '|'.join(map(re.escape, ids))
+            pattern = rf"<!-- ISSUE-ID: ({id_pattern}) -->"
+            match = re.search(pattern, self._issue.body)
+            if not match:
+                logger.critical(
+                    "Issue ID Extraction",
+                    "Could not match the issue ID in the issue body."
+                )
+                raise ProManException()
+            issue_id = match.group(1)
+            issue_form = next(form for form in self._data_main["issue.forms"] if form["id"] == issue_id)
+            cleaned_body = re.sub(pattern, '', self._issue.body)
+            return cleaned_body, issue_form
+
         def assign():
             assignees = []
             maintainers = self._data_main.get("maintainer.issue", {})
@@ -129,6 +147,7 @@ class IssuesEventHandler(EventHandler):
 
         self._reporter.event(f"Issue #{self._issue.number} opened")
         logger.info("Labels", str(self._issue.label_names))
+        body, issue_form = identify()
         issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
         issue_entries = self._extract_entries_from_issue_body(issue_form["body"])
         labels = add_labels()
