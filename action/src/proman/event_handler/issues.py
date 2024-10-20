@@ -103,10 +103,6 @@ class IssuesEventHandler(EventHandler):
                 subtype_label_prefix = self._data_main["label.subtype.prefix"]
                 subtype_label_suffix = self._data_main["label.subtype.label"][issue_form["subtype"]]["suffix"]
                 labels.append(f"{subtype_label_prefix}{subtype_label_suffix}")
-            status_label_prefix = self._data_main["label.status.prefix"]
-            status_label_suffix = self._data_main["label.status.label.triage.suffix"]
-            labels.append(f"{status_label_prefix}{status_label_suffix}")
-
             branch_label_prefix = self._data_main["label.branch.prefix"]
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
@@ -125,6 +121,9 @@ class IssuesEventHandler(EventHandler):
                     "Could not match branch or version in issue body to pattern defined in metadata.",
                 )
             labels.extend(issue_form.get("labels", []))
+            status_label_prefix = self._data_main["label.status.prefix"]
+            status_label_suffix = self._data_main["label.status.label.triage.suffix"]
+            labels.append(f"{status_label_prefix}{status_label_suffix}")
             response = self._gh_api.issue_labels_set(self._issue.number, labels)
             logger.info(
                 "Issue Labels Update",
@@ -174,20 +173,20 @@ class IssuesEventHandler(EventHandler):
                 env_vars=dev_protocol_env_vars,
             )
             timeline_entries.append(entry)
+        if "assigned" in timeline_template:
+            for assignee in assignees:
+                env_vars = dev_protocol_env_vars | {"assignee": assignee}
+                entry = self.fill_jinja_template(
+                    template=timeline_template["assigned"],
+                    env_vars=env_vars,
+                )
+                timeline_entries.append(entry)
         if "labeled" in timeline_template:
             for label in labels:
                 label_env_var = self.make_label_env_var(self._data_main.resolve_label(label))
                 env_vars = dev_protocol_env_vars | {"label": label_env_var}
                 entry = self.fill_jinja_template(
                     template=timeline_template["labeled"],
-                    env_vars=env_vars,
-                )
-                timeline_entries.append(entry)
-        if "assigned" in timeline_template:
-            for assignee in assignees:
-                env_vars = dev_protocol_env_vars | {"assignee": assignee}
-                entry = self.fill_jinja_template(
-                    template=timeline_template["assigned"],
                     env_vars=env_vars,
                 )
                 timeline_entries.append(entry)
