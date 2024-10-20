@@ -265,7 +265,7 @@ class IssuesEventHandler(EventHandler):
             head_branch_name = self.create_branch_name_implementation(
                 issue_nr=self._issue.number, base_branch_name=base_branch_name
             )
-            new_branch = self._gh_api_admin.branch_create_linked(
+            new_branch = self._gh_api.branch_create_linked(
                 issue_id=self._issue.node_id,
                 base_sha=branch_sha[base_branch_name],
                 name=head_branch_name,
