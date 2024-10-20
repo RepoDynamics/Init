@@ -134,15 +134,16 @@ class IssuesEventHandler(EventHandler):
 
         def make_template_vars(body: str):
             data = {}
-            for data_id, data_value in self._data_main["doc.dev_protocol.data"].items():
-                marker_start, marker_end = self.make_text_marker(id=data_id)
-                data[data_id] = f"{marker_start}{data_value}{marker_end}"
             env_vars = self._make_template_env_vars() | {
                 "data": data,
                 "form": issue_form,
                 "input": issue_entries,
                 "issue_body": body,
             }
+            for data_id, data_value in self._data_main["doc.dev_protocol.data"].items():
+                marker_start, marker_end = self.make_text_marker(id=data_id)
+                data_filled = self.fill_jinja_template(template=data_value, env_vars=env_vars)
+                data[data_id] = f"{marker_start}{data_filled}{marker_end}"
             return env_vars
 
         self._reporter.event(f"Issue #{self._issue.number} opened")
@@ -338,6 +339,11 @@ class IssuesEventHandler(EventHandler):
         return {
             "category": label.category.value,
             "id": label.type.value if isinstance(label.type, Enum) else label.type,
+            "name": label.name,
+            "suffix": label.suffix,
+            "prefix": label.prefix,
+            "description": label.description,
+            "color": label.color,
         }
 
     @logger.sectioner("Extract Entries from Issue Body")
