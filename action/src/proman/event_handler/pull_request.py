@@ -380,7 +380,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             ref=hash_latest,
             ref_before=hash_base,
             version=str(next_ver_pre),
-            release_name=,
+            # release_name=,
             release_tag=tag,
 
             release_prerelease=True,
