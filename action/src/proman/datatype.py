@@ -101,7 +101,6 @@ class PrimaryActionCommitType(_Enum):
     RELEASE_MINOR = "minor"
     RELEASE_PATCH = "patch"
     RELEASE_POST = "post"
-    WEBSITE = "web"
 
 
 class SecondaryActionCommitType(_Enum):
@@ -142,6 +141,9 @@ class PrimaryActionCommit(GroupedCommit):
     def __repr__(self):
         return f"PrimaryActionCommit(action={self.action}, conv_type={self.conv_type})"
 
+    def __str__(self):
+        return f"Primary Action Commit:\n- Type: {self.action.value}\n- Conventional Type: {self.conv_type}"
+
 
 class PrimaryCustomCommit(GroupedCommit):
     def __init__(self, group_id: str, conv_type: str):
@@ -160,6 +162,9 @@ class PrimaryCustomCommit(GroupedCommit):
 
     def __repr__(self):
         return f"PrimaryCustomCommit(id={self.id}, conv_type={self.conv_type})"
+
+    def __str__(self):
+        return f"Primary Custom Commit:\n- Type: {self.id}\n- Conventional Type: {self.conv_type}"
 
 
 class SecondaryActionCommit(GroupedCommit):
@@ -262,6 +267,24 @@ class IssueStatus(_Enum):
     DEPLOY_BETA = "deploy_beta"
     DEPLOY_RC = "deploy_rc"
     DEPLOY_FINAL = "deploy_final"
+
+    @property
+    def level(self) -> int:
+        level = {
+            IssueStatus.TRIAGE: 0,
+            IssueStatus.REJECTED: 1,
+            IssueStatus.DUPLICATE: 1,
+            IssueStatus.INVALID: 1,
+            IssueStatus.PLANNING: 2,
+            IssueStatus.REQUIREMENT_ANALYSIS: 3,
+            IssueStatus.DESIGN: 4,
+            IssueStatus.IMPLEMENTATION: 5,
+            IssueStatus.TESTING: 6,
+            IssueStatus.DEPLOY_ALPHA: 7,
+            IssueStatus.DEPLOY_BETA: 8,
+            IssueStatus.DEPLOY_RC: 9,
+            IssueStatus.DEPLOY_FINAL: 10,
+        }
 
 
 class LabelType(_Enum):
