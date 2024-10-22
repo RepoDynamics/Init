@@ -142,14 +142,14 @@ class DevDoc:
             replace=True
         )
 
-    def update_status(self, status: IssueStatus, env_vars: dict | None) -> str:
+    def update_status(self, status: IssueStatus, env_vars: dict | None = None) -> str:
         status_template = self._data_main["doc.protocol.status.template"]
         if not status_template:
             return self.protocol
         self.add_data(
             id="status",
             spec=self._data_main["doc.protocol.status"],
-            data=self.fill_jinja_template(status_template, env_vars | {"status": status.value}),
+            data=self.fill_jinja_template(status_template, (env_vars or {}) | {"status": status.value}),
             replace=True
         )
         checkbox_templates = self._data_main.get("doc.protocol.status_checkbox", {})
