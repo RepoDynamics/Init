@@ -88,7 +88,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             ),
         )
         body = self._pull.body
-        timeline_template = self._data_main["doc.dev_protocol.timeline_template.push"]
+        timeline_template = self._data_main["doc.protocol.timeline_template.push"]
         if timeline_template:
             template_vars = self._make_template_env_vars() | {
                 "workflow_url": self._gh_link.workflow_run(run_id=self._context.run_id),
@@ -189,13 +189,13 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             )
 
     def _run_open_pre_to_release(self):
-        main_dev_protocol, sub_dev_protocols = self._read_pre_dev_protocols()
-        self._gh_api.issue_comment_create(number=self._pull.number, body=sub_dev_protocols)
+        main_protocol, sub_protocols = self._read_pre_protocols()
+        self._gh_api.issue_comment_create(number=self._pull.number, body=sub_protocols)
         self._gh_api.pull_update(
             number=self._pull.number,
-            body=main_dev_protocol,
+            body=main_protocol,
         )
-        original_issue_nr = self._get_originating_issue_nr(body=main_dev_protocol)
+        original_issue_nr = self._get_originating_issue_nr(body=main_protocol)
         issue_labels = self._data_main.resolve_labels(
             names=[label["name"] for label in self._gh_api.issue_labels(number=original_issue_nr)]
         )
@@ -213,11 +213,24 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return
 
     def _run_merge_implementation_to_release(self):
-        primary_commit_type, ver_base, next_ver, ver_dist = self._get_next_ver_dist()
+        self._reporter.event(
+            f"Merge development branch '{self._branch_head.name}' "
+            f"to release branch '{self._branch_base.name}'"
+        )
+        primary_commit, ver_base, next_ver, ver_dist = self._get_next_ver_dist()
         hash_base = self._git_base.commit_hash_normal()
+        logger.info(
+            "Version Resolution",
+            str(primary_commit),
+            f"Base Version: {ver_base}",
+            f"Next Version: {next_ver}",
+            f"Full Version: {ver_dist}",
+            f"Base Hash: {hash_base}",
+        )
+
         changelog_manager = self._update_changelogs(
             ver_dist=ver_dist,
-            commit_type=primary_commit_type.conv_type,
+            commit_type=primary_commit.conv_type,
             commit_title=self._pull.title,
             hash_base=hash_base,
             prerelease=False,
@@ -226,12 +239,13 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             message=f'{self._data_main["commit.auto.sync.type"]}: Update changelogs',
             stage="all"
         )
-        if (
+        if (  # If a new major release is being made
             self._branch_base.type is BranchType.MAIN
             and ver_base.major > 0
-            and primary_commit_type.group is CommitGroup.PRIMARY_ACTION
-            and primary_commit_type.action is PrimaryActionCommitType.RELEASE_MAJOR
+            and primary_commit.group is CommitGroup.PRIMARY_ACTION
+            and primary_commit.action is PrimaryActionCommitType.RELEASE_MAJOR
         ):
+            # Make a new release branch from the base branch for the previous major version
             self._git_base.checkout(
                 branch=self.create_branch_name_release(major_version=ver_base.major), create=True
             )
@@ -261,7 +275,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         # Wait 30 s to make sure the push to head is registered
         time.sleep(30)
 
-        merge_response = self._merge_pull(conv_type=primary_commit_type.conv_type, sha=latest_hash)
+        merge_response = self._merge_pull(conv_type=primary_commit.conv_type, sha=latest_hash)
         if not merge_response:
             return
 
@@ -338,7 +352,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             hash_base=hash_base,
             prerelease=True,
         )
-        self._write_pre_dev_protocol(ver=str(next_ver_pre))
+        self._write_pre_protocol(ver=str(next_ver_pre))
+        # TODO: get DOI from Zenodo and add to citation file
         self._git_head.commit(
             message="auto: Update changelogs",
             stage="all"
@@ -360,15 +375,25 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self._failed = True
             return
         tag = self._tag_version(ver=next_ver_pre, base=True)
-        ccm_branch = controlman.read_from_json_file(path_repo=self._path_head)
+        ccm_branch = controlman.from_json_file(repo_path=self._path_head)
+
+        release_data = self._gh_api.release_create(
+            tag_name=tag,
+            name=f"{ccm_branch['name']} v{next_ver_pre}",
+            body=changelog_manager.get_entry(changelog_id="package_public_prerelease")[0],
+            prerelease=True,
+            discussion_category_name="",
+            make_latest=False,
+        )
+
         self._output.set(
             data_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
             version=str(next_ver_pre),
-            release_name=f"{ccm_branch['name']} v{next_ver_pre}",
+            release_name=,
             release_tag=tag,
-            release_body=changelog_manager.get_entry(changelog_id="package_public_prerelease")[0],
+
             release_prerelease=True,
             website_deploy=True,
             package_lint=True,
@@ -453,12 +478,16 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             return
         return response
 
+    @logger.sectioner("Changelog Generation")
     def _update_changelogs(
         self, ver_dist: str, commit_type: str, commit_title: str, hash_base: str, prerelease: bool = False
     ):
         parser = conventional_commits.parser.create(
             types=self._data_main.get_all_conventional_commit_types(secondary_only=True),
         )
+
+        tasklist = self._extract_tasklist(body=self._pull.body)
+
         changelog_manager = ChangelogManager(
             changelog_metadata=self._data_main["changelog"],
             ver_dist=ver_dist,
@@ -468,7 +497,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             parent_commit_url=self._gh_link.commit(hash_base),
             path_root=self._path_head,
         )
-        tasklist = self._extract_tasklist(body=self._pull.body)
         for task in tasklist:
             conv_msg = parser.parse(message=task["summary"])
             if conv_msg:
@@ -490,17 +518,17 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     def _get_next_ver_dist(self, prerelease_status: IssueStatus | None = None):
         ver_base, dist_base = self._get_latest_version(base=True)
-        primary_commit_type = self._data_main.get_issue_data_from_labels(self._pull.label_names).group_data
-        if self._primary_type_is_package_publish(commit_type=primary_commit_type):
+        primary_commit = self._data_main.get_issue_data_from_labels(self._pull.label_names).group_data
+        if self._primary_type_is_package_publish(commit_type=primary_commit):
             if prerelease_status:
                 next_ver = "?"
             else:
-                next_ver = self.get_next_version(ver_base, primary_commit_type.action)
+                next_ver = self.get_next_version(ver_base, primary_commit.action)
                 ver_dist = str(next_ver)
         else:
             ver_dist = f"{ver_base}+{dist_base + 1}"
             next_ver = None
-        return primary_commit_type, ver_base, next_ver, ver_dist
+        return primary_commit, ver_base, next_ver, ver_dist
 
     def _calculate_next_dev_version(self, final_commit_type):
         ver_last_base, _ = self._get_latest_version(dev_only=False, base=True)
@@ -602,18 +630,18 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _add_to_pr_timeline(self, entry: str) -> str:
         return self._add_to_timeline(entry=entry, body=self._pull.body, issue_nr=self._pull.number)
 
-    def _write_pre_dev_protocol(self, ver: str):
-        filepath = self._path_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+    def _write_pre_protocol(self, ver: str):
+        filepath = self._path_head / self._data_main["issue"]["protocol"]["prerelease_temp_path"]
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        old_title = f'# {self._data_main["issue"]["dev_protocol"]["template"]["title"]}'
+        old_title = f'# {self._data_main["issue"]["protocol"]["template"]["title"]}'
         new_title = f"{old_title} (v{ver})"
         entry = self._pull.body.strip().replace(old_title, new_title, 1)
         with open(filepath, "a") as f:
             f.write(f"\n\n{entry}\n")
         return
 
-    def _read_pre_dev_protocols(self) -> tuple[str, str]:
-        filepath = self._path_head / self._data_main["issue"]["dev_protocol"]["prerelease_temp_path"]
+    def _read_pre_protocols(self) -> tuple[str, str]:
+        filepath = self._path_head / self._data_main["issue"]["protocol"]["prerelease_temp_path"]
         protocols = filepath.read_text().strip()
         main_protocol, sub_protocols = protocols.split("\n# ", 1)
         return main_protocol.strip(), f"# {sub_protocols.strip()}"
@@ -644,10 +672,41 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         )
         allowed_base_types = mapping.get(self._branch_head.type)
         if not allowed_base_types:
-            self._error_unsupported_head()
+            err_msg = "Unsupported pull request head branch."
+            err_details = (
+                f"Pull requests from a head branch of type `{self._branch_head.type.value}` "
+                f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
+            )
+            logger.error(
+                "Unsupported PR Head Branch",
+                err_msg,
+                err_details
+            )
+            self._reporter.add(
+                name="event",
+                status="skip",
+                summary=err_msg,
+                body=err_details,
+            )
             return False
         if self._branch_base.type not in allowed_base_types:
-            self._error_unsupported_head_to_base()
+            err_msg = "Unsupported pull request base branch."
+            err_details = (
+                f"Pull requests from a head branch of type `{self._branch_head.type.value}` "
+                f"to a base branch of type `{self._branch_base.type.value}` "
+                f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
+            )
+            logger.error(
+                "Unsupported PR Base Branch",
+                err_msg,
+                err_details
+            )
+            self._reporter.add(
+                name="event",
+                status="skip",
+                summary=err_msg,
+                body=err_details,
+            )
             return False
         return True
 
@@ -686,45 +745,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 self._error_unsupported_pre_status_label_for_prerelease_branch()
                 return False
         return True
-
-    def _error_unsupported_head(self):
-        err_msg = "Unsupported pull request head branch."
-        err_details = (
-            f"Pull requests from a head branch of type `{self._branch_head.type.value}` "
-            f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
-        )
-        logger.info(
-            "Unsupported PR Head Branch",
-            err_msg,
-            err_details
-        )
-        self._reporter.add(
-            name="event",
-            status="skip",
-            summary=err_msg,
-            body=err_details,
-        )
-        return
-
-    def _error_unsupported_head_to_base(self):
-        err_msg = "Unsupported pull request base branch."
-        err_details = (
-            f"Pull requests from a head branch of type `{self._branch_head.type.value}` "
-            f"to a base branch of type `{self._branch_base.type.value}` "
-            f"are not allowed for {'internal' if self._payload.internal else 'external'} pull requests."
-        )
-        logger.info(
-            "Unsupported PR Base Branch",
-            err_msg,
-            err_details
-        )
-        self._reporter.add(
-            name="event",
-            status="skip",
-            summary=err_msg,
-            body=err_details,
-        )
-        return
 
     def _error_unsupported_status_label(self):
         err_msg = "Unsupported pull request status label."
@@ -812,7 +832,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     @staticmethod
     def _primary_type_is_package_publish(
-        commit_type: PrimaryActionCommit | PrimaryCustomCommit, include_post_release: bool = True
+        commit_type: PrimaryActionCommit | PrimaryCustomCommit,
+        include_post_release: bool = True,
     ):
         actions = [
             PrimaryActionCommitType.RELEASE_MAJOR,
