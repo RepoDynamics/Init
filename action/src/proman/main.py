@@ -5,10 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 import json
 from typing import TYPE_CHECKING
-import re
 import datetime
 
-import jinja2
 from loggerman import logger
 import mdit
 import htmp
@@ -30,7 +28,7 @@ from proman.datatype import FileChangeType, RepoFileType, BranchType
 from proman.repo_config import RepoConfig
 from proman import hook_runner
 from proman.data_manager import DataManager
-from proman import change_detector
+from proman import change_detector, dev_doc
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
@@ -38,7 +36,8 @@ if TYPE_CHECKING:
     from github_contexts import GitHubContext
     from proman.reporter import Reporter
     from proman.output_writer import OutputWriter
-    from github_contexts.github.payload.object.user import User as GitHubUser
+    from pylinks.api.github import Repo as GitHubRepoAPI
+    from pylinks.site.github import Repo as GitHubRepoLink
 
 
 class EventHandler:
@@ -67,7 +66,7 @@ class EventHandler:
     ):
 
         @logger.sectioner("GitHub API Initialization")
-        def init_github_api():
+        def init_github_api() -> tuple[GitHubRepoAPI, GitHubRepoAPI, GitHubRepoLink, bool]:
             repo_user = self._context.repository_owner
             repo_name = self._context.repository_name
             link_gen = pylinks.site.github.user(repo_user).repo(repo_name)
@@ -216,6 +215,11 @@ class EventHandler:
             gh_api=self._gh_api,
             gh_api_admin=self._gh_api_admin,
             default_branch_name=self._context.event.repository.default_branch
+        )
+        self._devdoc = dev_doc.DevDoc(
+            data_main=self._data_main,
+            github_context=self._context._context,
+            event_payload=self._context.event._payload,
         )
         self._ver = pkgdata.get_version_from_caller()
         self._data_branch: DataManager | None = None
@@ -635,60 +639,6 @@ class EventHandler:
                 return Branch(type=branch_type, name=branch_name, prefix=branch_data["name"], suffix=suffix)
         return Branch(type=BranchType.OTHER, name=branch_name)
 
-    def _extract_tasklist(self, body: str) -> list[dict[str, bool | str | list]]:
-        """
-        Extract the implementation tasklist from the pull request body.
-
-        Returns
-        -------
-        A list of dictionaries, each representing a tasklist entry.
-        Each dictionary has the following keys:
-        - complete : bool
-            Whether the task is complete.
-        - summary : str
-            The summary of the task.
-        - description : str
-            The description of the task.
-        - sublist : list[dict[str, bool | str | list]]
-            A list of dictionaries, each representing a subtask entry, if any.
-            Each dictionary has the same keys as the parent dictionary.
-        """
-
-        def extract(tasklist_string: str, level: int = 0) -> list[dict[str, bool | str | list]]:
-            # Regular expression pattern to match each task item
-            task_pattern = rf'{" " * level * 2}- \[(X| )\] (.+?)(?=\n{" " * level * 2}- \[|\Z)'
-            # Find all matches
-            matches = re.findall(task_pattern, tasklist_string, flags=re.DOTALL)
-            # Process each match into the required dictionary format
-            tasklist_entries = []
-            for match in matches:
-                complete, summary_and_desc = match
-                summary_and_desc_split = summary_and_desc.split('\n', 1)
-                summary = summary_and_desc_split[0]
-                description = summary_and_desc_split[1] if len(summary_and_desc_split) > 1 else ''
-                if description:
-                    sublist_pattern = r'^( *- \[(?:X| )\])'
-                    parts = re.split(sublist_pattern, description, maxsplit=1, flags=re.MULTILINE)
-                    description = parts[0]
-                    if len(parts) > 1:
-                        sublist_str = ''.join(parts[1:])
-                        sublist = extract(sublist_str, level + 1)
-                    else:
-                        sublist = []
-                else:
-                    sublist = []
-                tasklist_entries.append({
-                    'complete': complete == 'X',
-                    'summary': summary.strip(),
-                    'description': description.rstrip(),
-                    'sublist': sublist
-                })
-            return tasklist_entries
-        marker_start, marker_end = self.make_text_marker("tasklist")
-        pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
-        match = re.search(pattern, body, flags=re.DOTALL)
-        return extract(match.group(1).strip()) if match else []
-
     def _add_to_timeline(
         self,
         entry: str,
@@ -696,7 +646,7 @@ class EventHandler:
         issue_nr: int | None = None,
         comment_id: int | None = None,
     ):
-        new_body = self.add_data_to_marked_document(
+        new_body = self._devdoc.add_data(
             data=entry, document=body, data_id="timeline", replace=False
         )
         if issue_nr:
@@ -743,29 +693,7 @@ class EventHandler:
         logger.critical(action_err_msg, action_err_details)
         raise ProManException()
 
-    def _add_reference_to_dev_protocol(self, protocol: str, ref_url: str, ref_title: str) -> str:
-        template = self._data_main["doc.dev_protocol.reference_template"]
-        env_vars = {
-            "ref": {
-                "url": ref_url,
-                "title": ref_title,
-            }
-        }
-        entry = self.fill_jinja_template(template, env_vars)
-        return self.add_data_to_marked_document(data=entry, document=protocol, data_id="references", replace=False)
-
-    def add_data_to_marked_document(self, data: str, document: str, data_id: str, replace: bool = False):
-        marker_start, marker_end = self.make_text_marker(data_id)
-        pattern = rf"({re.escape(marker_start)})(.*?)({re.escape(marker_end)})"
-        replacement = r"\1" + data + r"\3" if replace else r"\1\2" + data + r"\3"
-        return re.sub(pattern, replacement, document, flags=re.DOTALL)
-
-    def _add_readthedocs_reference_to_pr(
-        self,
-        pull_nr: int,
-        update: bool = True,
-        pull_body: str = ""
-    ) -> str | None:
+    def _add_readthedocs_reference_to_pr(self, pull_nr: int):
 
         def create_readthedocs_preview_url():
             # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
@@ -784,16 +712,11 @@ class EventHandler:
 
         if not self._data_main["tool.readthedocs"]:
             return
-        if not pull_body:
-            pull_body = self._gh_api.pull(number=pull_nr)["body"]
-        new_body = self._add_reference_to_dev_protocol(
-            protocol=pull_body,
+        return self._devdoc.add_reference(
+            ref_id="readthedocs-preview",
+            ref_title="Website Preview on ReadTheDocs",
             ref_url=create_readthedocs_preview_url(),
-            ref_title="Website Preview on ReadTheDocs"
         )
-        if update:
-            self._gh_api.pull_update(number=pull_nr, body=new_body)
-        return new_body
 
     def create_branch_name_release(self, major_version: int) -> str:
         """Generate the name of the release branch for a given major version."""
@@ -829,23 +752,8 @@ class EventHandler:
             f.write(announcement)
         return
 
-    def make_base_template_env_vars(self):
-        return {
-            "ccc": self._data_main,
-            "context": self._context,
-            "now": datetime.datetime.now(tz=datetime.UTC),
-        }
-
-    def make_text_marker(self, id: str):
-        marker = self._data_main["doc.dev_protocol.marker"]
-        template = "<!-- {pos}{id} -->"
-        return tuple(template.format(pos=marker[pos], id=id) for pos in ("start", "end"))
-
     @staticmethod
-    def get_next_version(
-        version: PEP440SemVer,
-        action: PrimaryActionCommitType
-    ) -> PEP440SemVer:
+    def get_next_version(version: PEP440SemVer, action: PrimaryActionCommitType) -> PEP440SemVer:
         if action is PrimaryActionCommitType.RELEASE_MAJOR:
             if version.major == 0:
                 return version.next_minor
@@ -859,37 +767,3 @@ class EventHandler:
         if action == PrimaryActionCommitType.RELEASE_POST:
             return version.next_post
         return version
-
-    @staticmethod
-    def write_tasklist(entries: list[dict[str, bool | str | list]]) -> str:
-        """Write an implementation tasklist as Markdown string.
-
-        Parameters
-        ----------
-        entries : list[dict[str, bool | str | list]]
-            A list of dictionaries, each representing a tasklist entry.
-            The format of each dictionary is the same as that returned by
-            `_extract_tasklist_entries`.
-        """
-        string = []
-
-        def write(entry_list, level=0):
-            for entry in entry_list:
-                description = f"{entry['description']}\n" if entry['description'] else ''
-                check = 'X' if entry['complete'] else ' '
-                string.append(f"{' ' * level * 2}- [{check}] {entry['summary']}\n{description}")
-                write(entry['sublist'], level + 1)
-
-        write(entries)
-        return "".join(string).rstrip()
-
-    @staticmethod
-    def make_user_mention(user: GitHubUser) -> str:
-        linked_username = f"[{user.login}]({user.html_url})"
-        if not user.name:
-            return linked_username
-        return f"{user.name} ({linked_username})"
-
-    @staticmethod
-    def fill_jinja_template(template: str, env_vars: dict) -> str:
-        return jinja2.Template(template).render(env_vars)
