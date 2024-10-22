@@ -54,14 +54,14 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def run(self):
         if not self._head_to_base_allowed():
             return
+        self._devdoc.add_timeline_entry()
         action = self._payload.action
         if action is _gh_context.enum.ActionType.OPENED:
             if self._branch_head.type is BranchType.PRE and self._branch_base.type in (
                 BranchType.MAIN,
                 BranchType.RELEASE,
             ):
-                return self._run_open_pre_to_release()
-            return
+                self._run_open_pre_to_release()
         elif action is _gh_context.enum.ActionType.REOPENED:
             self._run_action_reopened()
         elif action is _gh_context.enum.ActionType.SYNCHRONIZE:
@@ -72,6 +72,10 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self._run_action_ready_for_review()
         else:
             self.error_unsupported_triggering_action()
+        self._gh_api.pull_update(
+            number=self._pull.number,
+            body=self._devdoc.protocol,
+        )
         return
 
     def _run_action_reopened(self):
@@ -87,22 +91,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 and self._primary_type_is_package_publish(commit_type=final_commit_type)
             ),
         )
-        body = self._pull.body
-        timeline_template = self._data_main["doc.protocol.timeline_template.push"]
-        if timeline_template:
-            template_vars = self._make_template_env_vars() | {
-                "workflow_url": self._gh_link.workflow_run(run_id=self._context.run_id),
-                "head": {
-                    "type": self._branch_head.type.value,
-                    "name": self._branch_head.name,
-                    "prefix": self._branch_head.prefix,
-                    "suffix": self._branch_head.suffix,
-                    "url": self._gh_link.branch(self._branch_head.name).homepage,
-                }
-            }
-            entry = self.fill_jinja_template(template=timeline_template, env_vars=template_vars)
-            body = self.add_data_to_marked_document(data=entry, document=body, data_id="timeline")
-        tasks_complete = self._update_implementation_tasklist(body=body)
+        tasks_complete = self._update_implementation_tasklist()
         if tasks_complete and not self._reporter.failed:
             self._gh_api.pull_update(
                 number=self._pull.number,
@@ -562,7 +551,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             next_ver_str += f".dev{dev}"
         return PEP440SemVer(next_ver_str)
 
-    def _update_implementation_tasklist(self, body: str | None = None) -> bool:
+    def _update_implementation_tasklist(self) -> bool:
 
         def apply(commit_details, tasklist_entries):
             for entry in tasklist_entries:
@@ -585,7 +574,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             return all([entry['complete'] for entry in tasklist_entries])
 
         commits = self._get_commits()
-        tasklist = self._extract_tasklist(body=self._pull.body)
+        tasklist = self._devdoc.get_tasklist()
         if not tasklist:
             return False
         for commit in commits:
@@ -594,41 +583,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 else [commit.msg.summary, *commit.msg.body.strip().splitlines()]
             )
             apply(commit_details, tasklist)
-        complete = update_complete(tasklist)
-        self._update_tasklist(tasklist, body=body)
-        return complete
-
-    def _update_tasklist(
-        self,
-        entries: list[dict[str, bool | str | list]],
-        body: str | None = None,
-        number: int | None = None,
-    ) -> None:
-        """
-        Update the implementation tasklist in the pull request body.
-
-        Parameters
-        ----------
-        entries : list[dict[str, bool | str | list]]
-            A list of dictionaries, each representing a tasklist entry.
-            The format of each dictionary is the same as that returned by
-            `_extract_tasklist_entries`.
-        """
-        tasklist_string = self.write_tasklist(entries)
-        new_body = self.add_data_to_marked_document(
-            data=f"\n{tasklist_string.strip()}\n",
-            document=body or self._pull.body,
-            data_id="tasklist",
-            replace=True
-        )
-        self._gh_api.pull_update(
-            number=number or self._pull.number,
-            body=new_body,
-        )
-        return
-
-    def _add_to_pr_timeline(self, entry: str) -> str:
-        return self._add_to_timeline(entry=entry, body=self._pull.body, issue_nr=self._pull.number)
+        self._devdoc.update_tasklist(tasklist)
+        return update_complete(tasklist)
 
     def _write_pre_protocol(self, ver: str):
         filepath = self._path_head / self._data_main["issue"]["protocol"]["prerelease_temp_path"]

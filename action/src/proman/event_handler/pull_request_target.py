@@ -6,7 +6,7 @@ from github_contexts import github as _gh_context
 
 from loggerman import logger
 from proman.datatype import (
-    BranchType,
+    BranchType, Branch
 )
 
 from proman.datatype import TemplateType
@@ -20,6 +20,16 @@ if TYPE_CHECKING:
 class PullRequestTargetEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
+
+        def make_branch_env_vars(branch: Branch):
+            return {
+                "type": branch.type.value,
+                "name": branch.name,
+                "prefix": branch.prefix,
+                "suffix": branch.suffix,
+                "url": self._gh_link.branch(branch.name).homepage,
+            }
+
         super().__init__(**kwargs)
 
         self._payload: PullRequestPayload = self._context.event
@@ -27,6 +37,13 @@ class PullRequestTargetEventHandler(EventHandler):
 
         self._branch_base = self.resolve_branch(self._context.base_ref)
         self._branch_head = self.resolve_branch(self._context.head_ref)
+
+        self._devdoc.protocol = self._pull.body
+        self._devdoc.env_vars |= {
+            "workflow_url": self._gh_link.workflow_run(run_id=self._context.run_id),
+            "head": make_branch_env_vars(self._branch_head),
+            "base": make_branch_env_vars(self._branch_base),
+        }
 
         logger.info("Base Branch Resolution", str(self._branch_base))
         logger.info("Head Branch Resolution", str(self._branch_head))

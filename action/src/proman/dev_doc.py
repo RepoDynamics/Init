@@ -248,9 +248,9 @@ class DevDoc:
             self.env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
         )
 
-    @staticmethod
-    def write_tasklist(entries: list[dict[str, bool | str | list]]) -> str:
-        """Write an implementation tasklist as Markdown string.
+    def update_tasklist(self, entries: list[dict[str, bool | str | list]]) -> str:
+        """Write an implementation tasklist as Markdown string
+        and update it in the protocol.
 
         Parameters
         ----------
@@ -263,13 +263,21 @@ class DevDoc:
 
         def write(entry_list, level=0):
             for entry in entry_list:
-                description = f"{entry['description']}\n" if entry['description'] else ''
                 check = 'X' if entry['complete'] else ' '
-                string.append(f"{' ' * level * 2}- [{check}] {entry['summary']}\n{description}")
+                string.append(f"{' ' * level * 2}- [{check}] {entry['summary']}")
+                if entry["description"]:
+                    for line in entry["description"].splitlines():
+                        string.append(f"{' ' * (level + 1) * 2}{line}".strip())
                 write(entry['sublist'], level + 1)
 
         write(entries)
-        return "".join(string).rstrip()
+        tasklist = "\n".join(string).strip()
+        return self.add_data(
+            id="tasklist",
+            spec=self._data_main["doc.protocol.tasklist"],
+            data=f"\n{tasklist}\n",
+            replace=True
+        )
 
     @staticmethod
     def make_user_mention(user: GitHubUser) -> str:

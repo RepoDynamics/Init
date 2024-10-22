@@ -639,26 +639,6 @@ class EventHandler:
                 return Branch(type=branch_type, name=branch_name, prefix=branch_data["name"], suffix=suffix)
         return Branch(type=BranchType.OTHER, name=branch_name)
 
-    def _add_to_timeline(
-        self,
-        entry: str,
-        body: str,
-        issue_nr: int | None = None,
-        comment_id: int | None = None,
-    ):
-        new_body = self._devdoc.add_data(
-            data=entry, document=body, data_id="timeline", replace=False
-        )
-        if issue_nr:
-            self._gh_api.issue_update(number=issue_nr, body=new_body)
-        elif comment_id:
-            self._gh_api.issue_comment_update(comment_id=comment_id, body=new_body)
-        else:
-            logger.error(
-                "Failed to add to timeline", "Neither issue nor comment ID was provided."
-            )
-        return new_body
-
     def switch_to_autoupdate_branch(self, typ: Literal["hooks", "meta"], git: gittidy.Git) -> str:
         current_branch = git.current_branch_name()
         new_branch_prefix = self._data_main["branch.auto.name"]

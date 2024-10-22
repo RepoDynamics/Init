@@ -21,7 +21,6 @@ class IssuesEventHandler(EventHandler):
         self._devdoc.env_vars["issue"] = self._issue._issue
 
         self._label_groups: dict[LabelType, list[Label]] = {}
-        self._protocol: str = ""
         self._protocol_comment_id: int | None = None
         self._protocol_issue_nr: int | None = None
         return
@@ -254,7 +253,7 @@ class IssuesEventHandler(EventHandler):
                 head=new_branch["name"],
                 base=base_branch_name,
                 title=self._devdoc.get_pr_title() or self._issue.title,
-                body=self._protocol,
+                body=self._devdoc.protocol,
                 maintainer_can_modify=True,
                 draft=True,
             )
