@@ -295,7 +295,7 @@ class DevDoc:
             return f"{match.group(1)}{checkmark}{match.group(3)}"
 
         pattern = re.compile(r"(^[\s\n]*-\s*\[)([ ]|X)(\]\s*)", re.MULTILINE)
-        matches = re.findall(pattern, checkbox, flags=re.MULTILINE)
+        matches = re.findall(pattern, checkbox)
         if len(matches) == 0 or len(matches) > 1:
             logger.warning(
                 "Checkbox Toggle",
@@ -303,4 +303,4 @@ class DevDoc:
                 mdit.element.code_block(checkbox, language="markdown", caption="Input String"),
             )
             return checkbox
-        return re.sub(pattern, replacer, checkbox, count=1, flags=re.MULTILINE)
+        return re.sub(pattern, replacer, checkbox, count=1)
