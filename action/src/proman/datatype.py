@@ -285,6 +285,7 @@ class IssueStatus(_Enum):
             IssueStatus.DEPLOY_RC: 9,
             IssueStatus.DEPLOY_FINAL: 10,
         }
+        return level[self]
 
 
 class LabelType(_Enum):
