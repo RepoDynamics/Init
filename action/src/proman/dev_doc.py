@@ -9,10 +9,11 @@ from loggerman import logger
 import mdit
 import pyserials as ps
 
+from proman.datatype import IssueStatus
 
 if TYPE_CHECKING:
     from github_contexts.github.payload.object.user import User as GitHubUser
-    from proman.datatype import IssueStatus
+
 
 class DevDoc:
 
