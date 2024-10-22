@@ -1,5 +1,4 @@
 import re
-import datetime
 from enum import Enum
 
 from github_contexts import github as gh_context
@@ -19,11 +18,12 @@ class IssuesEventHandler(EventHandler):
         super().__init__(**kwargs)
         self._payload: gh_context.payload.IssuesPayload = self._context.event
         self._issue = self._payload.issue
+        self._devdoc.env_vars["issue"] = self._issue._issue
 
         self._label_groups: dict[LabelType, list[Label]] = {}
-        self._dev_protocol: str = ""
-        self._dev_protocol_comment_id: int | None = None
-        self._dev_protocol_issue_nr: int | None = None
+        self._protocol: str = ""
+        self._protocol_comment_id: int | None = None
+        self._protocol_issue_nr: int | None = None
         return
 
     @logger.sectioner("Issues Handler Execution")
@@ -31,17 +31,18 @@ class IssuesEventHandler(EventHandler):
         action = self._payload.action
         if action == gh_context.enum.ActionType.OPENED:
             return self._run_opened()
-        if self._data_main["doc.dev_protocol.as_comment"]:
+        if self._data_main["doc.protocol.as_comment"]:
             comments = self._gh_api.issue_comments(number=self._issue.number, max_count=100)
-            dev_protocol_comment = comments[0]
-            self._dev_protocol_comment_id = dev_protocol_comment.get("id")
-            self._dev_protocol = dev_protocol_comment.get("body")
+            protocol_comment = comments[0]
+            self._protocol_comment_id = protocol_comment.get("id")
+            self._devdoc.protocol = protocol_comment.get("body")
         else:
-            self._dev_protocol = self._issue.body
-            self._dev_protocol_issue_nr = self._issue.number
+            self._devdoc.protocol = self._issue.body
+            self._protocol_issue_nr = self._issue.number
         if action == gh_context.enum.ActionType.LABELED:
             return self._run_labeled()
-        # self.error_unsupported_triggering_action()
+        self._devdoc.add_timeline_entry()
+        self._update_protocol()
         return
 
     def _run_opened(self):
@@ -131,20 +132,6 @@ class IssuesEventHandler(EventHandler):
             )
             return labels
 
-        def make_template_vars(body: str):
-            data = {}
-            env_vars = self._make_template_env_vars() | {
-                "data": data,
-                "form": issue_form,
-                "input": issue_entries,
-                "issue_body": body,
-            }
-            for data_id, data_value in self._data_main["doc.dev_protocol.data"].items():
-                marker_start, marker_end = self.make_text_marker(id=data_id)
-                data_filled = self.fill_jinja_template(template=data_value, env_vars=env_vars)
-                data[data_id] = f"{marker_start}{data_filled}{marker_end}"
-            return env_vars
-
         self._reporter.event(f"Issue #{self._issue.number} opened")
         logger.info("Labels", str(self._issue.label_names))
         body, issue_form = identify()
@@ -153,65 +140,50 @@ class IssuesEventHandler(EventHandler):
         assignees = assign()
         body_template = issue_form.get("post_process", {}).get("body")
         if body_template:
-            body_processed = self.fill_jinja_template(
-                template=body_template,
-                env_vars=make_template_vars(body),
+            body_processed = self._devdoc.generate(
+                template=body_template, issue_form=issue_form, issue_inputs=issue_entries, issue_body=body
             )
         else:
             logger.info("Issue Post Processing", "No post-process action defined in issue form.")
             body_processed = body
-        dev_protocol_env_vars = make_template_vars(body_processed)
-        dev_protocol = self.fill_jinja_template(
-            template=self._data_main["doc.dev_protocol.template"],
-            env_vars=dev_protocol_env_vars,
+        self._devdoc.generate(
+            template=self._data_main["doc.protocol.template"],
+            issue_form=issue_form,
+            issue_inputs=issue_entries,
+            issue_body=body_processed,
         )
-        timeline_entries = []
-        timeline_template = self._data_main.get("doc.dev_protocol.timeline_template", {})
-        if "opened" in timeline_template:
-            entry = self.fill_jinja_template(
-                template=timeline_template["opened"],
-                env_vars=dev_protocol_env_vars,
+        self._devdoc.add_timeline_entry()
+        for assignee in assignees:
+            self._devdoc.add_timeline_entry(
+                env_vars={
+                    "action": "assigned",
+                    "payload": self._devdoc.env_vars["payload"] | {"assignee": assignee}
+                },
             )
-            timeline_entries.append(entry)
-        if "assigned" in timeline_template:
-            for assignee in assignees:
-                env_vars = dev_protocol_env_vars | {"assignee": assignee}
-                entry = self.fill_jinja_template(
-                    template=timeline_template["assigned"],
-                    env_vars=env_vars,
-                )
-                timeline_entries.append(entry)
-        if "labeled" in timeline_template:
-            for label in labels:
-                label_env_var = self.make_label_env_var(self._data_main.resolve_label(label))
-                env_vars = dev_protocol_env_vars | {"label": label_env_var}
-                entry = self.fill_jinja_template(
-                    template=timeline_template["labeled"],
-                    env_vars=env_vars,
-                )
-                timeline_entries.append(entry)
-        if timeline_entries:
-            timeline = "".join(timeline_entries)
-            dev_protocol = self.add_data_to_marked_document(
-                data=timeline, document=dev_protocol, data_id="timeline"
+        for label in labels:
+            self._devdoc.add_timeline_entry(
+                env_vars={
+                    "action": "labeled",
+                    "label": self.make_label_env_var(self._data_main.resolve_label(label))
+                },
             )
         logger.info(
             "Development Protocol",
-            mdit.element.code_block(dev_protocol)
+            mdit.element.code_block(self._devdoc.protocol)
         )
-        if self._data_main["doc.dev_protocol.as_comment"]:
+        if self._data_main["doc.protocol.as_comment"]:
             response = self._gh_api.issue_update(number=self._issue.number, body=body_processed)
             logger.info(
                 "Issue Body Update",
                 logger.pretty(response)
             )
-            response = self._gh_api.issue_comment_create(number=self._issue.number, body=dev_protocol)
+            response = self._gh_api.issue_comment_create(number=self._issue.number, body=self._devdoc.protocol)
             logger.info(
                 "Dev Protocol Comment",
                 logger.pretty(response)
             )
         else:
-            response = self._gh_api.issue_update(number=self._issue.number, body=dev_protocol)
+            response = self._gh_api.issue_update(number=self._issue.number, body=self._devdoc.protocol)
             logger.info(
                 "Issue Body Update",
                 logger.pretty(response)
@@ -220,15 +192,12 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled(self):
         label = self._data_main.resolve_label(self._payload.label.name)
-        timeline_entry_template = self._data_main["doc.dev_protocol.timeline_template.labeled"]
-        if timeline_entry_template:
-            env_vars = self._make_template_env_vars() | {
-                "label": self.make_label_env_var(label),
-            }
-            entry = self.fill_jinja_template(template=timeline_entry_template, env_vars=env_vars)
-            self._add_to_issue_timeline(entry=entry)
+        self._reporter.event(f"Issue #{self._issue.number} status changed to `{label.type.value}`")
+        self._devdoc.add_timeline_entry(env_vars={"label": self.make_label_env_var(label)})
         if label.category is not LabelType.STATUS:
+            self._update_protocol()
             return
+        self._devdoc.update_status(label.type)
         # Remove all other status labels
         self._label_groups = self._data_main.resolve_labels(self._issue.label_names)
         self._update_issue_status_labels(
@@ -236,12 +205,11 @@ class IssuesEventHandler(EventHandler):
             labels=self._label_groups[LabelType.STATUS],
             current_label=label,
         )
-        self._reporter.event(f"Issue #{self._issue.number} status changed to `{label.type.value}`")
         if label.type in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
             self._gh_api.issue_update(number=self._issue.number, state="closed", state_reason="not_planned")
-            return
-        if label.type is IssueStatus.IMPLEMENTATION:
-            return self._run_labeled_status_implementation()
+        elif label.type is IssueStatus.IMPLEMENTATION:
+            self._run_labeled_status_implementation()
+        self._update_protocol()
         return
 
     def _run_labeled_status_implementation(self):
@@ -285,13 +253,24 @@ class IssuesEventHandler(EventHandler):
             pull_data = self._gh_api.pull_create(
                 head=new_branch["name"],
                 base=base_branch_name,
-                title=self._get_pr_title(),
-                body=self._dev_protocol,
+                title=self._devdoc.get_pr_title() or self._issue.title,
+                body=self._protocol,
                 maintainer_can_modify=True,
                 draft=True,
             )
+            logger.info(
+                f"Pull Request Creation ({new_branch['name']} -> {base_branch_name})",
+                logger.pretty(pull_data)
+            )
             self._gh_api.issue_labels_set(number=pull_data["number"], labels=labels)
-            self._add_readthedocs_reference_to_pr(pull_nr=pull_data["number"], pull_body=self._dev_protocol)
+            self._add_readthedocs_reference_to_pr(pull_nr=pull_data["number"])
+            self._devdoc.add_timeline_entry(
+                env_vars={
+                    "event": "pull_request",
+                    "action": "opened",
+                    "payload": {"pull_request": pull_data},
+                },
+            )
             implementation_branches_info.append(
                 {
                     "head": {
@@ -301,47 +280,13 @@ class IssuesEventHandler(EventHandler):
                     "number": pull_data["number"],
                 }
             )
-        timeline_template = self._data_main["doc.dev_protocol.timeline_template.pull_opened"]
-        if timeline_template:
-            entry = self.fill_jinja_template(
-                template=timeline_template,
-                env_vars=self._make_template_env_vars() | {"pulls": implementation_branches_info},
-            )
-            self._add_to_issue_timeline(entry=entry)
-        template = self._data_main["doc.dev_protocol.pr_list_template"]
-        if template and self._data_main["doc.dev_protocol.data.pr_list"]:
-            env_vars = {"targets": implementation_branches_info}
-            entry = self.fill_jinja_template(template=template, env_vars=env_vars)
-            new_protocol = self.add_data_to_marked_document(data=entry, document=self._dev_protocol, data_id="pr_list")
-            self._update_dev_protocol(new_protocol=new_protocol)
+        self._devdoc.add_pr_list(implementation_branches_info)
         return
 
-    def _add_to_issue_timeline(self, entry: str):
-        self._dev_protocol = self.add_data_to_marked_document(
-            data=entry, document=self._dev_protocol, data_id="timeline", replace=False
-        )
-        self._update_dev_protocol(new_protocol=self._dev_protocol)
-        return
-
-    def _update_dev_protocol(self, new_protocol: str):
-        self._dev_protocol = new_protocol
-        if self._dev_protocol_issue_nr:
-            return self._gh_api.issue_update(number=self._dev_protocol_issue_nr, body=new_protocol)
-        return self._gh_api.issue_comment_update(comment_id=self._dev_protocol_comment_id, body=new_protocol)
-
-    def _get_pr_title(self):
-        marker_start, marker_end = self.make_text_marker(id="commit_summary")
-        pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
-        match = re.search(pattern, self._dev_protocol, flags=re.DOTALL)
-        title = match.group(1).strip()
-        return title or self._issue.title
-
-    def _make_template_env_vars(self):
-        return self.make_base_template_env_vars() | {
-            "actor": self._payload.sender,
-            "payload": self._payload,
-            "issue": self._issue,
-        }
+    def _update_protocol(self):
+        if self._protocol_issue_nr:
+            return self._gh_api.issue_update(number=self._protocol_issue_nr, body=self._devdoc.protocol)
+        return self._gh_api.issue_comment_update(comment_id=self._protocol_comment_id, body=self._devdoc.protocol)
 
     def make_label_env_var(self, label: Label):
         return {
