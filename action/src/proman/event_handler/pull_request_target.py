@@ -21,17 +21,15 @@ class PullRequestTargetEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
         self._payload: PullRequestPayload = self._context.event
         self._pull: PullRequest = self._payload.pull_request
+
         self._branch_base = self.resolve_branch(self._context.base_ref)
-        logger.info("Base Branch Resolution", str(self._branch_base))
         self._branch_head = self.resolve_branch(self._context.head_ref)
-        logger.info(
-            "Resolve head branch",
-            self._branch_head.type.value,
-            code_title="Branch details",
-            code=self._branch_head,
-        )
+
+        logger.info("Base Branch Resolution", str(self._branch_base))
+        logger.info("Head Branch Resolution", str(self._branch_head))
         return
 
     def run(self):
