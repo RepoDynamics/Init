@@ -152,6 +152,7 @@ class IssuesEventHandler(EventHandler):
             issue_body=body_processed,
         )
         self._devdoc.add_timeline_entry()
+        self._devdoc.update_status(IssueStatus.TRIAGE)
         for assignee in assignees:
             self._devdoc.add_timeline_entry(
                 env_vars={

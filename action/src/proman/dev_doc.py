@@ -44,7 +44,7 @@ class DevDoc:
             "input": issue_inputs,
             "issue_body": issue_body,
         }
-        for template_key in ("tasklist", "timeline", "references", "pr_list", "status"):
+        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title", "status"):
             template_data = self._data_main.get(f"doc.protocol.{template_key}")
             if template_data:
                 env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
