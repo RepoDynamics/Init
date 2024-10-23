@@ -157,7 +157,7 @@ class DevDoc:
         for status_id, checkbox_data in checkbox_templates.items():
             checkbox_level = IssueStatus(status_id).level if status_id != "deploy" else 10
             checkbox = self.get_data(id=f"status_checkbox.{status_id}", spec=checkbox_data)
-            checkbox_set = self.toggle_checkbox(checkbox, check=status.level >= checkbox_level)
+            checkbox_set = self.toggle_checkbox(checkbox, check=status.level > checkbox_level)
             self.add_data(
                 id=f"status_checkbox.{status_id}",
                 spec=checkbox_data,
