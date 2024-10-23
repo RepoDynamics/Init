@@ -268,7 +268,7 @@ class IssuesEventHandler(EventHandler):
                 env_vars={
                     "event": "pull_request",
                     "action": "opened",
-                    "payload": {"pull_request": pull_data},
+                    "payload": self._devdoc.env_vars["payload"] | {"pull_request": pull_data},
                 },
             )
             implementation_branches_info.append(
