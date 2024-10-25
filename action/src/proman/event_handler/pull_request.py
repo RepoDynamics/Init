@@ -471,6 +471,12 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _update_changelogs(
         self, ver_dist: str, commit_type: str, commit_title: str, hash_base: str, prerelease: bool = False
     ):
+        entry = {
+
+        }
+
+
+
         parser = conventional_commits.parser.create(
             types=self._data_main.get_all_conventional_commit_types(secondary_only=True),
         )
