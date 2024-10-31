@@ -6,6 +6,7 @@ import conventional_commits
 from github_contexts import github as _gh_context
 from loggerman import logger
 import controlman
+from proman.data_manager import DataManager
 from versionman.pep440_semver import PEP440SemVer
 import fileex as _fileex
 
@@ -125,7 +126,7 @@ class PushEventHandler(EventHandler):
         data = cc_manager.generate_data()
         with logger.sectioning("Repository Update"):
             self._git_head.push(force_with_lease=True)
-        self._repo_config.reset_labels(data=data)
+        self._repo_config.reset_labels(data=DataManager(data))
         self._reporter.add(
             name="event",
             status="pass",
@@ -238,9 +239,11 @@ class PushEventHandler(EventHandler):
         self._reporter.event("Repository configuration synchronization")
         self._repo_config.update_all(
             data_new=self._data_main,
-            data_old=controlman.from_json_file_at_commit(
-                git_manager=self._git_head,
-                commit_hash=self._context.hash_before,
-            )
+            data_old=DataManager(
+                controlman.from_json_file_at_commit(
+                    git_manager=self._git_head,
+                    commit_hash=self._context.hash_before,
+                ),
+            ),
         )
         return
