@@ -27,6 +27,7 @@ def run():
     path_repo_base = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_BASE", typ=str)
     path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
     admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
+    zenodo_token = _actionman.env_var.read(name="RD_PROMAN__ZENODO_TOKEN", typ=str)
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
     )
@@ -41,6 +42,7 @@ def run():
                 reporter=reporter,
                 output_writer=output_writer,
                 admin_token=admin_token,
+                zenodo_token=zenodo_token,
                 path_repo_base=path_repo_base,
                 path_repo_head=path_repo_head,
             ).run()

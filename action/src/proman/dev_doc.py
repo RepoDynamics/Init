@@ -22,6 +22,7 @@ class DevDoc:
         data_main: ps.NestedDict,
         github_context: dict,
         event_payload: dict,
+        sender: dict,
         env_vars: dict | None = None,
         protocol: str | None = None,
     ):
@@ -32,7 +33,7 @@ class DevDoc:
             "ccc": self._data_main,
             "context": github_context,
             "payload": event_payload,
-            "actor": event_payload["sender"],
+            "sender": sender,
         } | (env_vars or {})
         self.protocol = protocol or ""
         return
@@ -126,6 +127,31 @@ class DevDoc:
             spec=self._data_main["doc.protocol.references"],
             data=entry,
             replace=False
+        )
+
+    def add_reference_readthedocs(self, pull_nr: int) -> str:
+
+        def create_readthedocs_preview_url():
+            # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
+            # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
+            # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
+            # https://docs.readthedocs.io/en/latest/guides/pull-requests.html
+
+            config = self._data_main["tool.readthedocs.config.workflow"]
+            domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
+            slug = config["name"]
+            url = f"https://{slug}--{pull_nr}.{domain}/"
+            if config["version_scheme"]["translation"]:
+                language = config["language"]
+                url += f"{language}/{pull_nr}/"
+            return url
+
+        if not self._data_main["tool.readthedocs"]:
+            return self.protocol
+        return self.add_reference(
+            ref_id="readthedocs-preview",
+            ref_title="Website Preview on ReadTheDocs",
+            ref_url=create_readthedocs_preview_url(),
         )
 
     def add_pr_list(self, pr_list: list[dict[str, str]]) -> str:

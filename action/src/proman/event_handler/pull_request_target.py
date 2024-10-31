@@ -9,7 +9,6 @@ from proman.datatype import (
     BranchType, Branch
 )
 
-from proman.datatype import TemplateType
 from proman.main import EventHandler
 
 if TYPE_CHECKING:

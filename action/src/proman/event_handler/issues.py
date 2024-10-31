@@ -1,11 +1,15 @@
 import re
 from enum import Enum
+import copy
 
 from github_contexts import github as gh_context
 from loggerman import logger
 from controlman.file_gen.forms import pre_process_existence
+from controlman import data_helper
 import mdit
 import pylinks as pl
+import pyserials as ps
+import conventional_commits as convcom
 
 from proman.datatype import LabelType, Label, IssueStatus
 from proman.exception import ProManException
@@ -18,7 +22,10 @@ class IssuesEventHandler(EventHandler):
         super().__init__(**kwargs)
         self._payload: gh_context.payload.IssuesPayload = self._context.event
         self._issue = self._payload.issue
-        self._devdoc.env_vars["issue"] = self._issue._issue
+        self._issue_author = self.make_entity(self._issue.user.login)
+        issue_payload = self._issue._issue.copy()
+        issue_payload["user"] = self._issue_author
+        self._devdoc.env_vars["issue"] = issue_payload
 
         self._label_groups: dict[LabelType, list[Label]] = {}
         self._protocol_comment_id: int | None = None
@@ -40,6 +47,10 @@ class IssuesEventHandler(EventHandler):
             self._protocol_issue_nr = self._issue.number
         if action == gh_context.enum.ActionType.LABELED:
             return self._run_labeled()
+        if action == gh_context.enum.ActionType.ASSIGNED:
+            return self._run_assignment(assigned=True)
+        if action == gh_context.enum.ActionType.UNASSIGNED:
+            return self._run_assignment(assigned=False)
         self._devdoc.add_timeline_entry()
         self._update_protocol()
         return
@@ -62,14 +73,8 @@ class IssuesEventHandler(EventHandler):
             cleaned_body = re.sub(pattern, '', self._issue.body)
             return cleaned_body, issue_form
 
-        def assign():
-            assignees = []
-            maintainers = self._data_main.get("maintainer.issue", {})
-            if issue_form["id"] in maintainers.keys():
-                for maintainer in maintainers[issue_form["id"]]:
-                    assignees.append(
-                        pl.api.github(token=self._context.token).user(maintainer["github"]["id"]).info
-                    )
+        def assign() -> list[dict]:
+            out = self.get_assignees_for_issue_type(issue_id=issue_form["id"], assignment="issue")
             assignment = issue_form.get("post_process", {}).get("assign_creator")
             if assignment:
                 if_checkbox = assignment.get("if_checkbox")
@@ -77,32 +82,37 @@ class IssuesEventHandler(EventHandler):
                     checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
                     if checkbox.startswith("- [X]"):
                         checked = True
+                        process = True
                     elif checkbox.startswith("- [ ]"):
                         checked = False
+                        process = True
                     else:
                         logger.warning(
                             "Issue Assignment",
                             "Could not match checkbox in issue body to pattern defined in metadata.",
                         )
-                        return
-                    if (if_checkbox["is_checked"] and checked) or (
-                        not if_checkbox["is_checked"] and not checked
+                        process = False
+                    if process and (
+                        (if_checkbox["is_checked"] and checked) or
+                        (not if_checkbox["is_checked"] and not checked)
                     ):
-                        assignees.append(self._issue.user._user)
+                        for assignee in out:
+                            if assignee["github"]["id"] == self._issue_author["github"]["id"]:
+                                break
+                        else:
+                            out.append(self._issue_author)
             self._gh_api.issue_add_assignees(
-                number=self._issue.number, assignees=[assignee["login"] for assignee in assignees]
+                number=self._issue.number, assignees=[assignee["github"]["id"] for assignee in out]
             )
-            return assignees
+            return out
 
         def add_labels():
-            labels = []
-            type_label_prefix = self._data_main["label.type.prefix"]
-            type_label_suffix = self._data_main["label.type.label"][issue_form["type"]]["suffix"]
-            labels.append(f"{type_label_prefix}{type_label_suffix}")
-            if issue_form["subtype"]:
-                subtype_label_prefix = self._data_main["label.subtype.prefix"]
-                subtype_label_suffix = self._data_main["label.subtype.label"][issue_form["subtype"]]["suffix"]
-                labels.append(f"{subtype_label_prefix}{subtype_label_suffix}")
+            labels = issue_form.get("labels", []) + [
+                self._data_main["label.type.label"][issue_form["type"]]["name"],
+                self._data_main["label.status.label.triage.name"],
+            ]
+            if issue_form["scope"]:
+                labels.append(self._data_main["label.scope.label"][issue_form["scope"]]["name"])
             branch_label_prefix = self._data_main["label.branch.prefix"]
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
@@ -120,11 +130,7 @@ class IssuesEventHandler(EventHandler):
                     "Issue Label Update",
                     "Could not match branch or version in issue body to pattern defined in metadata.",
                 )
-            labels.extend(issue_form.get("labels", []))
-            status_label_prefix = self._data_main["label.status.prefix"]
-            status_label_suffix = self._data_main["label.status.label.triage.suffix"]
-            labels.append(f"{status_label_prefix}{status_label_suffix}")
-            response = self._gh_api.issue_labels_set(self._issue.number, labels)
+            response = self._gh_api.issue_labels_set(self._issue.number, list(set(labels)))
             logger.info(
                 "Issue Labels Update",
                 logger.pretty(response)
@@ -132,7 +138,6 @@ class IssuesEventHandler(EventHandler):
             return labels
 
         self._reporter.event(f"Issue #{self._issue.number} opened")
-        logger.info("Labels", str(self._issue.label_names))
         body, issue_form = identify()
         issue_entries = self._extract_entries_from_issue_body(body, issue_form["body"])
         labels = add_labels()
@@ -157,7 +162,7 @@ class IssuesEventHandler(EventHandler):
             self._devdoc.add_timeline_entry(
                 env_vars={
                     "action": "assigned",
-                    "payload": self._devdoc.env_vars["payload"] | {"assignee": assignee}
+                    "assignee": assignee,
                 },
             )
         for label in labels:
@@ -192,12 +197,12 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled(self):
         label = self._data_main.resolve_label(self._payload.label.name)
-        self._reporter.event(f"Issue #{self._issue.number} status changed to `{label.type.value}`")
         self._devdoc.add_timeline_entry(env_vars={"label": self.make_label_env_var(label)})
         if label.category is not LabelType.STATUS:
+            self._reporter.event(f"Issue #{self._issue.number} labeled `{label.name}`")
             self._update_protocol()
             return
-        self._devdoc.update_status(label.type)
+        self._devdoc.update_status(label.id)
         # Remove all other status labels
         self._label_groups = self._data_main.resolve_labels(self._issue.label_names)
         self._update_issue_status_labels(
@@ -213,6 +218,44 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_labeled_status_implementation(self):
+
+        def update_changelog(entry: dict | None = None):
+            changelog_path = self._path_head / self._data_main["doc.changelog.path"]
+            if changelog_path.is_file():
+                changelog = ps.read.json_from_file(changelog_path)
+                changelog["current"] = entry or {}
+            else:
+                changelog = {"current": entry or {}}
+            with open(changelog_path, "w") as changelog_file:
+                changelog_file.write(ps.write.to_json_string(changelog, sort_keys=True, indent=4))
+            return
+
+        def create_changelog_entry():
+            entry = {
+                "id": issue_form["id"],
+                "issue": self._create_changelog_issue_entry(),
+                "pull_request": self._create_changelog_pull_entry(pull_data)
+            }
+            if self._issue.milestone:
+                entry["milestone"] = self._create_changelog_milestone_entry()
+            update_changelog(entry)
+            return
+
+        def assign_pr():
+            assignees = self.get_assignees_for_issue_type(issue_id=issue_form["id"], assignment="pull")
+            if assignees:
+                response = self._gh_api.issue_add_assignees(
+                    number=pull_data["number"], assignees=[assignee["github"]["id"] for assignee in assignees]
+                )
+                logger.info(
+                    "Pull Request Assignment",
+                    logger.pretty(response)
+                )
+            else:
+                logger.info("Pull Request Assignment", "No assignees found for pull request.")
+            return assignees
+
+        issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
         branches = self._gh_api.branches
         branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in branches}
         base_branches_and_labels: list[tuple[str, list[str]]] = []
@@ -238,16 +281,28 @@ class IssuesEventHandler(EventHandler):
                 base_sha=branch_sha[base_branch_name],
                 name=head_branch_name,
             )
-            # Create empty commit on dev branch to be able to open a draft pull request
-            # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
+
             self._git_head.fetch_remote_branches_by_name(branch_names=head_branch_name)
             self._git_head.checkout(head_branch_name)
+            # Create commit on dev branch to be able to open a draft pull request
+            # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
+            update_changelog()
+            branch_data = {
+                "head": {
+                    "name": head_branch_name,
+                    "url": self._gh_link.branch(head_branch_name).homepage,
+                },
+                "base": {
+                    "name": base_branch_name,
+                    "sha": branch_sha[base_branch_name],
+                    "url": self._gh_link.branch(base_branch_name).homepage,
+                },
+            }
             self._git_head.commit(
-                message=(
-                    f"init: Create development branch '{head_branch_name}' "
-                    f"from base branch '{base_branch_name}' for issue #{self._issue.number}"
-                ),
-                allow_empty=True,
+                message=self.create_auto_commit_msg(
+                    commit_type="dev_branch_creation",
+                    env_vars=branch_data,
+                )
             )
             self._git_head.push(target="origin", set_upstream=True)
             pull_data = self._gh_api.pull_create(
@@ -262,26 +317,133 @@ class IssuesEventHandler(EventHandler):
                 f"Pull Request Creation ({new_branch['name']} -> {base_branch_name})",
                 logger.pretty(pull_data)
             )
-            self._gh_api.issue_labels_set(number=pull_data["number"], labels=labels)
-            self._add_readthedocs_reference_to_pr(pull_nr=pull_data["number"])
+            label_data = self._gh_api.issue_labels_set(number=pull_data["number"], labels=labels)
+            logger.info(
+                f"Pull Request Labels Update ({new_branch['name']} -> {base_branch_name})",
+                logger.pretty(label_data)
+            )
+            assignees = assign_pr()
+
+            pull_data["user"] = self.make_entity(pull_data["user"]["login"])
+            pull_data["head"] = branch_data["head"] | pull_data["head"]
+            pull_data["base"] = branch_data["base"] | pull_data["base"]
             self._devdoc.add_timeline_entry(
                 env_vars={
                     "event": "pull_request",
                     "action": "opened",
-                    "payload": self._devdoc.env_vars["payload"] | {"pull_request": pull_data},
+                    "pull_request": pull_data,
                 },
             )
-            implementation_branches_info.append(
-                {
-                    "head": {
-                        "name": head_branch_name,
-                        "url": self._gh_link.branch(head_branch_name).homepage,
-                    },
-                    "number": pull_data["number"],
-                }
+            implementation_branches_info.append(pull_data)
+            create_changelog_entry()
+            self._git_head.commit(
+                message=self.create_auto_commit_msg(
+                    commit_type="changelog_init",
+                    env_vars={"pull_request": pull_data}
+                )
             )
+            self._git_head.push()
+            devdoc_pull = copy.copy(self._devdoc)
+
+            for assignee in assignees:
+                devdoc_pull.add_timeline_entry(
+                    env_vars={
+                        "event": "pull_request",
+                        "action": "assigned",
+                        "pull_request": pull_data,
+                        "assignee": assignee,
+                    },
+                )
+            devdoc_pull.add_reference_readthedocs(pull_nr=pull_data["number"])
+            self._gh_api.pull_update(number=pull_data["number"], body=devdoc_pull.protocol)
         self._devdoc.add_pr_list(implementation_branches_info)
         return
+
+    def _run_assignment(self, assigned: bool):
+        assignee = self.make_entity(self._payload.assignee.login)
+        action_desc = "assigned to" if assigned else "unassigned from"
+        self._reporter.event(f"Issue #{self._issue.number} {action_desc} {assignee['github']['id']}")
+        self._devdoc.add_timeline_entry(env_vars={"assignee": assignee})
+        self._update_protocol()
+        return
+
+    def _create_changelog_issue_entry(self):
+        assignee_gh_ids = []
+        if self._issue.assignee:
+            assignee_gh_ids.append(self._issue.assignee.login)
+        if self._issue.assignees:
+            for assignee in self._issue.assignees:
+                if assignee:
+                    assignee_gh_ids.append(assignee.login)
+        assignees_int = []
+        assignees_ext = []
+        for assignee_gh_id in set(assignee_gh_ids):
+            member_id = self.get_member_id_from_github_username(assignee_gh_id)
+            if member_id:
+                assignees_int.append({"member": True, "id": member_id})
+            else:
+                assignee, _ = data_helper.fill_entity(
+                    entity={"github": {"id": assignee_gh_id}},
+                    github_api=self._gh_api,
+                    cache_manager=self._cache_manager,
+                )
+                assignees_ext.append(assignee | {"member": False})
+        creator_member_id = self.get_member_id_from_github_username(self._issue.user.login)
+        if creator_member_id:
+            creator = {"member": True, "id": creator_member_id}
+        else:
+            creator, _ = data_helper.fill_entity(
+                entity={"github": {"id": self._issue.user.login}},
+                github_api=self._gh_api,
+                cache_manager=self._cache_manager,
+            )
+            creator |= {"github_association": self._issue.author_association}
+        return {
+            "number": self._issue.number,
+            "id": self._issue.id,
+            "node_id": self._issue.node_id,
+            "url": self._issue.html_url,
+            "created_at": self.normalize_github_date(self._issue.created_at),
+            "assignees": assignees_int + assignees_ext,
+            "creator": creator,
+            "title": self._issue.title,
+        }
+
+    def _create_changelog_milestone_entry(self):
+        if not self._issue.milestone:
+            return
+        return {
+            "number": self._issue.milestone.number,
+            "id": self._issue.milestone.id,
+            "node_id": self._issue.milestone.node_id,
+            "url": self._issue.milestone.html_url,
+            "title": self._issue.milestone.title,
+            "description": self._issue.milestone.description,
+            "due_on": self.normalize_github_date(self._issue.milestone.due_on),
+            "created_at": self.normalize_github_date(self._issue.milestone.created_at),
+        }
+
+    def _create_changelog_pull_entry(self, pull: dict):
+        return {
+            "number": pull["number"],
+            "id": pull["id"],
+            "node_id": pull["node_id"],
+            "url": pull["html_url"],
+            "created_at": self.normalize_github_date(pull["created_at"]),
+            "creator": {"id": self.get_member_id_from_github_username(self._payload.sender.login)},
+            "title": pull["title"],
+            "internal": True,
+            "base": {
+                "ref": pull["base"]["ref"],
+                "sha": pull["base"]["sha"],
+                "url": pull["base"]["url"],
+            },
+            "head": {
+                "ref": pull["head"]["ref"],
+                "sha": pull["head"]["sha"],
+                "url": pull["head"]["url"],
+            },
+        }
 
     def _update_protocol(self):
         if self._protocol_issue_nr:
@@ -291,12 +453,13 @@ class IssuesEventHandler(EventHandler):
     def make_label_env_var(self, label: Label):
         return {
             "category": label.category.value,
-            "id": label.type.value if isinstance(label.type, Enum) else label.type,
             "name": label.name,
-            "suffix": label.suffix,
+            "group_id": label.group_id,
+            "id": label.id.value if isinstance(label.id, Enum) else label.id,
             "prefix": label.prefix,
-            "description": label.description,
+            "suffix": label.suffix,
             "color": label.color,
+            "description": label.description,
         }
 
     @logger.sectioner("Extract Entries from Issue Body")

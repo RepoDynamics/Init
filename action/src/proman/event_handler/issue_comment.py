@@ -8,7 +8,7 @@ from loggerman import logger
 from proman.datatype import BranchType
 import pysyntax
 
-from proman.datatype import TemplateType, RepoDynamicsBotCommand
+from proman.datatype import RepoDynamicsBotCommand
 from proman.main import EventHandler
 
 if TYPE_CHECKING:

@@ -1,12 +1,20 @@
-from typing import Literal
+from __future__ import annotations as _annotations
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 import pyserials as _ps
-from pyserials import NestedDict as _NestedDict
 from pylinks.exception.api import WebAPIError
 from pylinks.api.github import Repo as GitHubRepoAPI
 from loggerman import logger
 import mdit
-import pycolorit as pcit
+
+from proman.datatype import LabelType as _LabelType
+
+
+if _TYPE_CHECKING:
+    from typing import Literal
+    from pyserials import NestedDict
+    from proman.data_manager import DataManager
+    from proman.datatype import Label, IssueStatus
 
 
 class RepoConfig:
@@ -25,8 +33,8 @@ class RepoConfig:
     @logger.sectioner("GitHub Repository Configuration")
     def update_all(
         self,
-        data_new: _NestedDict,
-        data_old: _NestedDict | None = None,
+        data_new: DataManager,
+        data_old: DataManager | None = None,
         rulesets: Literal["create", "update", "ignore"] = "update",
     ):
         self.update_settings(data=data_new)
@@ -39,7 +47,7 @@ class RepoConfig:
             )
         return
 
-    def update_settings(self, data: _NestedDict):
+    def update_settings(self, data: NestedDict):
         """Update repository settings.
 
         Notes
@@ -99,7 +107,7 @@ class RepoConfig:
             )
         return
 
-    def update_gh_pages(self, data: _NestedDict) -> None:
+    def update_gh_pages(self, data: NestedDict) -> None:
         """Activate GitHub Pages if not activated, and update custom domain.
 
         Notes
@@ -146,7 +154,7 @@ class RepoConfig:
         return
 
     @logger.sectioner("Repository Labels Reset")
-    def reset_labels(self, data: _NestedDict | None = None):
+    def reset_labels(self, data: DataManager | None = None):
         current_labels = self._gh_api.labels
         for current_label in current_labels:
             self._gh_api.label_delete(current_label["name"])
@@ -155,9 +163,8 @@ class RepoConfig:
             "All current repository labels have been deleted:",
             self._make_labels_table(current_labels, "Deleted Labels"),
         )
-        for label in data["label.all"]:
-            label_color = pcit.color.css(label["color"]).css_hex().removeprefix("#")
-            self._gh_api.label_create(name=label["name"], description=label["description"], color=label_color)
+        for label in data.labels.values():
+            self._gh_api.label_create(name=label.name, description=label.description, color=label.color)
         logger.success(
             "Created Labels",
             "Following labels have been created:",
@@ -165,50 +172,32 @@ class RepoConfig:
         )
         return
 
-    @staticmethod
-    def _make_labels_table(labels: list[dict], caption: str):
-        rows = [["Name", "ID", "Node ID", "URL", "Default", "Description", "Color"]]
-        for label in labels:
-            rows.append(
-                [
-                    label["name"],
-                    label["id"],
-                    label["node_id"],
-                    label["url"],
-                    label["default"],
-                    label["description"],
-                    label["color"],
-                ]
-            )
-        return mdit.element.table(rows=rows, caption=caption, num_rows_header=1)
-
     @logger.sectioner("Labels")
-    def update_labels(self, data_new: _NestedDict, data_old: _NestedDict):
+    def update_labels(self, data_new: DataManager, data_old: DataManager):
 
-        def format_labels(labels: list[dict]) -> tuple[
-            dict[tuple[str, str, str], dict],
-            dict[tuple[str, str, str], dict],
-            dict[tuple[str, str, str], dict],
-            dict[tuple[str, str, str], dict],
+        def format_labels(labels: dict[str, Label]) -> tuple[
+            dict[tuple[_LabelType, str, str | IssueStatus], Label],
+            dict[tuple[_LabelType, str, str | IssueStatus], Label],
+            dict[tuple[_LabelType, str, str | IssueStatus], Label],
+            dict[tuple[_LabelType, str, str | IssueStatus], Label],
         ]:
             full = {}
             version = {}
             branch = {}
             rest = {}
-            for label in labels:
-                key = (label["type"], label["group_name"], label["id"])
+            for label in labels.values():
+                key = (label.category, label.group_id, label.id)
                 full[key] = label
-                if label["type"] == "auto":
-                    if label["group_name"] == "version":
-                        version[key] = label
-                    else:
-                        branch[key] = label
+                if label.category is _LabelType.VERSION:
+                    version[key] = label
+                elif label.category is _LabelType.BRANCH:
+                    branch[key] = label
                 else:
                     rest[key] = label
             return full, version, branch, rest
 
-        labels_old, labels_old_ver, labels_old_branch, labels_old_rest = format_labels(data_old.get("label.full", []))
-        labels_new, labels_new_ver, labels_new_branch, labels_new_rest = format_labels(data_new.get("label.full", []))
+        labels_old, labels_old_ver, labels_old_branch, labels_old_rest = format_labels(data_old.labels)
+        labels_new, labels_new_ver, labels_new_branch, labels_new_rest = format_labels(data_new.labels)
 
         ids_old = set(labels_old.keys())
         ids_new = set(labels_new.keys())
@@ -221,29 +210,29 @@ class RepoConfig:
         for id_shared in ids_shared:
             old_label = labels_old[id_shared]
             new_label = labels_new[id_shared]
-            if old_label["name"] not in current_label_names:
+            if old_label.name not in current_label_names:
                 self._gh_api.label_create(
-                    name=new_label["name"], color=new_label["color"], description=new_label["description"]
+                    name=new_label.name, color=new_label.color, description=new_label.description
                 )
                 continue
             if old_label != new_label:
                 self._gh_api.label_update(
-                    name=old_label["name"],
-                    new_name=new_label["name"],
-                    description=new_label["description"],
-                    color=new_label["color"],
+                    name=old_label.name,
+                    new_name=new_label.name,
+                    description=new_label.description,
+                    color=new_label.color,
                 )
         # Add new labels
         ids_added = ids_new - ids_old
         for id_added in ids_added:
             label = labels_new[id_added]
-            self._gh_api.label_create(name=label["name"], color=label["color"], description=label["description"])
+            self._gh_api.label_create(name=label.name, color=label.color, description=label.description)
         # Delete old non-auto-group (i.e., not version or branch) labels
         ids_old_rest = set(labels_old_rest.keys())
         ids_new_rest = set(labels_new_rest.keys())
         ids_deleted_rest = ids_old_rest - ids_new_rest
         for id_deleted in ids_deleted_rest:
-            self._gh_api.label_delete(labels_old_rest[id_deleted]["name"])
+            self._gh_api.label_delete(labels_old_rest[id_deleted].name)
         # Update old branch and version labels
         for label_data_new, label_data_old, labels_old in (
             (data_new["label.branch"], data_old["label.branch"], labels_old_branch),
@@ -251,9 +240,9 @@ class RepoConfig:
         ):
             if label_data_new != label_data_old:
                 for label_old in labels_old.values():
-                    label_old_suffix = label_old["name"].removeprefix(label_data_old["prefix"])
+                    label_old_suffix = label_old.name.removeprefix(label_data_old["prefix"])
                     self._gh_api.label_update(
-                        name=label_old["name"],
+                        name=label_old.name,
                         new_name=f"{label_data_new['prefix']}{label_old_suffix}",
                         color=label_data_new["color"],
                         description=label_data_new["description"],
@@ -263,8 +252,8 @@ class RepoConfig:
     @logger.sectioner("Branch Names")
     def update_branch_names(
         self,
-        data_new: _NestedDict,
-        data_old: _NestedDict,
+        data_new: NestedDict,
+        data_old: NestedDict,
     ) -> dict:
         """Update all branch names.
 
@@ -294,8 +283,8 @@ class RepoConfig:
     @logger.sectioner("Rulesets")
     def update_rulesets(
         self,
-        data_new: _NestedDict,
-        data_old: _NestedDict | None = None
+        data_new: NestedDict,
+        data_old: NestedDict | None = None
     ) -> None:
         """Update branch and tag protection rulesets."""
         bypass_actor_map = {
@@ -405,3 +394,20 @@ class RepoConfig:
                 ruleset=branch_ruleset,
             )
         return
+
+    @staticmethod
+    def _make_labels_table(labels: list[dict], caption: str):
+        rows = [["Name", "ID", "Node ID", "URL", "Default", "Description", "Color"]]
+        for label in labels:
+            rows.append(
+                [
+                    label["name"],
+                    label["id"],
+                    label["node_id"],
+                    label["url"],
+                    label["default"],
+                    label["description"],
+                    label["color"],
+                ]
+            )
+        return mdit.element.table(rows=rows, caption=caption, num_rows_header=1)

@@ -10,6 +10,10 @@ inputs:
     description: A personal access token with administration access to the repository.
     required: false
     default: ""
+  zenodo-token:
+    description: A Zenodo API token.
+    required: false
+    default: ""
 #  package-build:
 #    required: false
 #    default: 'false'
@@ -209,6 +213,7 @@ runs:
       id: action
       env:
         RD_PROMAN__ADMIN_TOKEN: ${{ inputs.admin-token }}
+        RD_PROMAN__ZENODO_TOKEN: ${{ inputs.zenodo-token }}
         RD_PROMAN__GITHUB_CONTEXT: ${{ toJSON(github) }}
         RD_PROMAN__PATH_REPO_BASE: repo_base
         RD_PROMAN__PATH_REPO_HEAD: repo_head

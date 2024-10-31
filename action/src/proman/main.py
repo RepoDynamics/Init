@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 from typing import TYPE_CHECKING
 import datetime
+import re
 
 from loggerman import logger
 import mdit
@@ -17,6 +18,8 @@ from github_contexts.github import enum as _ghc_enum
 import conventional_commits
 import pkgdata
 import controlman
+from controlman import data_helper
+from controlman.cache_manager import CacheManager
 from proman.datatype import (
     InitCheckAction, Branch,
     Commit, NonConventionalCommit, Label, PrimaryActionCommitType
@@ -43,6 +46,18 @@ if TYPE_CHECKING:
 class EventHandler:
 
     _REPODYNAMICS_BOT_USER = ("RepoDynamicsBot", "146771514+RepoDynamicsBot@users.noreply.github.com")
+    #TODO: make authenticated
+    # Refs:
+    # - https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits
+    # - https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key
+    # - https://docs.github.com/en/authentication/managing-commit-signature-verification/adding-a-gpg-key-to-your-github-account
+    # - https://github.com/crazy-max/ghaction-import-gpg
+    # - https://stackoverflow.com/questions/61096521/how-to-use-gpg-key-in-github-actions
+    # - https://github.com/sigstore/gitsign
+    # - https://www.chainguard.dev/unchained/keyless-git-commit-signing-with-gitsign-and-github-actions
+    # - https://github.com/actions/runner/issues/667
+    # - https://sourceforge.net/projects/gpgosx/
+    # - https://www.gnupg.org/download/
 
     _MARKER_COMMIT_START = "<!-- Begin primary commit summary -->"
     _MARKER_COMMIT_END = "<!-- End primary commit summary -->"
@@ -61,6 +76,7 @@ class EventHandler:
         reporter: Reporter,
         output_writer: OutputWriter,
         admin_token: str | None,
+        zenodo_token: str | None,
         path_repo_base: str,
         path_repo_head: str,
     ):
@@ -144,7 +160,7 @@ class EventHandler:
             return tuple(apis)
 
         @logger.sectioner("Metadata Load")
-        def load_metadata() -> tuple[DataManager | None, DataManager | None]:
+        def load_metadata() -> tuple[DataManager | None, DataManager | None, CacheManager | None]:
 
             def load(path, name: str):
                 log_title = f"{name.capitalize()} Repo Metadata Load"
@@ -189,11 +205,15 @@ class EventHandler:
                     "Metadata Load",
                     "Repository creation event detected; no metadata to load.",
                 )
-                return None, None
+                return None, None, None
 
             data_main = load(path=self._path_base, name="base")
             data_branch_before = data_main if self._context.ref_is_main else load(path=self._path_head, name="head")
-            return data_main, data_branch_before
+            cache_manager = CacheManager(
+                path_local_cache=self._path_base / data_main["local.cache.path"],
+                retention_hours=data_main["control.cache.retention.hours"],
+            )
+            return data_main, data_branch_before, cache_manager
 
         def in_repo_creation_event():
             return (
@@ -210,7 +230,7 @@ class EventHandler:
         self._git_base, self._git_head = init_git_api()
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
-        self._data_main, self._data_branch_before = load_metadata()
+        self._data_main, self._data_branch_before, self._cache_manager = load_metadata()
         self._repo_config = RepoConfig(
             gh_api=self._gh_api,
             gh_api_admin=self._gh_api_admin,
@@ -220,7 +240,9 @@ class EventHandler:
             data_main=self._data_main,
             github_context=self._context._context,
             event_payload=self._context.event._payload,
+            sender=self.make_entity(self._context.event.sender.login)
         )
+        self._zenodo_api = pylinks.api.zenodo(token=zenodo_token) if zenodo_token else None
         self._ver = pkgdata.get_version_from_caller()
         self._data_branch: DataManager | None = None
         self._failed = False
@@ -673,31 +695,6 @@ class EventHandler:
         logger.critical(action_err_msg, action_err_details)
         raise ProManException()
 
-    def _add_readthedocs_reference_to_pr(self, pull_nr: int):
-
-        def create_readthedocs_preview_url():
-            # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
-            # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
-            # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
-            # https://docs.readthedocs.io/en/latest/guides/pull-requests.html
-
-            config = self._data_main["tool.readthedocs.config.workflow"]
-            domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
-            slug = config["name"]
-            url = f"https://{slug}--{pull_nr}.{domain}/"
-            if config["version_scheme"]["translation"]:
-                language = config["language"]
-                url += f"{language}/{pull_nr}/"
-            return url
-
-        if not self._data_main["tool.readthedocs"]:
-            return
-        return self._devdoc.add_reference(
-            ref_id="readthedocs-preview",
-            ref_title="Website Preview on ReadTheDocs",
-            ref_url=create_readthedocs_preview_url(),
-        )
-
     def create_branch_name_release(self, major_version: int) -> str:
         """Generate the name of the release branch for a given major version."""
         release_branch_prefix = self._data_main["branch.release.name"]
@@ -732,6 +729,48 @@ class EventHandler:
             f.write(announcement)
         return
 
+    def get_member_id_from_github_username(self, username: str) -> str | None:
+        for member_id, member_data in self._data_main["team"].items():
+            if member_data.get("github", {}).get("id") == username:
+                return member_id
+        return
+
+    def create_auto_commit_msg(self, commit_type: str, env_vars: dict) -> str:
+        commit_data = self._data_main[f"commit.auto.{commit_type}"]
+        footer = commit_data.get("footer")
+        if footer:
+            footer = _ps.read.yaml_from_string(
+                self._devdoc.fill_jinja_template(footer, env_vars=env_vars))
+        commit_msg = conventional_commits.message.create(
+            typ=commit_data["type"],
+            description=self._devdoc.fill_jinja_template(commit_data["description"], env_vars=env_vars),
+            scope=commit_data.get("scope", ""),
+            body=self._devdoc.fill_jinja_template(commit_data.get("body", ""), env_vars=env_vars),
+            footer=footer,
+        )
+        return str(commit_msg)
+
+    def make_entity(self, github_username: str) -> dict:
+        return data_helper.fill_entity(
+            entity={"github": {"id": github_username}},
+            github_api=pylinks.api.github(token=self._context.token),
+            cache_manager=self._cache_manager,
+        )[0]
+
+    def get_assignees_for_issue_type(
+        self, issue_id: str,
+        assignment: Literal["issue", "pull", "review", "discussion"]
+    ) -> list[dict]:
+        out = []
+        for member in self._data_main["team"].values():
+            for member_role_id in member.get("role", {}).keys():
+                role = self._data_main["role"][member_role_id]
+                issue_id_regex = role.get("assignment", {}).get(assignment)
+                if issue_id_regex and re.match(issue_id_regex, issue_id):
+                    out.append(member)
+                    break
+        return out
+
     @staticmethod
     def get_next_version(version: PEP440SemVer, action: PrimaryActionCommitType) -> PEP440SemVer:
         if action is PrimaryActionCommitType.RELEASE_MAJOR:
@@ -747,3 +786,7 @@ class EventHandler:
         if action == PrimaryActionCommitType.RELEASE_POST:
             return version.next_post
         return version
+
+    @staticmethod
+    def normalize_github_date(date: str) -> str:
+        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d")

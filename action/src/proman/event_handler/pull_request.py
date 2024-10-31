@@ -189,7 +189,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             names=[label["name"] for label in self._gh_api.issue_labels(number=original_issue_nr)]
         )
         label_names_to_add = [
-            label.name for label in issue_labels[LabelType.TYPE] + issue_labels[LabelType.SUBTYPE]
+            label.name for label in issue_labels[LabelType.TYPE] + issue_labels[LabelType.SCOPE]
         ]
         self._gh_api.issue_labels_add(number=self._pull.number, labels=label_names_to_add)
         return
@@ -792,6 +792,82 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             "pull": self._pull,
         }
 
+    def _create_zenodo_depo(self, version: str, contributors: list[dict], embargo_date: str | None = None):
+        # https://developers.zenodo.org/#deposit-metadata
+
+        def create_person(entity: dict | str) -> dict:
+            if isinstance(entity, str):
+                entity = self._data_branch["team"].get(entity)
+                if not entity:
+                    logger.critical(
+                        "Member ID Resolution",
+                        f"Could not find member ID '{entity}'."
+                    )
+                    raise ProManException()
+            out = {"name": entity["name"]["full_inverted"]}
+            if "affiliation" in entity:
+                out["affiliation"] = entity["affiliation"]
+            if "orcid" in entity:
+                out["orcid"] = entity["orcid"]["id"]
+            if "gnd" in entity:
+                out["gnd"] = entity["gnd"]["id"]
+            return out
+
+        def create_related_identifiers(identifier: dict) -> list[dict]:
+            return {
+                "identifier": identifier["value"],
+                "relation": identifier["relation"],
+                "resource_type": identifier["resource_type"],
+            }
+
+        def create_subject(subject: dict) -> dict:
+            return {
+                "term": subject["term"],
+                "identifier": subject["id"],
+                "scheme": subject["scheme"],
+            }
+
+        metadata = {
+            "upload_type": self._data_branch["citation.type"],
+            "title": self._data_branch["citation.title"],
+            "creators": [create_person(entity=entity) for entity in self._data_branch["citation.authors"]],
+            "contributors": [],
+            "description": self._data_branch["citation.abstract"],
+            "keywords": self._data_branch["citation.keywords"],
+            "access_right": self._data_branch["citation.access_right"],
+            "access_conditions": self._data_branch["citation.access_conditions"],
+            "embargo_date": embargo_date,
+            "license": self._data_branch["citation.license"][0],
+            "notes": self._data_branch["citation.notes"],
+            "related_identifiers": [
+                create_related_identifiers(identifier)
+                for identifier in self._data_branch.get("citation.related_identifiers", [])
+            ],
+            "communities": [
+                {"identifier": identifier}
+                for identifier in self._data_branch.get("citation.zenodo_communities", [])
+            ],
+            "grants": [
+                {"id": grant["id"]} for grant in self._data_branch.get("citation.grants", [])
+            ],
+            "subjects": [create_subject(subject) for subject in self._data_branch["citation.subjects"]],
+            "references": [ref["apa"] for ref in self._data_branch["citation.references"]],
+            "version": version,
+            "language": self._data_branch["language"],
+            "preserve_doi": True,
+        }
+        if self._data_branch["citation.doi"]:
+            metadata["related_identifiers"].append(
+                {
+                    "identifier": self._data_branch["citation.doi"],
+                    "relation": "isNewVersionOf",
+                    "resource_type": self._data_branch["citation.type"],
+                }
+            )
+        for contact_person in self._data_branch.get("citation.contacts", []):
+            metadata["contributors"].append(create_person(entity=contact_person) | {"type": "ContactPerson"})
+        for contributor in contributors:
+            metadata["contributors"].append(create_person(entity=contributor))
     @staticmethod
     def _primary_type_is_package_publish(
         commit_type: PrimaryActionCommit | PrimaryCustomCommit,

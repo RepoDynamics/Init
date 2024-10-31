@@ -1,14 +1,10 @@
 from enum import Enum as _Enum
 from typing import NamedTuple as _NamedTuple
+from dataclasses import dataclass as _dataclass
 
 import conventional_commits as _conventional_commits
 from versionman.pep440_semver import PEP440SemVer as _PEP440SemVer
-
-
-class TemplateType(_Enum):
-    PYPACKIT = "PyPackIT"
-    SPHINXIT = "SphinxIT"
-
+import pycolorit as _pcit
 
 class RepoDynamicsBotCommand(_Enum):
     CREATE_DEV_BRANCH = "create_dev_branch"
@@ -71,6 +67,14 @@ class BranchType(_Enum):
 
 
 
+
+class InitCheckAction(_Enum):
+    NONE = "none"
+    FAIL = "fail"
+    REPORT = "report"
+    PULL = "pull"
+    COMMIT = "commit"
+    AMEND = "amend"
 
 
 
@@ -238,19 +242,14 @@ class Commit(_NamedTuple):
     )
 
 
+
+
+
+
 class Issue(_NamedTuple):
-    group_data: PrimaryActionCommit | PrimaryCustomCommit
-    type_labels: list[str]
     form: dict
-
-
-class InitCheckAction(_Enum):
-    NONE = "none"
-    FAIL = "fail"
-    REPORT = "report"
-    PULL = "pull"
-    COMMIT = "commit"
-    AMEND = "amend"
+    action: PrimaryActionCommitType | None
+    identifying_labels: list[str]
 
 
 class IssueStatus(_Enum):
@@ -290,25 +289,45 @@ class IssueStatus(_Enum):
 
 class LabelType(_Enum):
     TYPE = "type"
-    SUBTYPE = "subtype"
+    SCOPE = "scope"
     STATUS = "status"
     VERSION = "version"
     BRANCH = "branch"
     CUSTOM_GROUP = "custom_group"
-    CUSTOM_SINGLE = "single"
+    CUSTOM_SINGLE = "custom_single"
     UNKNOWN = "unknown"
 
 
-class Label(_NamedTuple):
+@_dataclass
+class Label:
+    """GitHub Issues Label.
+
+    Attributes
+    ----------
+    category : LabelType
+        Label category.
+    name : str
+        Full name of the label.
+    group_id : str
+        Key of the custom group.
+        Only available if `category` is `LabelType.CUSTOM_GROUP`.
+    id : IssueStatus | str
+        Key of the label.
+        Only available if `category` is not `LabelType.BRANCH`, `LabelType.VERSION`, or `LabelType.UNKNOWN`.
+        For `LabelType.STATUS`, it is a `IssueStatus` enum.
+    """
     category: LabelType
     name: str
+    group_id: str = ""
+    id: IssueStatus | str = ""
     prefix: str = ""
-    type: PrimaryActionCommitType | IssueStatus | str | None = None
-    description: str = ""
+    suffix: str = ""
     color: str = ""
+    description: str = ""
 
-    @property
-    def suffix(self) -> str:
-        return self.name.removeprefix(self.prefix)
-
-
+    def __post_init__(self):
+        if self.category == LabelType.STATUS and not isinstance(self.id, IssueStatus):
+            self.id = IssueStatus(self.id)
+        if self.color:
+            self.color = _pcit.color.css(self.color).css_hex().removeprefix("#")
+        return

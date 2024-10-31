@@ -8,7 +8,6 @@ import pyshellman
 import controlman
 from proman.datatype import BranchType, InitCheckAction, Branch
 
-from proman.datatype import TemplateType
 from proman.main import EventHandler
 
 

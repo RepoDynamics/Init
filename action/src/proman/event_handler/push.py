@@ -108,7 +108,7 @@ class PushEventHandler(EventHandler):
                 shutil.move(item, self._path_head)
             shutil.rmtree(template_dir)
             self._git_head.commit(
-                message="init: Create repository from RepoDynamics template files.",
+                message="init: Create repository from RepoDynamics template.",
                 amend=True,
                 stage="all"
             )
@@ -195,7 +195,11 @@ class PushEventHandler(EventHandler):
             latest_hash = self._git_head.commit_hash_normal()
         data_main_before = self._data_main
         self._data_main = new_data
-        self._tag_version(ver=version, msg=f"Release Version {version}", base=False)
+        self._tag_version(
+            ver=version,
+            msg=self._devdoc.fill_jinja_template(self._data_main["tag.version.message"], {"version": version}),
+            base=False
+        )
         self._repo_config.update_all(data_new=new_data, data_old=data_main_before, rulesets="create")
         self._output.set(
             data_branch=new_data,
