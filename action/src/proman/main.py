@@ -360,7 +360,6 @@ class EventHandler:
         action: InitCheckAction,
         cc_manager: controlman.CenterManager,
         base: bool,
-        commit_msg: str | None = None,
     ) -> str | None:
         if action == InitCheckAction.NONE:
             self._reporter.add(
@@ -392,15 +391,21 @@ class EventHandler:
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
                 cc_manager.apply_changes()
-                commit_msg = commit_msg or conventional_commits.message.create(
-                    typ=self._data_main["commit.auto.sync.type"],
-                    description="Sync dynamic files with control center configurations.",
+                commit_msg = conventional_commits.message.create(
+                    typ=self._data_main["commit.auto.config_sync.type"],
+                    scope=self._data_main["commit.auto.config_sync.scope"],
+                    description=self._devdoc.fill_jinja_template(
+                        template=self._data_main["commit.auto.config_sync.description"],
+                    ),
+                    body=self._devdoc.fill_jinja_template(
+                        template=self._data_main.get("commit.auto.config_sync.body", ""),
+                    ),
                 )
                 commit_hash_before = git.commit_hash_normal()
                 commit_hash_after = git.commit(
-                    message=str(commit_msg),
+                    message=str(commit_msg) if action is not InitCheckAction.AMEND else "",
                     stage="all",
-                    amend=(action == InitCheckAction.AMEND),
+                    amend=(action is InitCheckAction.AMEND),
                 )
                 commit_hash = self._action_hooks(
                     action=InitCheckAction.AMEND,

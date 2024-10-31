@@ -121,7 +121,6 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.AMEND,
             cc_manager=cc_manager,
             base=False,
-            commit_msg=f"init: Create repository from RepoDynamics template.",
         )
         data = cc_manager.generate_data()
         with logger.sectioning("Repository Update"):
