@@ -482,11 +482,15 @@ class EventHandler:
         )
         commit_msg = (
             conventional_commits.message.create(
-                typ=self._data_main["commit.auto.maintain.type"],
-                description="Apply automatic fixes made by workflow hooks.",
-            )
-            if action in [InitCheckAction.COMMIT, InitCheckAction.PULL]
-            else ""
+                typ=self._data_main["commit.auto.refactor.type"],
+                scope=self._data_main["commit.auto.refactor.scope"],
+                description=self._devdoc.fill_jinja_template(
+                    template=self._data_main.get("commit.auto.refactor.description", ""),
+                ),
+                body=self._devdoc.fill_jinja_template(
+                    template=self._data_main.get("commit.auto.refactor.body", ""),
+                ),
+            ) if action in [InitCheckAction.COMMIT, InitCheckAction.PULL] else ""
         )
         git = self._git_base if base else self._git_head
         if action == InitCheckAction.PULL:
