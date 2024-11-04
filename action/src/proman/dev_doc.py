@@ -12,31 +12,23 @@ import pyserials as ps
 from proman.datatype import IssueStatus
 
 if TYPE_CHECKING:
+    from typing import Callable
     from github_contexts.github.payload.object.user import User as GitHubUser
-    from conventional_commits import ConventionalCommitParser
+    from proman.commit_manager import Commit
+
 
 class DevDoc:
 
     def __init__(
         self,
         data_main: ps.NestedDict,
-        github_context: dict,
-        event_payload: dict,
-        sender: dict,
-        commit_parser: ConventionalCommitParser,
+        commit_parser: Callable[[str], Commit],
         env_vars: dict | None = None,
         protocol: str | None = None,
     ):
         self._data_main = data_main
         self._commit_parser = commit_parser
-        self.env_vars = {
-            "event": github_context["event_name"],
-            "action": event_payload.get("action", ""),
-            "ccc": self._data_main,
-            "context": github_context,
-            "payload": event_payload,
-            "sender": sender,
-        } | (env_vars or {})
+        self.env_vars = env_vars or {}
         self.protocol = protocol or ""
         return
 
@@ -243,7 +235,7 @@ class DevDoc:
                     sublist and all([subtask['complete'] for subtask in sublist])
                 )
                 if level == 0:
-                    conv_msg = self._commit_parser.parse(summary)
+                    conv_msg = self._commit_parser(summary)
                     tasklist_entries.append({
                         'complete': task_is_complete,
                         'commit': conv_msg,
@@ -291,13 +283,26 @@ class DevDoc:
             self.env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
         )
 
-    def update_tasklist(self, entries: list[dict[str, bool | str | list]]) -> str:
+    def fill_jinja_templates(self, templates: dict, env_vars: dict | None = None) -> dict:
+
+        def recursive_fill(template):
+            if isinstance(template, dict):
+                return {recursive_fill(key): recursive_fill(value) for key, value in template.items()}
+            if isinstance(template, list):
+                return [recursive_fill(value) for value in template]
+            if isinstance(template, str):
+                return self.fill_jinja_template(template, env_vars)
+            return template
+
+        return recursive_fill(templates)
+
+    def update_tasklist(self, entries: list[dict[str, bool | Commit | list]]) -> str:
         """Write an implementation tasklist as Markdown string
         and update it in the protocol.
 
         Parameters
         ----------
-        entries : list[dict[str, bool | str | list]]
+        entries
             A list of dictionaries, each representing a tasklist entry.
             The format of each dictionary is the same as that returned by
             `_extract_tasklist_entries`.
