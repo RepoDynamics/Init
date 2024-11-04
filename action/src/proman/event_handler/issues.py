@@ -7,13 +7,11 @@ from loggerman import logger
 from controlman.file_gen.forms import pre_process_existence
 from controlman import data_helper
 import mdit
-import pylinks as pl
-import pyserials as ps
-import conventional_commits as convcom
 
 from proman.datatype import LabelType, Label, IssueStatus
 from proman.exception import ProManException
 from proman.main import EventHandler
+from proman.changelog_manager import ChangelogManager
 
 
 class IssuesEventHandler(EventHandler):
@@ -91,6 +89,7 @@ class IssuesEventHandler(EventHandler):
                             "Issue Assignment",
                             "Could not match checkbox in issue body to pattern defined in metadata.",
                         )
+                        checked = None
                         process = False
                     if process and (
                         (if_checkbox["is_checked"] and checked) or
@@ -107,12 +106,11 @@ class IssuesEventHandler(EventHandler):
             return out
 
         def add_labels():
-            labels = issue_form.get("labels", []) + [
-                self._data_main["label.type.label"][issue_form["type"]]["name"],
-                self._data_main["label.status.label.triage.name"],
-            ]
-            if issue_form["scope"]:
-                labels.append(self._data_main["label.scope.label"][issue_form["scope"]]["name"])
+            labels = [self._data_main["label.status.label.triage.name"]]
+            for label_group_id, label_id in issue_form["id_labels"] + issue_form.get("labels", []):
+                labels.append(
+                    self._data_main["label"][label_group_id]["label"][label_id]["name"]
+                )
             branch_label_prefix = self._data_main["label.branch.prefix"]
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
@@ -219,30 +217,8 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled_status_implementation(self):
 
-        def update_changelog(entry: dict | None = None):
-            changelog_path = self._path_head / self._data_main["doc.changelog.path"]
-            if changelog_path.is_file():
-                changelog = ps.read.json_from_file(changelog_path)
-                changelog["current"] = entry or {}
-            else:
-                changelog = {"current": entry or {}}
-            with open(changelog_path, "w") as changelog_file:
-                changelog_file.write(ps.write.to_json_string(changelog, sort_keys=True, indent=4))
-            return
-
-        def create_changelog_entry():
-            entry = {
-                "id": issue_form["id"],
-                "issue": self._create_changelog_issue_entry(),
-                "pull_request": self._create_changelog_pull_entry(pull_data)
-            }
-            if self._issue.milestone:
-                entry["milestone"] = self._create_changelog_milestone_entry()
-            update_changelog(entry)
-            return
-
         def assign_pr():
-            assignees = self.get_assignees_for_issue_type(issue_id=issue_form["id"], assignment="pull")
+            assignees = self.get_assignees_for_issue_type(issue_id=issue_form.id, assignment="pull")
             if assignees:
                 response = self._gh_api.issue_add_assignees(
                     number=pull_data["number"], assignees=[assignee["github"]["id"] for assignee in assignees]
@@ -255,7 +231,7 @@ class IssuesEventHandler(EventHandler):
                 logger.info("Pull Request Assignment", "No assignees found for pull request.")
             return assignees
 
-        issue_form = self._data_main.get_issue_data_from_labels(self._issue.label_names).form
+        issue_form = self._data_main.issue_form_from_id_labels(self._issue.label_names)
         branches = self._gh_api.branches
         branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in branches}
         base_branches_and_labels: list[tuple[str, list[str]]] = []
@@ -284,9 +260,20 @@ class IssuesEventHandler(EventHandler):
 
             self._git_head.fetch_remote_branches_by_name(branch_names=head_branch_name)
             self._git_head.checkout(head_branch_name)
-            # Create commit on dev branch to be able to open a draft pull request
+
+            # Create changelog entry
+            changelogger = ChangelogManager(self._path_head / self._data_main["doc.changelog.path"])
+            changelog_entry = {
+                "id": issue_form.id,
+                "issue": self._create_changelog_issue_entry(),
+            }
+            if self._issue.milestone:
+                changelog_entry["milestone"] = self._create_changelog_milestone_entry()
+            changelogger.update_current(changelog_entry)
+            # Write initial changelog to create a commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
-            update_changelog()
+            changelogger.write()
+
             branch_data = {
                 "head": {
                     "name": head_branch_name,
@@ -334,8 +321,13 @@ class IssuesEventHandler(EventHandler):
                     "pull_request": pull_data,
                 },
             )
+
+            # Update changelog entry with pull request information
+            changelogger.update_current({"pull_request": self._create_changelog_pull_entry(pull_data)})
+            changelogger.write()
+
             implementation_branches_info.append(pull_data)
-            create_changelog_entry()
+
             self._git_head.commit(
                 message=self.create_auto_commit_msg(
                     commit_type="changelog_init",
