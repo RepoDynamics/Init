@@ -13,7 +13,7 @@ from proman.datatype import IssueStatus
 
 if TYPE_CHECKING:
     from github_contexts.github.payload.object.user import User as GitHubUser
-
+    from conventional_commits import ConventionalCommitParser
 
 class DevDoc:
 
@@ -23,10 +23,12 @@ class DevDoc:
         github_context: dict,
         event_payload: dict,
         sender: dict,
+        commit_parser: ConventionalCommitParser,
         env_vars: dict | None = None,
         protocol: str | None = None,
     ):
         self._data_main = data_main
+        self._commit_parser = commit_parser
         self.env_vars = {
             "event": github_context["event_name"],
             "action": event_payload.get("action", ""),
@@ -222,13 +224,13 @@ class DevDoc:
             tasklist_entries = []
             for match in matches:
                 complete, summary_and_desc = match
-                summary_and_desc_split = summary_and_desc.split('\n', 1)
-                summary = summary_and_desc_split[0]
-                description = summary_and_desc_split[1] if len(summary_and_desc_split) > 1 else ''
-                if description:
+                summary_and_body_split = summary_and_desc.split('\n', 1)
+                summary = summary_and_body_split[0].strip()
+                body = summary_and_body_split[1] if len(summary_and_body_split) > 1 else ''
+                if body:
                     sublist_pattern = r'^( *- \[(?:X| )\])'
-                    parts = re.split(sublist_pattern, description, maxsplit=1, flags=re.MULTILINE)
-                    description = parts[0]
+                    parts = re.split(sublist_pattern, body, maxsplit=1, flags=re.MULTILINE)
+                    body = parts[0]
                     if len(parts) > 1:
                         sublist_str = ''.join(parts[1:])
                         sublist = extract(sublist_str, level + 1)
@@ -236,12 +238,25 @@ class DevDoc:
                         sublist = []
                 else:
                     sublist = []
-                tasklist_entries.append({
-                    'complete': complete == 'X',
-                    'summary': summary.strip(),
-                    'description': description.rstrip(),
-                    'sublist': sublist
-                })
+                body = "\n".join([line.removeprefix(" " * (level + 1) * 2) for line in body.splitlines()])
+                task_is_complete = complete or (
+                    sublist and all([subtask['complete'] for subtask in sublist])
+                )
+                if level == 0:
+                    conv_msg = self._commit_parser.parse(summary)
+                    tasklist_entries.append({
+                        'complete': task_is_complete,
+                        'commit': conv_msg,
+                        'body': body.rstrip(),
+                        'subtasks': sublist
+                    })
+                else:
+                    tasklist_entries.append({
+                        'complete': task_is_complete,
+                        'description': summary.strip(),
+                        'body': body.rstrip(),
+                        'subtasks': sublist
+                    })
             return tasklist_entries
 
         tasklist = self.get_data(id="tasklist", spec=self._data_main["doc.protocol.tasklist"]).strip()
@@ -253,6 +268,7 @@ class DevDoc:
                 body_md,
             )
             return []
+        tasklist = extract(tasklist)
         logger.success(
             log_title,
             "Extracted tasklist from the document.",
@@ -291,11 +307,15 @@ class DevDoc:
         def write(entry_list, level=0):
             for entry in entry_list:
                 check = 'X' if entry['complete'] else ' '
-                string.append(f"{' ' * level * 2}- [{check}] {entry['summary']}")
-                if entry["description"]:
-                    for line in entry["description"].splitlines():
-                        string.append(f"{' ' * (level + 1) * 2}{line}".strip())
-                write(entry['sublist'], level + 1)
+                if level == 0:
+                    summary = entry["commit"].summary
+                else:
+                    summary = entry['description']
+                string.append(f"{' ' * level * 2}- [{check}] {summary.strip()}")
+                if entry["body"]:
+                    for line in entry["body"].splitlines():
+                        string.append(f"{' ' * (level + 1) * 2}{line}")
+                write(entry['subtasks'], level + 1)
 
         write(entries)
         tasklist = "\n".join(string).strip()
@@ -321,7 +341,7 @@ class DevDoc:
             checkmark = "X" if check else " "
             return f"{match.group(1)}{checkmark}{match.group(3)}"
 
-        pattern = re.compile(r"(^[\s\n]*-\s*\[)([ ]|X)(\]\s*)", re.MULTILINE)
+        pattern = re.compile(r"(^[\s\n]*-\s*\[)([ ]|X)(]\s*)", re.MULTILINE)
         matches = re.findall(pattern, checkbox)
         if len(matches) == 0 or len(matches) > 1:
             logger.warning(
