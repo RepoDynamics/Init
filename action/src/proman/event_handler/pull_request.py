@@ -14,9 +14,7 @@ import controlman
 from proman.data_manager import DataManager
 from proman.datatype import (
     Label,
-    PrimaryActionCommit,
-    PrimaryCustomCommit,
-    PrimaryActionCommitType,
+    ReleaseAction,
     CommitGroup,
     BranchType,
     IssueStatus,
@@ -78,17 +76,14 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         )
         return
 
-    def _run_action_reopened(self):
-        return
-
     def _run_action_synchronize(self):
-        final_commit_type = self._data_main.get_issue_data_from_labels(self._pull.label_names).group_data
+        issue_form = self._data_main.issue_form_from_id_labels(self._pull.label_names)
         ccm_branch, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL,
             testpypi_publishable=(
                 self._branch_head.type is BranchType.DEV
                 and self._payload.internal
-                and self._primary_type_is_package_publish(commit_type=final_commit_type)
+                and issue_form.commit.action
             ),
         )
         tasks_complete = self._update_implementation_tasklist()
@@ -116,7 +111,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _run_action_labeled(self):
         label = self._data_main.resolve_label(self._payload.label.name)
         if label.category is LabelType.STATUS:
-            self._primary_commit_type = self._data_main.get_issue_data_from_labels(self._pull.label_names).group_data
+            self._primary_commit_type = self._data_main.issue_form_from_id_labels(self._pull.label_names).group_data
             if not self._status_label_allowed(label=label):
                 return
             self._update_issue_status_labels(
@@ -232,7 +227,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self._branch_base.type is BranchType.MAIN
             and ver_base.major > 0
             and primary_commit.group is CommitGroup.PRIMARY_ACTION
-            and primary_commit.action is PrimaryActionCommitType.RELEASE_MAJOR
+            and primary_commit.action is ReleaseAction.MAJOR
         ):
             # Make a new release branch from the base branch for the previous major version
             self._git_base.checkout(
@@ -444,6 +439,9 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _run_merge_fork_to_development(self):
         return
 
+    def _run_action_reopened(self):
+        return
+
     def _merge_pull(self, conv_type: str,  sha: str | None = None) -> dict | None:
         bare_title = self._pull.title.removeprefix(f'{conv_type}: ')
         commit_title = f"{conv_type}: {bare_title}"
@@ -477,7 +475,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
 
 
-        parser = conventional_commits.parser.create(
+        parser = conventional_commits.create_parser(
             types=self._data_main.get_all_conventional_commit_types(secondary_only=True),
         )
 
@@ -513,7 +511,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     def _get_next_ver_dist(self, prerelease_status: IssueStatus | None = None):
         ver_base, dist_base = self._get_latest_version(base=True)
-        primary_commit = self._data_main.get_issue_data_from_labels(self._pull.label_names).group_data
+        primary_commit = self._data_main.issue_form_from_id_labels(self._pull.label_names).group_data
         if self._primary_type_is_package_publish(commit_type=primary_commit):
             if prerelease_status:
                 next_ver = "?"
@@ -541,11 +539,11 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         else:
             next_ver = self.get_next_version(ver_last_base, final_commit_type.action)
             next_ver_str = str(next_ver)
-            if final_commit_type.action != PrimaryActionCommitType.RELEASE_POST:
+            if final_commit_type.action != ReleaseAction.POST:
                 next_ver_str += f".a{self._branch_head.suffix[0]}"
             if not ver_last_head:
                 dev = 0
-            elif final_commit_type.action == PrimaryActionCommitType.RELEASE_POST:
+            elif final_commit_type.action == ReleaseAction.POST:
                 if ver_last_head.post is not None and ver_last_head.post == next_ver.post:
                     dev = ver_last_head.dev + 1
                 else:
@@ -579,7 +577,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                     entry['complete'] = update_complete(entry['sublist'])
             return all([entry['complete'] for entry in tasklist_entries])
 
-        commits = self._get_commits()
+        commits = self._gh_api.pull_commits(number=self._pull.number)
         tasklist = self._devdoc.get_tasklist()
         if not tasklist:
             return False
@@ -868,16 +866,17 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             metadata["contributors"].append(create_person(entity=contact_person) | {"type": "ContactPerson"})
         for contributor in contributors:
             metadata["contributors"].append(create_person(entity=contributor))
+
     @staticmethod
     def _primary_type_is_package_publish(
         commit_type: PrimaryActionCommit | PrimaryCustomCommit,
         include_post_release: bool = True,
     ):
         actions = [
-            PrimaryActionCommitType.RELEASE_MAJOR,
-            PrimaryActionCommitType.RELEASE_MINOR,
-            PrimaryActionCommitType.RELEASE_PATCH,
+            ReleaseAction.MAJOR,
+            ReleaseAction.MINOR,
+            ReleaseAction.PATCH,
         ]
         if include_post_release:
-            actions.append(PrimaryActionCommitType.RELEASE_POST)
+            actions.append(ReleaseAction.POST)
         return commit_type.group is CommitGroup.PRIMARY_ACTION and commit_type.action in actions
