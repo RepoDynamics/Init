@@ -7,6 +7,7 @@ import json
 from typing import TYPE_CHECKING
 import datetime
 import re
+from functools import partial
 
 from loggerman import logger
 import mdit
@@ -22,12 +23,12 @@ from controlman import data_helper
 from controlman.cache_manager import CacheManager
 from proman.datatype import (
     InitCheckAction, Branch,
-    Commit, NonConventionalCommit, Label, PrimaryActionCommitType
+    Commit, Label, ReleaseAction
 )
 import gittidy
 from versionman.pep440_semver import PEP440SemVer
 
-from proman.datatype import FileChangeType, RepoFileType, BranchType
+from proman.datatype import FileChangeType, RepoFileType, BranchType, CommitFooter
 from proman.repo_config import RepoConfig
 from proman import hook_runner
 from proman.data_manager import DataManager
@@ -231,6 +232,36 @@ class EventHandler:
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
         self._data_main, self._data_branch_before, self._cache_manager = load_metadata()
+        if self._data_main:
+            self._commit_msg_parser = conventional_commits.create_parser(
+                type_regex=self._data_main["commit.config.regex.validator.type"],
+                scope_regex=self._data_main["commit.config.regex.validator.scope"],
+                description_regex=self._data_main["commit.config.regex.validator.description"],
+                scope_start_separator_regex=self._data_main["commit.config.regex.separator.scope_start"],
+                scope_end_separator_regex=self._data_main["commit.config.regex.separator.scope_end"],
+                scope_items_separator_regex=self._data_main["commit.config.regex.separator.scope_items"],
+                description_separator_regex=self._data_main["commit.config.regex.separator.description"],
+                body_separator_regex=self._data_main["commit.config.regex.separator.body"],
+                footer_separator_regex=self._data_main["commit.config.regex.separator.footer"],
+                footer_reader=lambda footer_string: CommitFooter(_ps.read.yaml_from_string(footer_string)),
+            )
+            self._commit_msg_writer = partial(
+                conventional_commits.create,
+                scope_start=self._data_main["commit.config.scope_start"],
+                scope_separator=self._data_main["commit.config.scope_separator"],
+                scope_end=self._data_main["commit.config.scope_end"],
+                description_separator=self._data_main["commit.config.description_separator"],
+                body_separator=self._data_main["commit.config.body_separator"],
+                footer_separator=self._data_main["commit.config.footer_separator"],
+                type_regex=self._data_main["commit.config.regex.validator.type"],
+                scope_regex=self._data_main["commit.config.regex.validator.scope"],
+                description_regex=self._data_main["commit.config.regex.validator.description"],
+                footer_writer=lambda footer: _ps.write.to_yaml_string(footer.as_dict, end_of_file_newline=False),
+            )
+        else:
+            self._commit_msg_parser = conventional_commits.create_parser()
+            self._commit_msg_writer = conventional_commits.create
+
         self._repo_config = RepoConfig(
             gh_api=self._gh_api,
             gh_api_admin=self._gh_api_admin,
@@ -240,7 +271,8 @@ class EventHandler:
             data_main=self._data_main,
             github_context=self._context._context,
             event_payload=self._context.event._payload,
-            sender=self.make_entity(self._context.event.sender.login)
+            sender=self.make_entity(self._context.event.sender.login),
+            commit_parser=self._commit_msg_parser,
         )
         self._zenodo_api = pylinks.api.zenodo(token=zenodo_token) if zenodo_token else None
         self._ver = pkgdata.get_version_from_caller()
@@ -391,8 +423,8 @@ class EventHandler:
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
                 cc_manager.apply_changes()
-                commit_msg = conventional_commits.message.create(
-                    typ=self._data_main["commit.auto.config_sync.type"],
+                commit_msg = self._commit_msg_writer(
+                    type=self._data_main["commit.auto.config_sync.type"],
                     scope=self._data_main["commit.auto.config_sync.scope"],
                     description=self._devdoc.fill_jinja_template(
                         template=self._data_main["commit.auto.config_sync.description"],
@@ -481,8 +513,8 @@ class EventHandler:
             else (InitCheckAction.REPORT if action == InitCheckAction.FAIL else InitCheckAction.COMMIT)
         )
         commit_msg = (
-            conventional_commits.message.create(
-                typ=self._data_main["commit.auto.refactor.type"],
+            self._commit_msg_writer(
+                type=self._data_main["commit.auto.refactor.type"],
                 scope=self._data_main["commit.auto.refactor.scope"],
                 description=self._devdoc.fill_jinja_template(
                     template=self._data_main.get("commit.auto.refactor.description", ""),
@@ -607,9 +639,7 @@ class EventHandler:
         git = self._git_base if base else self._git_head
         commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
         logger.info("Read commits from git history", json.dumps(commits, indent=4))
-        parser = conventional_commits.parser.create(
-            types=self._data_main.get_all_conventional_commit_types(secondary_only=False),
-        )
+
         parsed_commits = []
         for commit in commits:
             conv_msg = parser.parse(message=commit["msg"])
@@ -750,8 +780,8 @@ class EventHandler:
         if footer:
             footer = _ps.read.yaml_from_string(
                 self._devdoc.fill_jinja_template(footer, env_vars=env_vars))
-        commit_msg = conventional_commits.message.create(
-            typ=commit_data["type"],
+        commit_msg = conventional_commits.create(
+            type=commit_data["type"],
             description=self._devdoc.fill_jinja_template(commit_data["description"], env_vars=env_vars),
             scope=commit_data.get("scope", ""),
             body=self._devdoc.fill_jinja_template(commit_data.get("body", ""), env_vars=env_vars),
@@ -781,18 +811,18 @@ class EventHandler:
         return out
 
     @staticmethod
-    def get_next_version(version: PEP440SemVer, action: PrimaryActionCommitType) -> PEP440SemVer:
-        if action is PrimaryActionCommitType.RELEASE_MAJOR:
+    def get_next_version(version: PEP440SemVer, action: ReleaseAction) -> PEP440SemVer:
+        if action is ReleaseAction.MAJOR:
             if version.major == 0:
                 return version.next_minor
             return version.next_major
-        if action == PrimaryActionCommitType.RELEASE_MINOR:
+        if action == ReleaseAction.MINOR:
             if version.major == 0:
                 return version.next_patch
             return version.next_minor
-        if action == PrimaryActionCommitType.RELEASE_PATCH:
+        if action == ReleaseAction.PATCH:
             return version.next_patch
-        if action == PrimaryActionCommitType.RELEASE_POST:
+        if action == ReleaseAction.POST:
             return version.next_post
         return version
 
