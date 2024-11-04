@@ -1,20 +1,13 @@
-from unicodedata import category
-
 import pyserials as _ps
 from loggerman import logger
 
 from proman.datatype import (
-    LabelType as _LabelType,
-    Label as _Label,
-    PrimaryActionCommitType as _PrimaryActionCommitType,
-    IssueStatus as _IssueStatus,
-    Issue as _Issue,
-    CommitGroup as _CommitGroup,
-    PrimaryActionCommit as _PrimaryActionCommit,
-    PrimaryCustomCommit as _PrimaryCustomCommit,
-    SecondaryActionCommit as _SecondaryActionCommit,
-    SecondaryCustomCommit as _SecondaryCustomCommit,
-    SecondaryActionCommitType as _SecondaryActionCommitType, LabelType,
+    CommitGroup,
+    IssueForm,
+    Label,
+    LabelType,
+    ReleaseAction,
+    ReleaseCommit,
 )
 
 
@@ -26,21 +19,35 @@ class DataManager(_ps.NestedDict):
         super().__init__(data)
         self._commit_data: dict = {}
         self._issue_data: dict = {}
-        self._label_name_to_obj: dict[str, _Label] = {}
+        self._label_name_to_obj: dict[str, Label] = {}
+        self._label_id_to_obj: dict[tuple[str, str], Label] = {}
         return
 
     @property
-    def labels(self) -> dict[str, _Label]:
+    def label_name_to_obj_map(self) -> dict[str, Label]:
         """All repository labels, as a dictionary mapping full label names to Label objects."""
         if not self._label_name_to_obj:
-            self._label_name_to_obj = self._initialize_label_data()
+            self._label_name_to_obj, self._label_id_to_obj = self._initialize_label_data()
         return self._label_name_to_obj
 
     @property
-    def primary_action_commit_type_ids(self) -> list[str]:
-        return [enum.value for enum in _PrimaryActionCommitType]
+    def label_id_to_obj_map(self) -> dict[tuple[str, str], Label]:
+        """All repository labels, as a dictionary mapping full label IDs to Label objects."""
+        if not self._label_id_to_obj:
+            self._label_name_to_obj, self._label_id_to_obj = self._initialize_label_data()
+        return self._label_id_to_obj
 
-    def resolve_labels(self, names: list[str]) -> dict[_LabelType, list[_Label]]:
+    @property
+    def primary_action_commit_type_ids(self) -> list[str]:
+        return [enum.value for enum in ReleaseAction]
+
+    def issue_form_from_id(self, form_id: str) -> IssueForm:
+        for issue_form in self["issue.forms"]:
+            if issue_form["id"] == form_id:
+                return self._make_issue_form(issue_form)
+        raise ValueError(f"Could not find issue form with ID '{form_id}'.")
+
+    def resolve_labels(self, names: list[str]) -> dict[LabelType, list[Label]]:
         """
         Resolve a list of label names to label objects.
 
@@ -55,7 +62,7 @@ class DataManager(_ps.NestedDict):
             labels.setdefault(label.category, []).append(label)
         return labels
 
-    def resolve_label(self, name: str) -> _Label:
+    def resolve_label(self, name: str) -> Label:
         """
         Resolve a label name to a label object.
 
@@ -64,34 +71,21 @@ class DataManager(_ps.NestedDict):
         name : str
             Name of the label.
         """
-        label = self.labels.get(name)
+        label = self.label_name_to_obj_map.get(name)
         if label:
             return label
         logger.warning(
             "Label Resolution",
             f"Could not find label '{name}' in label data.",
         )
-        return _Label(category=_LabelType.UNKNOWN, name=name)
+        return Label(category=LabelType.UNKNOWN, name=name)
 
-    def get_issue_data_from_labels(self, label_names: list[str]) -> _Issue:
-        if not self._issue_data:
-            self._issue_data = self._initialize_issue_data()
-        label_map = self.resolve_labels(label_names)
-        if LabelType.TYPE not in label_map:
-            raise ValueError(f"Could not find type label in {label_names}.")
-        if len(label_map[LabelType.TYPE]) > 1:
-            raise ValueError(f"Multiple type labels found in {label_names}.")
-        if LabelType.SCOPE in label_map and len(label_map[LabelType.SCOPE]) > 1:
-            raise ValueError(f"Multiple scope labels found in {label_names}.")
-        type_label = label_map[LabelType.TYPE][0].name
-        scope_label = label_map[LabelType.SCOPE][0].name if LabelType.SCOPE in label_map else None
-        issue_data = self._issue_data.get((type_label, scope_label))
-        if not issue_data:
-            raise ValueError(
-                f"Could not find issue form with type '{type_label}' "
-                f"and scope '{scope_label}'."
-            )
-        return issue_data
+    def issue_form_from_id_labels(self, label_names: list[str]) -> IssueForm:
+        for issue_form_data in self["issue.forms"]:
+            issue_form = self._make_issue_form(issue_form_data)
+            if all(label.name in label_names for label in issue_form.id_labels):
+                return issue_form
+        raise ValueError(f"Could not find issue form from labels {label_names}.")
 
     def get_branch_from_version(self, version: str) -> str:
         return self["project.version"][version]["branch"]
@@ -102,7 +96,7 @@ class DataManager(_ps.NestedDict):
         if secondary_only:
             return [
                 conv_type for conv_type, commit_data in self._commit_data.items()
-                if commit_data.group is _CommitGroup.SECONDARY_CUSTOM
+                if commit_data.group is CommitGroup.SECONDARY_CUSTOM
             ]
         return list(self._commit_data.keys())
 
@@ -113,18 +107,18 @@ class DataManager(_ps.NestedDict):
             self._commit_data = self._initialize_commit_data()
         return self._commit_data[conv_type]
 
-    def create_label_branch(self, source: _Label | str) -> _Label:
+    def create_label_branch(self, source: Label | str) -> Label:
         prefix = self["label.branch.prefix"]
         if isinstance(source, str):
             branch_name = source
-        elif isinstance(source, _Label):
-            if source.category is not _LabelType.VERSION:
+        elif isinstance(source, Label):
+            if source.category is not LabelType.VERSION:
                 raise ValueError(f"Label '{source.name}' is not a version label.")
             branch_name = self.get_branch_from_version(version=source.suffix)
         else:
             raise TypeError(f"Invalid type for source: {type(source)}")
-        return _Label(
-            category=_LabelType.BRANCH,
+        return Label(
+            category=LabelType.BRANCH,
             name=f'{prefix}{branch_name}',
             prefix=prefix,
             suffix=branch_name,
@@ -137,7 +131,7 @@ class DataManager(_ps.NestedDict):
         for group_id, group_data in self["commit.primary"].items():
             if group_id in self.primary_action_commit_type_ids:
                 commit_type[group_data["type"]] = _PrimaryActionCommit(
-                    action=_PrimaryActionCommitType(group_id),
+                    action=ReleaseAction(group_id),
                     conv_type=group_data["type"],
                 )
             else:
@@ -158,73 +152,63 @@ class DataManager(_ps.NestedDict):
             )
         return commit_type
 
-    def _initialize_issue_data(self) -> dict[tuple[str, str | None], _Issue]:
-        issue_data = {}
-        for issue_form in self["issue.forms"]:
-            type_label_id = issue_form["type"]
-            type_label = self[f"label.type.label.{type_label_id}.name"]
-            type_labels = [type_label]
-            scope_label_id = issue_form.get("scope")
-            if scope_label_id:
-                scope_label = self[f"label.scope.label.{scope_label_id}.name"]
-                type_labels.append(scope_label)
+    def _initialize_label_data(self) -> tuple[dict[str, Label], dict[tuple[str, str], Label]]:
+        name_to_obj = {}
+        id_to_obj = {}
+        for group_id, group_data in self.get("label", {}).items():
+            if group_id == "single":
+                for label_id, label_data in group_data.items():
+                    label = Label(
+                        category=LabelType.CUSTOM_SINGLE,
+                        name=label_data["name"],
+                        id=label_id,
+                        description=label_data.get("description", ""),
+                        color=label_data.get("color", ""),
+                    )
+                    name_to_obj[label_data["name"]] = id_to_obj[(group_id, label_id)] = label
             else:
-                scope_label = None
-            action = issue_form["action"]
-            issue_data[(type_label, scope_label)] = _Issue(
-                form=issue_form,
-                action=_PrimaryActionCommitType(action) if action else None,
-                identifying_labels=type_labels
-            )
-        return issue_data
+                for label_id, label_data in group_data.get("label", {}).items():
+                    label = Label(
+                        category=LabelType(group_id) if group_id in (
+                            "status", "version", "branch"
+                        ) else LabelType.CUSTOM_GROUP,
+                        name=label_data["name"],
+                        id=label_id,
+                        prefix=group_data["prefix"],
+                        suffix=label_data["suffix"],
+                        description=label_data.get("description", group_data.get("description", "")),
+                        color=group_data.get("color", ""),
+                    )
+                    name_to_obj[label_data["name"]] = id_to_obj[(group_id, label_id)] = label
+        return name_to_obj, id_to_obj
 
-    def _initialize_label_data(self) -> dict[str, _Label]:
-        out = {}
-        for label_type in ("type", "scope", "status"):
-            group_data = self.get(f"label.{label_type}", {})
-            if not group_data:
-                continue
-            for label_id, label_data in group_data.get("label", {}).items():
-                out[label_data["name"]] = _Label(
-                    category=LabelType(label_type),
-                    name=label_data["name"],
-                    id=label_id,
-                    prefix=group_data["prefix"],
-                    suffix=label_data["suffix"],
-                    description=label_data.get("description", ""),
-                    color=group_data.get("color", ""),
-                )
-        for group_id, group_data in self.get("label.custom.group", {}).items():
-            for label_id, label_data in group_data.get("label", {}).items():
-                out[label_data["name"]] = _Label(
-                    category=LabelType.CUSTOM_GROUP,
-                    name=label_data["name"],
-                    group_id=group_id,
-                    id=label_id,
-                    prefix=group_data["prefix"],
-                    suffix=label_data["suffix"],
-                    description=label_data.get("description", ""),
-                    color=group_data.get("color", ""),
-                )
-        for label_id, label_data in self.get("label.custom.single", {}).items():
-            out[label_data["name"]] = _Label(
-                category=LabelType.CUSTOM_SINGLE,
-                name=label_data["name"],
-                id=label_id,
-                description=label_data.get("description", ""),
-                color=label_data.get("color", ""),
-            )
-        for autogroup_name in ("version", "branch"):
-            group_data = self[f"label.{autogroup_name}"]
-            if not group_data:
-                continue
-            for label_data in group_data["labels"]:
-                out[label_data["name"]] = _Label(
-                    category=LabelType(autogroup_name),
-                    name=label_data["name"],
-                    prefix=group_data["prefix"],
-                    suffix=label_data["suffix"],
-                    description=label_data.get("description", ""),
-                    color=label_data.get("color", ""),
-                )
-        return out
+    def _make_issue_form(self, issue_form: dict) -> IssueForm:
+        id_labels = [
+            self.label_id_to_obj_map[(group_id, label_id)]
+            for group_id, label_id in issue_form["id_labels"]
+        ]
+        commit = self["commit.release"][issue_form["commit"]]
+        return IssueForm(
+            id=issue_form["id"],
+            commit=ReleaseCommit(
+                type=commit["type"],
+                description=commit["description"],
+                action=ReleaseAction(commit["action"]) if commit.get("action") else None,
+                scope=commit.get("scope", ""),
+                body=commit.get("body", ""),
+                footer=commit.get("footer", {}),
+                commit_description=commit.get("commit_description", ""),
+            ),
+            id_labels=id_labels,
+            labels=[
+                self.label_id_to_obj_map[(group_id, label_id)]
+                for group_id, label_id in issue_form.get("labels", [])
+            ],
+            pre_process=issue_form.get("pre_process", {}),
+            post_process=issue_form.get("post_process", {}),
+            name=issue_form["name"],
+            description=issue_form["description"],
+            projects=issue_form.get("projects", []),
+            title=issue_form.get("title", ""),
+            body=issue_form.get["body"],
+        )
