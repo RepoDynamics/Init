@@ -16,23 +16,21 @@ import pylinks
 from pylinks.exception.api import WebAPIError as _WebAPIError
 import pyserials as _ps
 from github_contexts.github import enum as _ghc_enum
-import conventional_commits
 import pkgdata
 import controlman
 from controlman import data_helper
 from controlman.cache_manager import CacheManager
-from proman.datatype import (
-    InitCheckAction, Branch,
-    Commit, Label, ReleaseAction
-)
 import gittidy
 from versionman.pep440_semver import PEP440SemVer
 
-from proman.datatype import FileChangeType, RepoFileType, BranchType, CommitFooter
+from proman.datatype import (
+    FileChangeType, RepoFileType, BranchType, InitCheckAction, Branch, Label, ReleaseAction
+)
 from proman.repo_config import RepoConfig
-from proman import hook_runner
+from proman import hook_runner, change_detector, dev_doc
+from proman.commit_manager import CommitManager
 from proman.data_manager import DataManager
-from proman import change_detector, dev_doc
+from proman.user_manager import UserManager
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
@@ -94,7 +92,7 @@ class EventHandler:
             log_title = "Admin Token Verification"
             if not admin_token:
                 has_admin_token = False
-                if in_repo_creation_event():
+                if in_repo_creation_event:
                     logger.info(
                         log_title,
                         "Repository creation event detected; no admin token required.",
@@ -201,7 +199,7 @@ class EventHandler:
                     )
                     return data
 
-            if in_repo_creation_event():
+            if in_repo_creation_event:
                 logger.info(
                     "Metadata Load",
                     "Repository creation event detected; no metadata to load.",
@@ -216,15 +214,14 @@ class EventHandler:
             )
             return data_main, data_branch_before, cache_manager
 
-        def in_repo_creation_event():
-            return (
-                self._context.event_name is _ghc_enum.EventType.PUSH
-                and self._context.ref_type is _ghc_enum.RefType.BRANCH
-                and self._context.event.action is _ghc_enum.ActionType.CREATED
-                and self._context.ref_is_main
-            )
-
         self._context = github_context
+
+        in_repo_creation_event = (
+            self._context.event_name is _ghc_enum.EventType.PUSH
+            and self._context.ref_type is _ghc_enum.RefType.BRANCH
+            and self._context.event.action is _ghc_enum.ActionType.CREATED
+            and self._context.ref_is_main
+        )
         self._reporter = reporter
         self._output = output_writer
         self._gh_api_admin, self._gh_api, self._gh_link, self._has_admin_token = init_github_api()
@@ -232,48 +229,40 @@ class EventHandler:
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
         self._data_main, self._data_branch_before, self._cache_manager = load_metadata()
-        if self._data_main:
-            self._commit_msg_parser = conventional_commits.create_parser(
-                type_regex=self._data_main["commit.config.regex.validator.type"],
-                scope_regex=self._data_main["commit.config.regex.validator.scope"],
-                description_regex=self._data_main["commit.config.regex.validator.description"],
-                scope_start_separator_regex=self._data_main["commit.config.regex.separator.scope_start"],
-                scope_end_separator_regex=self._data_main["commit.config.regex.separator.scope_end"],
-                scope_items_separator_regex=self._data_main["commit.config.regex.separator.scope_items"],
-                description_separator_regex=self._data_main["commit.config.regex.separator.description"],
-                body_separator_regex=self._data_main["commit.config.regex.separator.body"],
-                footer_separator_regex=self._data_main["commit.config.regex.separator.footer"],
-                footer_reader=lambda footer_string: CommitFooter(_ps.read.yaml_from_string(footer_string)),
-            )
-            self._commit_msg_writer = partial(
-                conventional_commits.create,
-                scope_start=self._data_main["commit.config.scope_start"],
-                scope_separator=self._data_main["commit.config.scope_separator"],
-                scope_end=self._data_main["commit.config.scope_end"],
-                description_separator=self._data_main["commit.config.description_separator"],
-                body_separator=self._data_main["commit.config.body_separator"],
-                footer_separator=self._data_main["commit.config.footer_separator"],
-                type_regex=self._data_main["commit.config.regex.validator.type"],
-                scope_regex=self._data_main["commit.config.regex.validator.scope"],
-                description_regex=self._data_main["commit.config.regex.validator.description"],
-                footer_writer=lambda footer: _ps.write.to_yaml_string(footer.as_dict, end_of_file_newline=False),
-            )
-        else:
-            self._commit_msg_parser = conventional_commits.create_parser()
-            self._commit_msg_writer = conventional_commits.create
 
         self._repo_config = RepoConfig(
             gh_api=self._gh_api,
             gh_api_admin=self._gh_api_admin,
             default_branch_name=self._context.event.repository.default_branch
         )
-        self._devdoc = dev_doc.DevDoc(
-            data_main=self._data_main,
-            github_context=self._context._context,
-            event_payload=self._context.event._payload,
-            sender=self.make_entity(self._context.event.sender.login),
-            commit_parser=self._commit_msg_parser,
-        )
+
+        if not in_repo_creation_event:
+            self._user_manager = UserManager(
+                data_main=self._data_main,
+                root_path=self._path_base,
+                cache_manager=self._cache_manager,
+                github_api=pylinks.api.github(token=self._context.token),
+            )
+            self._payload_sender = self._user_manager.get_from_github_rest_id(
+                self._context.event.sender.id
+            ) if self._context.event.sender else None
+            self._jinja_env_vars = {
+                "event": self._context.event_name,
+                "action": self._context.event.action.value if self._context.event.action else "",
+                "ccc": self._data_main,
+                "context": self._context,
+                "payload": self._context.event,
+                "sender": self._payload_sender,
+            }
+            self._commit_manager = CommitManager(
+                data_main=self._data_main,
+                jinja_env_vars=self._jinja_env_vars,
+            )
+            self._devdoc = dev_doc.DevDoc(
+                data_main=self._data_main,
+                env_vars=self._jinja_env_vars,
+                commit_parser=self._commit_manager.create_from_message,
+            )
         self._zenodo_api = pylinks.api.zenodo(token=zenodo_token) if zenodo_token else None
         self._ver = pkgdata.get_version_from_caller()
         self._data_branch: DataManager | None = None
@@ -423,16 +412,7 @@ class EventHandler:
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
                 cc_manager.apply_changes()
-                commit_msg = self._commit_msg_writer(
-                    type=self._data_main["commit.auto.config_sync.type"],
-                    scope=self._data_main["commit.auto.config_sync.scope"],
-                    description=self._devdoc.fill_jinja_template(
-                        template=self._data_main["commit.auto.config_sync.description"],
-                    ),
-                    body=self._devdoc.fill_jinja_template(
-                        template=self._data_main.get("commit.auto.config_sync.body", ""),
-                    ),
-                )
+                commit_msg = self._commit_manager.create_auto_commit_msg(commit_type="config_sync")
                 commit_hash_before = git.commit_hash_normal()
                 commit_hash_after = git.commit(
                     message=str(commit_msg) if action is not InitCheckAction.AMEND else "",
@@ -452,8 +432,8 @@ class EventHandler:
                     pull_data = self._gh_api_admin.pull_create(
                         head=pr_branch_name,
                         base=self._branch_name_memory_autoupdate,
-                        title=commit_msg.summary,
-                        body=commit_msg.body,
+                        title=commit_msg.description,
+                        body=report.source(target="github", filters=["short, github"], separate_sections=False),
                     )
                     self.switch_back_from_autoupdate_branch(git=git)
                     commit_hash = None
@@ -512,18 +492,9 @@ class EventHandler:
             if action in [InitCheckAction.REPORT, InitCheckAction.AMEND, InitCheckAction.COMMIT]
             else (InitCheckAction.REPORT if action == InitCheckAction.FAIL else InitCheckAction.COMMIT)
         )
-        commit_msg = (
-            self._commit_msg_writer(
-                type=self._data_main["commit.auto.refactor.type"],
-                scope=self._data_main["commit.auto.refactor.scope"],
-                description=self._devdoc.fill_jinja_template(
-                    template=self._data_main.get("commit.auto.refactor.description", ""),
-                ),
-                body=self._devdoc.fill_jinja_template(
-                    template=self._data_main.get("commit.auto.refactor.body", ""),
-                ),
-            ) if action in [InitCheckAction.COMMIT, InitCheckAction.PULL] else ""
-        )
+        commit_msg = self._commit_manager.create_auto_commit_msg("refactor") if action in [
+            InitCheckAction.COMMIT, InitCheckAction.PULL
+        ] else ""
         git = self._git_base if base else self._git_head
         if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
@@ -547,7 +518,7 @@ class EventHandler:
             pull_data = self._gh_api_admin.pull_create(
                 head=pr_branch,
                 base=self._branch_name_memory_autoupdate,
-                title=commit_msg.summary,
+                title=commit_msg.description,
                 body=commit_msg.body,
             )
             self.switch_back_from_autoupdate_branch(git=git)
@@ -767,34 +738,6 @@ class EventHandler:
         with open(path_root / announcement_data["path"], "w") as f:
             f.write(announcement)
         return
-
-    def get_member_id_from_github_username(self, username: str) -> str | None:
-        for member_id, member_data in self._data_main["team"].items():
-            if member_data.get("github", {}).get("id") == username:
-                return member_id
-        return
-
-    def create_auto_commit_msg(self, commit_type: str, env_vars: dict) -> str:
-        commit_data = self._data_main[f"commit.auto.{commit_type}"]
-        footer = commit_data.get("footer")
-        if footer:
-            footer = _ps.read.yaml_from_string(
-                self._devdoc.fill_jinja_template(footer, env_vars=env_vars))
-        commit_msg = conventional_commits.create(
-            type=commit_data["type"],
-            description=self._devdoc.fill_jinja_template(commit_data["description"], env_vars=env_vars),
-            scope=commit_data.get("scope", ""),
-            body=self._devdoc.fill_jinja_template(commit_data.get("body", ""), env_vars=env_vars),
-            footer=footer,
-        )
-        return str(commit_msg)
-
-    def make_entity(self, github_username: str) -> dict:
-        return data_helper.fill_entity(
-            entity={"github": {"id": github_username}},
-            github_api=pylinks.api.github(token=self._context.token),
-            cache_manager=self._cache_manager,
-        )[0]
 
     def get_assignees_for_issue_type(
         self, issue_id: str,
