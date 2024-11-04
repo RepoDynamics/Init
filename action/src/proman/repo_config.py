@@ -74,7 +74,7 @@ class RepoConfig:
                 )
             )
         topics = data["repo.topics"]
-        if topics:
+        if topics is not None:
             self._gh_api_admin.repo_topics_replace(topics=topics)
             logger.success(
                 "Repository Topics",
@@ -163,7 +163,7 @@ class RepoConfig:
             "All current repository labels have been deleted:",
             self._make_labels_table(current_labels, "Deleted Labels"),
         )
-        for label in data.labels.values():
+        for label in data.label_name_to_obj_map.values():
             self._gh_api.label_create(name=label.name, description=label.description, color=label.color)
         logger.success(
             "Created Labels",
@@ -196,8 +196,8 @@ class RepoConfig:
                     rest[key] = label
             return full, version, branch, rest
 
-        labels_old, labels_old_ver, labels_old_branch, labels_old_rest = format_labels(data_old.labels)
-        labels_new, labels_new_ver, labels_new_branch, labels_new_rest = format_labels(data_new.labels)
+        labels_old, labels_old_ver, labels_old_branch, labels_old_rest = format_labels(data_old.label_name_to_obj_map)
+        labels_new, labels_new_ver, labels_new_branch, labels_new_rest = format_labels(data_new.label_name_to_obj_map)
 
         ids_old = set(labels_old.keys())
         ids_new = set(labels_new.keys())
