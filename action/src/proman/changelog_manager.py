@@ -3,9 +3,37 @@ import re
 import datetime
 
 from loggerman import logger
+import pyserials as ps
 
 
 class ChangelogManager:
+
+    def __init__(self, path: Path):
+        self._path = path
+        self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else {}
+        return
+
+    @property
+    def changelog(self) -> dict:
+        return self._changelog
+
+    def update_current(self, data: dict):
+        current = self._changelog.setdefault("current", {})
+        ps.update.dict_from_addon(
+            data=data,
+            addon=current,
+        )
+        return
+
+    def write(self, path: Path | None = None):
+        with open(path or self._path, "w") as changelog_file:
+            changelog_file.write(ps.write.to_json_string(self._changelog, sort_keys=True, indent=4))
+        return
+
+
+
+
+class ChangelogManager_old:
     def __init__(
         self,
         path_root: str,
