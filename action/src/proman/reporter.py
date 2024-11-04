@@ -7,6 +7,7 @@ from github_contexts import github as _gh_context
 import mdit
 import htmp
 from loggerman import logger, style
+import pyserials as ps
 from mdit.target.rich import HeadingConfig, PanelConfig, StyleConfig, InlineHeadingConfig, RuleConfig
 from rich.text import Text
 
@@ -147,7 +148,7 @@ class Reporter:
             (self._context, "GitHub Context", "🎬"),
             (self._context.event, "Event Payload", "📥"),
         ):
-            code = mdit.element.code_block(str(data), language="yaml")
+            code = mdit.element.code_block(ps.write.to_yaml_string(data), language="yaml")
             dropdown = mdit.element.dropdown(
                 title=summary,
                 body=code,
