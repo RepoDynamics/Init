@@ -1,18 +1,18 @@
 """Push event handler."""
+from __future__ import annotations as _annotations
+from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 import shutil
 
-import conventional_commits
 from github_contexts import github as _gh_context
 from loggerman import logger
 import controlman
 from proman.data_manager import DataManager
-from versionman.pep440_semver import PEP440SemVer
 import fileex as _fileex
 
 from proman.datatype import InitCheckAction
-from proman.exception import ProManException
 from proman.main import EventHandler
+
 
 
 class PushEventHandler(EventHandler):
@@ -25,6 +25,11 @@ class PushEventHandler(EventHandler):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: _gh_context.payload.PushPayload = self._context.event
+        self._head_commit = self._context.event.head_commit
+        if self._head_commit and self._head_commit.message:
+            self._head_commit_msg = self._commit_msg_parser.parse(self._head_commit.message)
+        else:
+            self._head_commit_msg = None
         return
 
     @logger.sectioner("Push Handler Execution")
@@ -68,7 +73,7 @@ class PushEventHandler(EventHandler):
             self._reporter.add(
                 name="event",
                 status="skip",
-                summary="Default branch created while a version tag is present. "
+                summary="Default branch created while a git tag is present. "
                         "This is likely a result of renaming the default branch.",
             )
             return
@@ -86,7 +91,7 @@ class PushEventHandler(EventHandler):
         # Main branch edited
         if not has_tags:
             # The repository is in the initialization phase
-            if self._context.event.head_commit.message.startswith("init:"):
+            if self._head_commit_msg.footer.initialize_project:
                 # User is signaling the end of initialization phase
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
@@ -151,42 +156,18 @@ class PushEventHandler(EventHandler):
 
     def _run_first_release(self):
 
-        def parse_commit_msg() -> conventional_commits.message.ConventionalCommitMessage:
-            head_commit_msg = self._context.event.head_commit.message
-            head_commit_msg_lines = head_commit_msg.splitlines()
-            head_commit_summary = head_commit_msg_lines[0]
-            if head_commit_summary.removeprefix("init:").strip():
-                head_commit_msg_final = head_commit_msg
-            else:
-                head_commit_msg_lines[0] = (
-                    f"init: Initialize project from RepoDynamics template."
-                )
-                head_commit_msg_final = "\n".join(head_commit_msg_lines)
-            return conventional_commits.parser.create(types=["init"]).parse(head_commit_msg_final)
-
-        def parse_version(commit_msg: conventional_commits.message.ConventionalCommitMessage) -> str:
-            version_input = commit_msg.footer.get("version")
-            if not version_input:
-                return "0.0.0"
-            try:
-                return str(PEP440SemVer(version_input))
-            except ValueError:
-                logger.critical(f"Invalid version string in commit footer: {version_input}")
-                raise ProManException()
-
         self._reporter.event("Project initialization")
-        commit_message = parse_commit_msg()
-        version = parse_version(commit_msg=commit_message)
+        version = self._head_commit_msg.footer.version or "0.0.0"
         new_data, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT,
             future_versions={self._context.ref_name: version},
         )
-        if commit_message.footer.get("squash", True):
+        if self._head_commit_msg.footer.get("squash", True):
             # Squash all commits into a single commit
             # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
             #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
             self._git_head.checkout("temp", orphan=True)
-            self._git_head.commit(message=commit_message.footerless)
+            self._git_head.commit(message=str(self._head_commit_msg))
             self._git_head.branch_delete(self._context.ref_name, force=True)
             self._git_head.branch_rename(self._context.ref_name, force=True)
             self._git_head.push(
@@ -197,7 +178,10 @@ class PushEventHandler(EventHandler):
         self._data_main = new_data
         self._tag_version(
             ver=version,
-            msg=self._devdoc.fill_jinja_template(self._data_main["tag.version.message"], {"version": version}),
+            msg=self._devdoc.fill_jinja_template(
+                self._data_main["tag.version.message"],
+                {"version": version, "ccc": new_data},
+            ),
             base=False
         )
         self._repo_config.update_all(data_new=new_data, data_old=data_main_before, rulesets="create")
