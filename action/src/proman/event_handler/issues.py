@@ -20,10 +20,10 @@ class IssuesEventHandler(EventHandler):
         super().__init__(**kwargs)
         self._payload: gh_context.payload.IssuesPayload = self._context.event
         self._issue = self._payload.issue
-        self._issue_author = self.make_entity(self._issue.user.login)
-        issue_payload = self._issue._issue.copy()
+        self._issue_author = self._user_manager.from_issue_author(self._issue)
+        issue_payload = copy.deepcopy(self._issue.as_dict)
         issue_payload["user"] = self._issue_author
-        self._devdoc.env_vars["issue"] = issue_payload
+        self._jinja_env_vars["issue"] = issue_payload
 
         self._label_groups: dict[LabelType, list[Label]] = {}
         self._protocol_comment_id: int | None = None
@@ -286,7 +286,7 @@ class IssuesEventHandler(EventHandler):
                 },
             }
             self._git_head.commit(
-                message=self.create_auto_commit_msg(
+                message=self._commit_manager.create_auto_commit_msg(
                     commit_type="dev_branch_creation",
                     env_vars=branch_data,
                 )
@@ -311,7 +311,7 @@ class IssuesEventHandler(EventHandler):
             )
             assignees = assign_pr()
 
-            pull_data["user"] = self.make_entity(pull_data["user"]["login"])
+            pull_data["user"] = self._user_manager.get_from_github_rest_id(pull_data["user"]["id"])
             pull_data["head"] = branch_data["head"] | pull_data["head"]
             pull_data["base"] = branch_data["base"] | pull_data["base"]
             self._devdoc.add_timeline_entry(
@@ -329,7 +329,7 @@ class IssuesEventHandler(EventHandler):
             implementation_branches_info.append(pull_data)
 
             self._git_head.commit(
-                message=self.create_auto_commit_msg(
+                message=self._commit_manager.create_auto_commit_msg(
                     commit_type="changelog_init",
                     env_vars={"pull_request": pull_data}
                 )
@@ -352,7 +352,7 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_assignment(self, assigned: bool):
-        assignee = self.make_entity(self._payload.assignee.login)
+        assignee = self._user_manager.get_from_github_rest_id(self._payload.assignee.id)
         action_desc = "assigned to" if assigned else "unassigned from"
         self._reporter.event(f"Issue #{self._issue.number} {action_desc} {assignee['github']['id']}")
         self._devdoc.add_timeline_entry(env_vars={"assignee": assignee})
@@ -362,42 +362,22 @@ class IssuesEventHandler(EventHandler):
     def _create_changelog_issue_entry(self):
         assignee_gh_ids = []
         if self._issue.assignee:
-            assignee_gh_ids.append(self._issue.assignee.login)
+            assignee_gh_ids.append(self._issue.assignee.id)
         if self._issue.assignees:
             for assignee in self._issue.assignees:
                 if assignee:
-                    assignee_gh_ids.append(assignee.login)
-        assignees_int = []
-        assignees_ext = []
-        for assignee_gh_id in set(assignee_gh_ids):
-            member_id = self.get_member_id_from_github_username(assignee_gh_id)
-            if member_id:
-                assignees_int.append({"member": True, "id": member_id})
-            else:
-                assignee, _ = data_helper.fill_entity(
-                    entity={"github": {"id": assignee_gh_id}},
-                    github_api=self._gh_api,
-                    cache_manager=self._cache_manager,
-                )
-                assignees_ext.append(assignee | {"member": False})
-        creator_member_id = self.get_member_id_from_github_username(self._issue.user.login)
-        if creator_member_id:
-            creator = {"member": True, "id": creator_member_id}
-        else:
-            creator, _ = data_helper.fill_entity(
-                entity={"github": {"id": self._issue.user.login}},
-                github_api=self._gh_api,
-                cache_manager=self._cache_manager,
-            )
-            creator |= {"github_association": self._issue.author_association}
+                    assignee_gh_ids.append(assignee.id)
         return {
             "number": self._issue.number,
             "id": self._issue.id,
             "node_id": self._issue.node_id,
             "url": self._issue.html_url,
             "created_at": self.normalize_github_date(self._issue.created_at),
-            "assignees": assignees_int + assignees_ext,
-            "creator": creator,
+            "assignees": [
+                self._user_manager.get_from_github_rest_id(assignee_gh_id).changelog_entry
+                for assignee_gh_id in set(assignee_gh_ids)
+            ],
+            "creator": self._issue_author.changelog_entry,
             "title": self._issue.title,
         }
 
@@ -422,7 +402,7 @@ class IssuesEventHandler(EventHandler):
             "node_id": pull["node_id"],
             "url": pull["html_url"],
             "created_at": self.normalize_github_date(pull["created_at"]),
-            "creator": {"id": self.get_member_id_from_github_username(self._payload.sender.login)},
+            "creator": self._payload_sender.changelog_entry,
             "title": pull["title"],
             "internal": True,
             "base": {
