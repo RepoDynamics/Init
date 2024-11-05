@@ -9,6 +9,29 @@ from pathlib import Path
 
 
 class WebAnnouncement:
+
+    def read_announcement_file(self, base: bool, data: _ps.NestedDict) -> str | None:
+        filepath = data["announcement.path"]
+        if not filepath:
+            return
+        path_root = self._path_base if base else self._path_head
+        fullpath = path_root / filepath
+        return fullpath.read_text() if fullpath.is_file() else None
+
+    def write_announcement_file(self, announcement: str, base: bool, data: _ps.NestedDict) -> None:
+        announcement_data = data["announcement"]
+        if not announcement_data:
+            return
+        if announcement:
+            announcement = f"{announcement.strip()}\n"
+        path_root = self._path_base if base else self._path_head
+        with open(path_root / announcement_data["path"], "w") as f:
+            f.write(announcement)
+        return
+
+
+
+
     def __init__(
         self,
         metadata_main: ControlCenterContentManager,
