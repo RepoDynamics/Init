@@ -19,22 +19,16 @@ from controlman.cache_manager import CacheManager
 import gittidy
 from versionman.pep440_semver import PEP440SemVer
 
-from proman.datatype import (
-    FileChangeType, RepoFileType, BranchType, InitCheckAction, Branch, Label, ReleaseAction
-)
-from proman.repo_config import RepoConfig
-from proman import hook_runner, change_detector, dev_doc
-from proman.commit_manager import CommitManager
-from proman.data_manager import DataManager
-from proman.user_manager import UserManager
-from proman.release_manager import ReleaseManager
+from proman import runner
+from proman.dtype import FileChangeType, RepoFileType, BranchType, InitCheckAction, ReleaseAction
+from proman.dstruct import Branch, Label
 from proman.exception import ProManException
+from proman.manager import CommitManager, DataManager, ProtocolManager, RepoManager, ReleaseManager, UserManager
 
 if TYPE_CHECKING:
     from typing import Literal
     from github_contexts import GitHubContext
-    from proman.reporter import Reporter
-    from proman.output_writer import OutputWriter
+    from proman.manager import ReportManager, OutputManager
     from pylinks.api.github import Repo as GitHubRepoAPI
     from pylinks.site.github import Repo as GitHubRepoLink
 
@@ -58,8 +52,8 @@ class EventHandler:
     def __init__(
         self,
         github_context: GitHubContext,
-        reporter: Reporter,
-        output_writer: OutputWriter,
+        reporter: ReportManager,
+        output_writer: OutputManager,
         admin_token: str | None,
         zenodo_token: str | None,
         path_repo_base: str,
@@ -216,7 +210,7 @@ class EventHandler:
         self._path_head = self._git_head.repo_path
         self._data_main, self._data_branch_before, self._cache_manager = load_metadata()
 
-        self._repo_config = RepoConfig(
+        self._repo_config = RepoManager(
             gh_api=self._gh_api,
             gh_api_admin=self._gh_api_admin,
             default_branch_name=self._context.event.repository.default_branch
@@ -244,7 +238,7 @@ class EventHandler:
                 data_main=self._data_main,
                 jinja_env_vars=self._jinja_env_vars,
             )
-            self._devdoc = dev_doc.DevDoc(
+            self._devdoc = ProtocolManager(
                 data_main=self._data_main,
                 env_vars=self._jinja_env_vars,
                 commit_parser=self._commit_manager.create_from_msg,
@@ -252,6 +246,8 @@ class EventHandler:
             self._data_main.commit_manager = self._commit_manager
             self._data_main.user_manager = self._user_manager
             self._release_manager = ReleaseManager(
+                root_path=self._path_head,
+                user_manager=self._user_manager,
                 zenodo_token=zenodo_token,
             )
         self._ver = pkgdata.get_version_from_caller()
@@ -316,7 +312,7 @@ class EventHandler:
         changes = self._git_head.changed_files(
             ref_start=self._context.hash_before, ref_end=self._context.hash_after
         )
-        full_info = change_detector.detect(data=self._data_branch_before, changes=changes)
+        full_info = runner.change_detector(data=self._data_branch_before, changes=changes)
         changed_filetypes = {}
         rows = [["Type", "Subtype", "Change", "Dynamic", "Path"]]
         for typ, subtype, change_type, is_dynamic, path in sorted(full_info, key=lambda x: (x[0].value, x[1])):
@@ -489,7 +485,7 @@ class EventHandler:
         if action == InitCheckAction.PULL:
             pr_branch = self.switch_to_autoupdate_branch(typ="hooks", git=git)
         try:
-            hooks_output = hook_runner.run(
+            hooks_output = runner.refactor(
                 git=git,
                 ref_range=ref_range,
                 action=input_action.value,
