@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 import time
 import re
 
@@ -15,7 +14,6 @@ from proman.data_manager import DataManager
 from proman.datatype import (
     Label,
     ReleaseAction,
-    CommitGroup,
     BranchType,
     IssueStatus,
     InitCheckAction,
@@ -45,7 +43,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         super().__init__(**kwargs)
         self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
         self._git_base.checkout(branch=self._context.base_ref)
-        self._primary_commit_type: PrimaryActionCommit | PrimaryCustomCommit | None = None
         return
 
     @logger.sectioner("Pull Request Handler Execution")
@@ -93,7 +90,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 draft=False,
             )
         if job_runs["package_publish_testpypi"]:
-            next_ver = self._calculate_next_dev_version(final_commit_type=final_commit_type)
+            next_ver = self._calculate_next_dev_version(action=issue_form.commit.action)
             job_runs["version"] = str(next_ver)
             self._tag_version(
                 ver=next_ver,
@@ -231,7 +228,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         ):
             # Make a new release branch from the base branch for the previous major version
             self._git_base.checkout(
-                branch=self.create_branch_name_release(major_version=ver_base.major), create=True
+                branch=self._data_main.branch_name_release(major_version=ver_base.major), create=True
             )
             self._git_base.push(target="origin", set_upstream=True)
             self._git_base.checkout(branch=self._branch_base.name)
@@ -315,7 +312,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             IssueStatus.DEPLOY_RC: "rc",
         }[status]
         next_ver_pre = PEP440SemVer(f"{next_ver_final}.{pre_segment}{self._branch_head.suffix[0]}")
-        pre_release_branch_name = self.create_branch_name_prerelease(version=next_ver_pre)
+        pre_release_branch_name = self._data_main.branch_name_pre(version=next_ver_pre)
         self._git_base.checkout(branch=pre_release_branch_name, create=True)
         self._git_base.commit(
             message=(
@@ -523,27 +520,30 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             next_ver = None
         return primary_commit, ver_base, next_ver, ver_dist
 
-    def _calculate_next_dev_version(self, final_commit_type):
+    def _calculate_next_dev_version(self, action: ReleaseAction):
         ver_last_base, _ = self._get_latest_version(dev_only=False, base=True)
         ver_last_head, _ = self._get_latest_version(dev_only=True, base=False)
         if ver_last_base.pre:
             # The base branch is a pre-release branch
             next_ver = ver_last_base.next_post
-            if not ver_last_head or (
-                ver_last_head.release != next_ver.release or ver_last_head.pre != next_ver.pre
+            if (
+                ver_last_head
+                and ver_last_head.release == next_ver.release
+                and ver_last_head.pre == next_ver.pre
+                and ver_last_head.dev is not None
             ):
-                dev = 0
+                dev = ver_last_head.dev + 1
             else:
-                dev = (ver_last_head.dev or -1) + 1
+                dev = 0
             next_ver_str = f"{next_ver}.dev{dev}"
         else:
-            next_ver = self.get_next_version(ver_last_base, final_commit_type.action)
+            next_ver = self.get_next_version(ver_last_base, action)
             next_ver_str = str(next_ver)
-            if final_commit_type.action != ReleaseAction.POST:
+            if action is not ReleaseAction.POST:
                 next_ver_str += f".a{self._branch_head.suffix[0]}"
             if not ver_last_head:
                 dev = 0
-            elif final_commit_type.action == ReleaseAction.POST:
+            elif action is ReleaseAction.POST:
                 if ver_last_head.post is not None and ver_last_head.post == next_ver.post:
                     dev = ver_last_head.dev + 1
                 else:
@@ -611,20 +611,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         match = re.search(pattern, body or self._pull.body, flags=re.DOTALL)
         issue_nr = match.group(1).strip().removeprefix("#")
         return int(issue_nr)
-
-    def prepare_citation_for_release(
-        self,
-        doi: str,
-        version: str,
-    ):
-        # cit_cur = _ps.read.yaml_from_file(
-        #     path=self._path_manager.citation.path
-        # ) if self._path_manager.citation.path.is_file() else self.citation()
-        # cit_cur["version"] = version
-        # cit_cur["doi"] = doi
-        # cit_cur["date-released"] = datetime.datetime.now().strftime('%Y-%m-%d')
-        # cit_cur.pop("commit", None)
-        return
 
     def _head_to_base_allowed(self) -> bool:
         mapping = (
@@ -783,89 +769,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         )
         return
 
-    def _make_template_env_vars(self):
-        return self.make_base_template_env_vars() | {
-            "actor": self._payload.sender,
-            "payload": self._payload,
-            "pull": self._pull,
-        }
-
-    def _create_zenodo_depo(self, version: str, contributors: list[dict], embargo_date: str | None = None):
-        # https://developers.zenodo.org/#deposit-metadata
-
-        def create_person(entity: dict | str) -> dict:
-            if isinstance(entity, str):
-                entity = self._data_branch["team"].get(entity)
-                if not entity:
-                    logger.critical(
-                        "Member ID Resolution",
-                        f"Could not find member ID '{entity}'."
-                    )
-                    raise ProManException()
-            out = {"name": entity["name"]["full_inverted"]}
-            if "affiliation" in entity:
-                out["affiliation"] = entity["affiliation"]
-            if "orcid" in entity:
-                out["orcid"] = entity["orcid"]["id"]
-            if "gnd" in entity:
-                out["gnd"] = entity["gnd"]["id"]
-            return out
-
-        def create_related_identifiers(identifier: dict) -> list[dict]:
-            return {
-                "identifier": identifier["value"],
-                "relation": identifier["relation"],
-                "resource_type": identifier["resource_type"],
-            }
-
-        def create_subject(subject: dict) -> dict:
-            return {
-                "term": subject["term"],
-                "identifier": subject["id"],
-                "scheme": subject["scheme"],
-            }
-
-        metadata = {
-            "upload_type": self._data_branch["citation.type"],
-            "title": self._data_branch["citation.title"],
-            "creators": [create_person(entity=entity) for entity in self._data_branch["citation.authors"]],
-            "contributors": [],
-            "description": self._data_branch["citation.abstract"],
-            "keywords": self._data_branch["citation.keywords"],
-            "access_right": self._data_branch["citation.access_right"],
-            "access_conditions": self._data_branch["citation.access_conditions"],
-            "embargo_date": embargo_date,
-            "license": self._data_branch["citation.license"][0],
-            "notes": self._data_branch["citation.notes"],
-            "related_identifiers": [
-                create_related_identifiers(identifier)
-                for identifier in self._data_branch.get("citation.related_identifiers", [])
-            ],
-            "communities": [
-                {"identifier": identifier}
-                for identifier in self._data_branch.get("citation.zenodo_communities", [])
-            ],
-            "grants": [
-                {"id": grant["id"]} for grant in self._data_branch.get("citation.grants", [])
-            ],
-            "subjects": [create_subject(subject) for subject in self._data_branch["citation.subjects"]],
-            "references": [ref["apa"] for ref in self._data_branch["citation.references"]],
-            "version": version,
-            "language": self._data_branch["language"],
-            "preserve_doi": True,
-        }
-        if self._data_branch["citation.doi"]:
-            metadata["related_identifiers"].append(
-                {
-                    "identifier": self._data_branch["citation.doi"],
-                    "relation": "isNewVersionOf",
-                    "resource_type": self._data_branch["citation.type"],
-                }
-            )
-        for contact_person in self._data_branch.get("citation.contacts", []):
-            metadata["contributors"].append(create_person(entity=contact_person) | {"type": "ContactPerson"})
-        for contributor in contributors:
-            metadata["contributors"].append(create_person(entity=contributor))
 
     @staticmethod
     def _primary_type_is_package_publish(
