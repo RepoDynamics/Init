@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-import json
 from typing import TYPE_CHECKING
 import datetime
-import re
-from functools import partial
 
 from loggerman import logger
 import mdit
@@ -18,7 +15,6 @@ import pyserials as _ps
 from github_contexts.github import enum as _ghc_enum
 import pkgdata
 import controlman
-from controlman import data_helper
 from controlman.cache_manager import CacheManager
 import gittidy
 from versionman.pep440_semver import PEP440SemVer
@@ -31,6 +27,7 @@ from proman import hook_runner, change_detector, dev_doc
 from proman.commit_manager import CommitManager
 from proman.data_manager import DataManager
 from proman.user_manager import UserManager
+from proman.release_manager import ReleaseManager
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
@@ -57,17 +54,6 @@ class EventHandler:
     # - https://github.com/actions/runner/issues/667
     # - https://sourceforge.net/projects/gpgosx/
     # - https://www.gnupg.org/download/
-
-    _MARKER_COMMIT_START = "<!-- Begin primary commit summary -->"
-    _MARKER_COMMIT_END = "<!-- End primary commit summary -->"
-    _MARKER_TASKLIST_START = "<!-- Begin secondary commits tasklist -->"
-    _MARKER_TASKLIST_END = "<!-- End secondary commits tasklist -->"
-    _MARKER_REFERENCES_START = "<!-- Begin references -->"
-    _MARKER_REFERENCES_END = "<!-- End references -->"
-    _MARKER_TIMELINE_START = "<!-- Begin timeline -->"
-    _MARKER_TIMELINE_END = "<!-- End timeline -->"
-    _MARKER_ISSUE_NR_START = "<!-- Begin issue number -->"
-    _MARKER_ISSUE_NR_END = "<!-- End issue number -->"
 
     def __init__(
         self,
@@ -115,7 +101,7 @@ class EventHandler:
                     raise ProManException()
             else:
                 try:
-                    api_admin.info
+                    check = api_admin.info
                 except _WebAPIError as e:
                     details = e.report.body
                     details.extend(*e.report.section["details"].content.body.elements())
@@ -156,7 +142,7 @@ class EventHandler:
                         logger=logger,
                     )
                     apis.append(git_api)
-            return tuple(apis)
+            return apis[0], apis[1]
 
         @logger.sectioner("Metadata Load")
         def load_metadata() -> tuple[DataManager | None, DataManager | None, CacheManager | None]:
@@ -261,9 +247,13 @@ class EventHandler:
             self._devdoc = dev_doc.DevDoc(
                 data_main=self._data_main,
                 env_vars=self._jinja_env_vars,
-                commit_parser=self._commit_manager.create_from_message,
+                commit_parser=self._commit_manager.create_from_msg,
             )
-        self._zenodo_api = pylinks.api.zenodo(token=zenodo_token) if zenodo_token else None
+            self._data_main.commit_manager = self._commit_manager
+            self._data_main.user_manager = self._user_manager
+            self._release_manager = ReleaseManager(
+                zenodo_token=zenodo_token,
+            )
         self._ver = pkgdata.get_version_from_caller()
         self._data_branch: DataManager | None = None
         self._failed = False
@@ -412,7 +402,7 @@ class EventHandler:
         if reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
                 cc_manager.apply_changes()
-                commit_msg = self._commit_manager.create_auto_commit_msg(commit_type="config_sync")
+                commit_msg = self._commit_manager.create_auto(id="config_sync")
                 commit_hash_before = git.commit_hash_normal()
                 commit_hash_after = git.commit(
                     message=str(commit_msg) if action is not InitCheckAction.AMEND else "",
@@ -492,7 +482,7 @@ class EventHandler:
             if action in [InitCheckAction.REPORT, InitCheckAction.AMEND, InitCheckAction.COMMIT]
             else (InitCheckAction.REPORT if action == InitCheckAction.FAIL else InitCheckAction.COMMIT)
         )
-        commit_msg = self._commit_manager.create_auto_commit_msg("refactor") if action in [
+        commit_msg = self._commit_manager.create_auto("refactor") if action in [
             InitCheckAction.COMMIT, InitCheckAction.PULL
         ] else ""
         git = self._git_base if base else self._git_head
@@ -606,31 +596,13 @@ class EventHandler:
             logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
         return latest_version, distance
 
-    def _get_commits(self, base: bool = False) -> list[Commit]:
-        git = self._git_base if base else self._git_head
-        commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
-        logger.info("Read commits from git history", json.dumps(commits, indent=4))
-
-        parsed_commits = []
-        for commit in commits:
-            conv_msg = parser.parse(message=commit["msg"])
-            if not conv_msg:
-                parsed_commits.append(
-                    Commit(
-                        **commit, group_data=NonConventionalCommit()
-                    )
-                )
-            else:
-                group = self._data_main.get_commit_type_from_conventional_type(conv_type=conv_msg.type)
-                commit["msg"] = conv_msg
-                parsed_commits.append(Commit(**commit, group_data=group))
-        return parsed_commits
-
-    def _tag_version(self, ver: str | PEP440SemVer, base: bool, msg: str = "") -> str:
-        tag_prefix = self._data_main["tag.version.prefix"]
-        tag = f"{tag_prefix}{ver}"
-        if not msg:
-            msg = f"Release version {ver}"
+    def _tag_version(self, ver: str | PEP440SemVer, base: bool, env_vars: dict | None = None) -> str:
+        tag_data = self._data_main["tag.version"]
+        tag = f"{tag_data["prefix"]}{ver}"
+        msg = self._devdoc.fill_jinja_template(
+            tag_data["message"],
+            {"version": ver} | (env_vars or {}),
+        )
         git = self._git_base if base else self._git_head
         git.create_tag(tag=tag, message=msg)
         return tag
@@ -704,54 +676,6 @@ class EventHandler:
         )
         logger.critical(action_err_msg, action_err_details)
         raise ProManException()
-
-    def create_branch_name_release(self, major_version: int) -> str:
-        """Generate the name of the release branch for a given major version."""
-        release_branch_prefix = self._data_main["branch.release.name"]
-        return f"{release_branch_prefix}{major_version}"
-
-    def create_branch_name_prerelease(self, version: PEP440SemVer) -> str:
-        """Generate the name of the pre-release branch for a given version."""
-        pre_release_branch_prefix = self._data_main["branch.pre.name"]
-        return f"{pre_release_branch_prefix}{version}"
-
-    def create_branch_name_implementation(self, issue_nr: int, base_branch_name: str) -> str:
-        """Generate the name of the development branch for a given issue number and base branch."""
-        dev_branch_prefix = self._data_main["branch.dev.name"]
-        return f"{dev_branch_prefix}{issue_nr}/{base_branch_name}"
-
-    def read_announcement_file(self, base: bool, data: _ps.NestedDict) -> str | None:
-        filepath = data["announcement.path"]
-        if not filepath:
-            return
-        path_root = self._path_base if base else self._path_head
-        fullpath = path_root / filepath
-        return fullpath.read_text() if fullpath.is_file() else None
-
-    def write_announcement_file(self, announcement: str, base: bool, data: _ps.NestedDict) -> None:
-        announcement_data = data["announcement"]
-        if not announcement_data:
-            return
-        if announcement:
-            announcement = f"{announcement.strip()}\n"
-        path_root = self._path_base if base else self._path_head
-        with open(path_root / announcement_data["path"], "w") as f:
-            f.write(announcement)
-        return
-
-    def get_assignees_for_issue_type(
-        self, issue_id: str,
-        assignment: Literal["issue", "pull", "review", "discussion"]
-    ) -> list[dict]:
-        out = []
-        for member in self._data_main["team"].values():
-            for member_role_id in member.get("role", {}).keys():
-                role = self._data_main["role"][member_role_id]
-                issue_id_regex = role.get("assignment", {}).get(assignment)
-                if issue_id_regex and re.match(issue_id_regex, issue_id):
-                    out.append(member)
-                    break
-        return out
 
     @staticmethod
     def get_next_version(version: PEP440SemVer, action: ReleaseAction) -> PEP440SemVer:
