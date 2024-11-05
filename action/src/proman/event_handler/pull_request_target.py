@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from github_contexts import github as _gh_context
 
 from loggerman import logger
-from proman.datatype import (
+from proman.dtype import (
     BranchType, Branch
 )
 
