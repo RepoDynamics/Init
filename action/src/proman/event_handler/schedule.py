@@ -6,7 +6,7 @@ from github_contexts.github.payload.schedule import SchedulePayload
 from loggerman import logger
 import pyshellman
 import controlman
-from proman.datatype import BranchType, InitCheckAction, Branch
+from proman.dtype import BranchType, InitCheckAction, Branch
 
 from proman.main import EventHandler
 
