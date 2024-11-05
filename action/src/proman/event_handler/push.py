@@ -27,9 +27,7 @@ class PushEventHandler(EventHandler):
         self._payload: _gh_context.payload.PushPayload = self._context.event
         self._head_commit = self._context.event.head_commit
         if self._head_commit and self._head_commit.message:
-            self._head_commit_msg = self._commit_msg_parser.parse(self._head_commit.message)
-        else:
-            self._head_commit_msg = None
+            self._head_commit = self._commit_manager.create_from_msg(self._head_commit.message)
         return
 
     @logger.sectioner("Push Handler Execution")
@@ -91,7 +89,7 @@ class PushEventHandler(EventHandler):
         # Main branch edited
         if not has_tags:
             # The repository is in the initialization phase
-            if self._head_commit_msg.footer.initialize_project:
+            if self._head_commit.footer.initialize_project:
                 # User is signaling the end of initialization phase
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
@@ -155,34 +153,35 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_first_release(self):
-
         self._reporter.event("Project initialization")
-        version = self._head_commit_msg.footer.version or "0.0.0"
+        version = self._head_commit.footer.version or "0.0.0"
         new_data, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT,
             future_versions={self._context.ref_name: version},
         )
-        if self._head_commit_msg.footer.get("squash", True):
-            # Squash all commits into a single commit
+        data_main_before = self._data_main
+        self._data_main = new_data
+        # By default, squash all commits into a single commit
+        if self._head_commit.footer.squash is not False:
             # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
             #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
             self._git_head.checkout("temp", orphan=True)
-            self._git_head.commit(message=str(self._head_commit_msg))
+            self._git_head.commit(message=str(self._head_commit))
             self._git_head.branch_delete(self._context.ref_name, force=True)
             self._git_head.branch_rename(self._context.ref_name, force=True)
             self._git_head.push(
                 target="origin", ref=self._context.ref_name, force_with_lease=True
             )
             latest_hash = self._git_head.commit_hash_normal()
-        data_main_before = self._data_main
-        self._data_main = new_data
+        if self._head_commit.footer.publish:
+
+
+
+
         self._tag_version(
             ver=version,
-            msg=self._devdoc.fill_jinja_template(
-                self._data_main["tag.version.message"],
-                {"version": version, "ccc": new_data},
-            ),
-            base=False
+            base=False,
+            env_vars={"ccc": new_data},
         )
         self._repo_config.update_all(data_new=new_data, data_old=data_main_before, rulesets="create")
         self._output.set(
