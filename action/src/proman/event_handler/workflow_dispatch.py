@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from enum import Enum
 
-import github_contexts
 from loggerman import logger
 import controlman
 # from repodynamics.datatype import InitCheckAction
@@ -14,7 +13,7 @@ import controlman
 # from repodynamics.control.manager import ControlCenterManager
 
 from proman.main import EventHandler
-from proman.changelog_manager import ChangelogManager
+from proman.manager.changelog import ChangelogManager
 
 if TYPE_CHECKING:
     from github_contexts.github.payload import WorkflowDispatchPayload
