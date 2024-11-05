@@ -33,6 +33,7 @@ class PullRequestTargetEventHandler(EventHandler):
 
         self._payload: PullRequestPayload = self._context.event
         self._pull: PullRequest = self._payload.pull_request
+        self._pull_author =
 
         self._branch_base = self.resolve_branch(self._context.base_ref)
         self._branch_head = self.resolve_branch(self._context.head_ref)
@@ -42,6 +43,12 @@ class PullRequestTargetEventHandler(EventHandler):
             "workflow_url": self._gh_link.workflow_run(run_id=self._context.run_id),
             "head": make_branch_env_vars(self._branch_head),
             "base": make_branch_env_vars(self._branch_base),
+        }
+
+        {
+            "actor": self._payload.sender,
+            "payload": self._payload,
+            "pull": self._pull,
         }
 
         logger.info("Base Branch Resolution", str(self._branch_base))
