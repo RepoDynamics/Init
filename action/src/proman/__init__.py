@@ -1,16 +1,16 @@
 from pathlib import Path
-import sys as _sys
+
+from rich.text import Text
 
 import actionman as _actionman
 import github_contexts as _github_contexts
 from github_contexts.github.enum import EventType as _EventType
 from loggerman import logger as _logger
 import mdit
-from rich.text import Text
 
 from proman import exception as _exception, event_handler as _handler
-from proman.reporter import Reporter as _Reporter, make_sphinx_target_config
-from proman.output_writer import OutputWriter as _OutputWriter
+from proman.manager import OutputManager, ReportManager
+from proman.manager.report import make_sphinx_target_config
 
 
 def run():
@@ -31,8 +31,8 @@ def run():
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
     )
-    reporter = _Reporter(github_context=github_context)
-    output_writer = _OutputWriter(github_context=github_context, repo_path=path_repo_head)
+    reporter = ReportManager(github_context=github_context)
+    output_writer = OutputManager(github_context=github_context, repo_path=path_repo_head)
     handler_class = event_to_handler.get(github_context.event_name)
     current_log_section_level = _logger.current_section_level
     if handler_class:
@@ -92,7 +92,7 @@ def run():
 
 
 @_logger.sectioner("Output Generation")
-def _finalize(github_context: _github_contexts.GitHubContext, reporter: _Reporter, output_writer: _OutputWriter):
+def _finalize(github_context: _github_contexts.GitHubContext, reporter: ReportManager, output_writer: OutputManager):
     output = output_writer.generate(failed=reporter.failed)
     _write_step_outputs(output)
 
