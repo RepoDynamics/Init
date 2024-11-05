@@ -21,7 +21,11 @@ class OutputWriter:
         self,
         github_context: GitHubContext,
         repo_path: str | Path,
+        data_main: DataManager | None = None,
+        data_branch: DataManager | None = None,
     ):
+        self.data_main = data_main
+        self.data_branch = data_branch
         self._context = github_context
         self._repository = self._context.target_repo_fullname
         self._repo_path = Path(repo_path)
@@ -37,7 +41,7 @@ class OutputWriter:
         self._output_test_testpypi: list[dict] = []
         self._output_publish_pypi: dict = {}
         self._output_test_pypi: list[dict] = []
-        self._output_finalize: dict = {}
+        self._output_publish: dict = {}
         return
 
     def set(
@@ -55,7 +59,6 @@ class OutputWriter:
         release_discussion_category_name: str = "",
         website_url: str | None = None,
         website_build: bool = False,
-        website_artifact_name: str = "Website",
         website_deploy: bool = False,
         package_lint: bool = False,
         package_test: bool = False,
@@ -80,7 +83,6 @@ class OutputWriter:
                 url=website_url,
                 ref=ref,
                 deploy=website_deploy,
-                artifact_name=website_artifact_name,
             )
         if package_lint and not (package_publish_testpypi or package_publish_pypi):
             self.set_lint(
@@ -126,8 +128,8 @@ class OutputWriter:
             self._output_test_testpypi = []
             self._output_publish_pypi = {}
             self._output_test_pypi = []
-            if self._output_finalize.get("release"):
-                self._output_finalize["release"] = False
+            if self._output_publish.get("release"):
+                self._output_publish["release"] = False
         output = {
             "fail": failed,
             "run": {
@@ -139,7 +141,7 @@ class OutputWriter:
                 "test-testpypi": bool(self._output_test_testpypi),
                 "publish-pypi": bool(self._output_publish_pypi),
                 "test-pypi": bool(self._output_test_pypi),
-                "finalize": bool(self._output_finalize),
+                "publish": bool(self._output_publish),
             },
             "website": self._output_website,
             "lint": self._output_lint,
@@ -149,7 +151,7 @@ class OutputWriter:
             "test-testpypi": self._output_test_testpypi,
             "publish-pypi": self._output_publish_pypi,
             "test-pypi": self._output_test_pypi,
-            "finalize": self._output_finalize,
+            "publish": self._output_publish,
         }
         output_yaml = ps.write.to_yaml_string(output)
         logger.info(
@@ -164,22 +166,27 @@ class OutputWriter:
         url: str | None = None,
         ref: str | None = None,
         deploy: bool = False,
-        artifact_name: str = "Website",
+        artifact_suffix: str = "",
+        job_suffix: str = "",
     ):
         if "web" not in data_branch:
             return
         path_pkg = data_branch.get("pkg.path.root", "") if data_branch["web.sphinx.needs_package"] else ""
+        if artifact_suffix and not job_suffix:
+            job_suffix = artifact_suffix
+        elif job_suffix and not artifact_suffix:
+            artifact_suffix = job_suffix
         self._output_website.append(
             {
-                "url": url or data_branch["web.url.base"],
+                "url": url or data_branch["web.url.home"],
                 "repository": self._repository,
                 "ref": ref or self.ref,
                 "path-env": data_branch["web.env.file.conda.path"],
                 "path-web": data_branch["web.path.root"],
                 "path-pkg": path_pkg,
-                "artifact-name": artifact_name,
+                "artifact-name": f"{self.data_main["workflow.artifact.website.name"]}{artifact_suffix}",
                 "deploy": deploy,
-                "job-suffix": "",
+                "job-suffix": job_suffix,
             }
         )
         return
@@ -190,6 +197,7 @@ class OutputWriter:
         ref: str | None = None,
         ref_before: str | None = None,
         ref_name: str | None = None,
+        job_suffix: str = "",
     ):
         if "pkg" not in data_branch:
             return
@@ -209,7 +217,7 @@ class OutputWriter:
                 "pkg": data_branch["pkg"],
                 "python-ver-max": data_branch["pkg"]["python"]["version"]["minors"][-1],
                 "tool": data_branch["tool"],
-                "job-suffix": "",
+                "job-suffix": job_suffix,
             }
         )
         return
@@ -220,6 +228,7 @@ class OutputWriter:
         ref: str | None = None,
         source: Literal["github", "pypi", "testpypi"] = "github",
         version: str | None = None,
+        job_suffix: str = "",
         retries: int = 40,
         retry_sleep_seconds: int = 15,
     ):
@@ -233,7 +242,7 @@ class OutputWriter:
                     retry_sleep_seconds=retry_sleep_seconds,
                     retries=retries,
                 ),
-                "job-suffix": "",
+                "job-suffix": job_suffix,
             }
         )
         return
@@ -268,7 +277,6 @@ class OutputWriter:
                 "pure-python": data_branch["pkg.python.pure"],
                 "path-pkg": data_branch["pkg.path.root"],
                 "path-readme": data_branch["pkg.readme.path"] or "",
-                "path-license": data_branch["license.path"] or "",
                 "cibw-platforms": cibw_platforms(),
                 "cibw-pythons": [
                     f"cp{ver.replace('.', '')}" for ver in data_branch["pkg.python.version.minors"]
@@ -330,7 +338,7 @@ class OutputWriter:
         website_artifact_name: str = "Documentation",
         package_artifact_name: str = "Package",
     ):
-        self._output_finalize["release"] = {
+        self._output_publish["release"] = {
             "name": name,
             "tag-name": tag,
             "body": body,
