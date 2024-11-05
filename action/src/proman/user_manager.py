@@ -3,6 +3,7 @@ from __future__ import annotations as _annotations
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 from functools import partial
+import re
 
 import pyserials as ps
 from controlman import data_helper, data_validator
@@ -35,6 +36,50 @@ class UserManager:
             self._contributors_path_main
         ) if self._contributors_path_main.is_file() else {}
         return
+
+    def citation_authors(self, data: DataManager | None = None) -> list[User]:
+        data = data or self._data_main
+        out = []
+        for member_id in data["citation"]["authors"]:
+            user = User(
+                id=member_id,
+                association="member",
+                data=data["team"][member_id],
+            )
+            out.append(user)
+        return out
+
+    def citation_contributors(self, data: DataManager | None = None) -> list[User]:
+        data = data or self._data_main
+        out = []
+        for member_id in data["citation"]["contributors"]:
+            user = User(
+                id=member_id,
+                association="member",
+                data=data["team"][member_id],
+            )
+            out.append(user)
+        return out
+
+    def from_issue_form_id(
+        self,
+        issue_form_id: str,
+        assignment: Literal["issue", "pull", "review"]
+    ) -> list[User]:
+        out = []
+        for member_id, member in self._data_main["team"].items():
+            for member_role_id in member.get("role", {}).keys():
+                role = self._data_main["role"][member_role_id]
+                issue_id_regex = role.get("assignment", {}).get(assignment)
+                if issue_id_regex and re.match(issue_id_regex, issue_form_id):
+                    user = User(
+                        id=member_id,
+                        association="member",
+                        data=member,
+                    )
+                    out.append(user)
+                    break
+        return out
 
     def get_from_github_rest_id(
         self,
