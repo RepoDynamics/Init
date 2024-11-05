@@ -1,12 +1,14 @@
 from __future__ import annotations as _annotations
 from enum import Enum as _Enum
-from typing import NamedTuple as _NamedTuple
+from typing import NamedTuple as _NamedTuple, TYPE_CHECKING as _TYPE_CHECKING
 from dataclasses import dataclass as _dataclass
 
 from versionman.pep440_semver import PEP440SemVer as _PEP440SemVer
 import pycolorit as _pcit
 
-from proman.commit_manager import Commit
+if _TYPE_CHECKING:
+    from proman.commit_manager import Commit
+    from proman.user_manager import User
 
 
 class RepoDynamicsBotCommand(_Enum):
@@ -133,7 +135,7 @@ class LabelType(_Enum):
     UNKNOWN = "unknown"
 
 
-@_dataclass
+@_dataclass(frozen=True)
 class Label:
     """GitHub Issues Label.
 
@@ -162,9 +164,9 @@ class Label:
 
     def __post_init__(self):
         if self.category == LabelType.STATUS and not isinstance(self.id, IssueStatus):
-            self.id = IssueStatus(self.id)
+            object.__setattr__(self, "id", IssueStatus(self.id))
         if self.color:
-            self.color = _pcit.color.css(self.color).css_hex().removeprefix("#")
+            object.__setattr__(self, "color", _pcit.color.css(self.color).css_hex().removeprefix("#"))
         return
 
 
@@ -172,6 +174,9 @@ class IssueForm(_NamedTuple):
     id: str
     commit: Commit
     id_labels: list[Label]
+    issue_assignees: list[User]
+    pull_assignees: list[User]
+    review_assignees: list[User]
     labels: list[Label]
     pre_process: dict
     post_process: dict
@@ -179,4 +184,4 @@ class IssueForm(_NamedTuple):
     description: str
     projects: list[str]
     title: str
-    body: dict
+    body: list[dict]
