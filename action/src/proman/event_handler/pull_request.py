@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 import time
 import re
 
@@ -10,9 +11,8 @@ from loggerman import logger
 from versionman.pep440_semver import PEP440SemVer
 import controlman
 
-from proman.data_manager import DataManager
-from proman.datatype import (
-    Label,
+from proman.manager.data import DataManager
+from proman.dtype import (
     ReleaseAction,
     BranchType,
     IssueStatus,
@@ -20,9 +20,12 @@ from proman.datatype import (
     LabelType,
 )
 
-from proman.changelog_manager import ChangelogManager
+from proman.manager.changelog import ChangelogManager
 from proman.event_handler.pull_request_target import PullRequestTargetEventHandler
 from proman.exception import ProManException
+
+if TYPE_CHECKING:
+    from proman.dstruct import Label
 
 
 class PullRequestEventHandler(PullRequestTargetEventHandler):
