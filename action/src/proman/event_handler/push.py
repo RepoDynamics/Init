@@ -1,16 +1,15 @@
 """Push event handler."""
 from __future__ import annotations as _annotations
-from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 import shutil
 
 from github_contexts import github as _gh_context
 from loggerman import logger
 import controlman
-from proman.data_manager import DataManager
+from proman.manager.data import DataManager
 import fileex as _fileex
 
-from proman.datatype import InitCheckAction
+from proman.dtype import InitCheckAction
 from proman.main import EventHandler
 
 
