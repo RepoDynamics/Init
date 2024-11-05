@@ -1,3 +1,7 @@
+from __future__ import annotations as _annotations
+
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
 import re
 from enum import Enum
 import copy
@@ -5,13 +9,16 @@ import copy
 from github_contexts import github as gh_context
 from loggerman import logger
 from controlman.file_gen.forms import pre_process_existence
-from controlman import data_helper
 import mdit
 
 from proman.datatype import LabelType, Label, IssueStatus
 from proman.exception import ProManException
 from proman.main import EventHandler
 from proman.changelog_manager import ChangelogManager
+
+if _TYPE_CHECKING:
+    from proman.datatype import IssueForm
+    from proman.user_manager import User
 
 
 class IssuesEventHandler(EventHandler):
@@ -55,7 +62,7 @@ class IssuesEventHandler(EventHandler):
 
     def _run_opened(self):
 
-        def identify():
+        def identify() -> tuple[str, IssueForm]:
             ids = [form["id"] for form in self._data_main["issue.forms"]]
             id_pattern = '|'.join(map(re.escape, ids))
             pattern = rf"<!-- ISSUE-ID: ({id_pattern}) -->"
@@ -66,14 +73,13 @@ class IssuesEventHandler(EventHandler):
                     "Could not match the issue ID in the issue body."
                 )
                 raise ProManException()
-            issue_id = match.group(1)
-            issue_form = next(form for form in self._data_main["issue.forms"] if form["id"] == issue_id)
             cleaned_body = re.sub(pattern, '', self._issue.body)
-            return cleaned_body, issue_form
+            issue_form_obj = self._data_main.issue_form_from_id(match.group(1))
+            return cleaned_body, issue_form_obj
 
-        def assign() -> list[dict]:
-            out = self.get_assignees_for_issue_type(issue_id=issue_form["id"], assignment="issue")
-            assignment = issue_form.get("post_process", {}).get("assign_creator")
+        def assign() -> list[User]:
+            users = issue_form.issue_assignees.copy()
+            assignment = issue_form.post_process.get("assign_creator")
             if assignment:
                 if_checkbox = assignment.get("if_checkbox")
                 if if_checkbox:
@@ -95,52 +101,51 @@ class IssuesEventHandler(EventHandler):
                         (if_checkbox["is_checked"] and checked) or
                         (not if_checkbox["is_checked"] and not checked)
                     ):
-                        for assignee in out:
-                            if assignee["github"]["id"] == self._issue_author["github"]["id"]:
+                        for user in users:
+                            if user["github"]["id"] == self._issue_author["github"]["id"]:
                                 break
                         else:
-                            out.append(self._issue_author)
+                            users.append(self._issue_author)
             self._gh_api.issue_add_assignees(
-                number=self._issue.number, assignees=[assignee["github"]["id"] for assignee in out]
+                number=self._issue.number, assignees=[user["github"]["id"] for user in users]
             )
-            return out
+            return users
 
-        def add_labels():
-            labels = [self._data_main["label.status.label.triage.name"]]
-            for label_group_id, label_id in issue_form["id_labels"] + issue_form.get("labels", []):
-                labels.append(
-                    self._data_main["label"][label_group_id]["label"][label_id]["name"]
-                )
-            branch_label_prefix = self._data_main["label.branch.prefix"]
+        def add_labels() -> list[Label]:
+            label_objs = [
+                self._data_main.label_status(IssueStatus.TRIAGE)
+            ] + issue_form.id_labels + issue_form.labels
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
-                version_label_prefix = self._data_main["label.version.prefix"]
                 for version in versions:
-                    labels.append(f"{version_label_prefix}{version}")
-                    branch = self._data_main.get_branch_from_version(version)
-                    labels.append(f"{branch_label_prefix}{branch}")
+                    label_objs.append(self._data_main.label_version(version))
+                    branch = self._data_main.branch_name_from_version(version)
+                    label_objs.append(self._data_main.label_branch(branch))
             elif "branch" in issue_entries:
                 branches = [branch.strip() for branch in issue_entries["branch"].split(",")]
                 for branch in branches:
-                    labels.append(f"{branch_label_prefix}{branch}")
+                    label_objs.append(self._data_main.label_branch(branch))
             else:
-                logger.warning(
+                logger.info(
                     "Issue Label Update",
                     "Could not match branch or version in issue body to pattern defined in metadata.",
                 )
-            response = self._gh_api.issue_labels_set(self._issue.number, list(set(labels)))
+            gh_response = self._gh_api.issue_labels_set(
+                self._issue.number,
+                [label_obj.name for label_obj in set(label_objs)]
+            )
             logger.info(
                 "Issue Labels Update",
-                logger.pretty(response)
+                logger.pretty(gh_response)
             )
-            return labels
+            return label_objs
 
         self._reporter.event(f"Issue #{self._issue.number} opened")
         body, issue_form = identify()
-        issue_entries = self._extract_entries_from_issue_body(body, issue_form["body"])
+        issue_entries = self._extract_entries_from_issue_body(body, issue_form.body)
         labels = add_labels()
         assignees = assign()
-        body_template = issue_form.get("post_process", {}).get("body")
+        body_template = issue_form.post_process.get("body")
         if body_template:
             body_processed = self._devdoc.generate(
                 template=body_template, issue_form=issue_form, issue_inputs=issue_entries, issue_body=body
@@ -165,10 +170,7 @@ class IssuesEventHandler(EventHandler):
             )
         for label in labels:
             self._devdoc.add_timeline_entry(
-                env_vars={
-                    "action": "labeled",
-                    "label": self.make_label_env_var(self._data_main.resolve_label(label))
-                },
+                env_vars={"action": "labeled", "label": self.make_label_env_var(label)}
             )
         logger.info(
             "Development Protocol",
@@ -217,11 +219,11 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled_status_implementation(self):
 
-        def assign_pr():
-            assignees = self.get_assignees_for_issue_type(issue_id=issue_form.id, assignment="pull")
-            if assignees:
+        def assign_pr() -> None:
+            if issue_form.pull_assignees:
                 response = self._gh_api.issue_add_assignees(
-                    number=pull_data["number"], assignees=[assignee["github"]["id"] for assignee in assignees]
+                    number=pull_data["number"],
+                    assignees=[user["github"]["id"] for user in issue_form.pull_assignees]
                 )
                 logger.info(
                     "Pull Request Assignment",
@@ -229,27 +231,29 @@ class IssuesEventHandler(EventHandler):
                 )
             else:
                 logger.info("Pull Request Assignment", "No assignees found for pull request.")
-            return assignees
+            return
+
+        def get_base_branches() -> dict[str, list[Label]]:
+            base_branches_and_labels = {}
+            common_labels = []
+            for label_group, group_labels in self._label_groups.items():
+                if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
+                    common_labels.extend(group_labels)
+            if self._label_groups.get(LabelType.VERSION):
+                for version_label in self._label_groups[LabelType.VERSION]:
+                    branch_label = self._data_main.label_version_to_branch(version_label)
+                    all_labels_for_branch = common_labels + [version_label, branch_label]
+                    base_branches_and_labels[branch_label.suffix] = all_labels_for_branch
+            else:
+                for branch_label in self._label_groups[LabelType.BRANCH]:
+                    base_branches_and_labels[branch_label.suffix] = common_labels + [branch_label.name]
+            return base_branches_and_labels
 
         issue_form = self._data_main.issue_form_from_id_labels(self._issue.label_names)
-        branches = self._gh_api.branches
-        branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in branches}
-        base_branches_and_labels: list[tuple[str, list[str]]] = []
-        common_labels = []
-        for label_group, group_labels in self._label_groups.items():
-            if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
-                common_labels.extend([label.name for label in group_labels])
-        if self._label_groups.get(LabelType.VERSION):
-            for version_label in self._label_groups[LabelType.VERSION]:
-                branch_label = self._data_main.create_label_branch(source=version_label)
-                labels = common_labels + [version_label.name, branch_label.name]
-                base_branches_and_labels.append((branch_label.suffix, labels))
-        else:
-            for branch_label in self._label_groups[LabelType.BRANCH]:
-                base_branches_and_labels.append((branch_label.suffix, common_labels + [branch_label.name]))
+        branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in self._gh_api.branches}
         implementation_branches_info = []
-        for base_branch_name, labels in base_branches_and_labels:
-            head_branch_name = self.create_branch_name_implementation(
+        for base_branch_name, labels in get_base_branches().items():
+            head_branch_name = self._data_main.branch_name_dev(
                 issue_nr=self._issue.number, base_branch_name=base_branch_name
             )
             new_branch = self._gh_api.branch_create_linked(
@@ -286,8 +290,8 @@ class IssuesEventHandler(EventHandler):
                 },
             }
             self._git_head.commit(
-                message=self._commit_manager.create_auto_commit_msg(
-                    commit_type="dev_branch_creation",
+                message=self._commit_manager.create_auto(
+                    id="dev_branch_creation",
                     env_vars=branch_data,
                 )
             )
@@ -304,12 +308,15 @@ class IssuesEventHandler(EventHandler):
                 f"Pull Request Creation ({new_branch['name']} -> {base_branch_name})",
                 logger.pretty(pull_data)
             )
-            label_data = self._gh_api.issue_labels_set(number=pull_data["number"], labels=labels)
+            label_data = self._gh_api.issue_labels_set(
+                number=pull_data["number"],
+                labels=[label.name for label in labels]
+            )
             logger.info(
                 f"Pull Request Labels Update ({new_branch['name']} -> {base_branch_name})",
                 logger.pretty(label_data)
             )
-            assignees = assign_pr()
+            assign_pr()
 
             pull_data["user"] = self._user_manager.get_from_github_rest_id(pull_data["user"]["id"])
             pull_data["head"] = branch_data["head"] | pull_data["head"]
@@ -329,15 +336,15 @@ class IssuesEventHandler(EventHandler):
             implementation_branches_info.append(pull_data)
 
             self._git_head.commit(
-                message=self._commit_manager.create_auto_commit_msg(
-                    commit_type="changelog_init",
+                message=self._commit_manager.create_auto(
+                    id="changelog_init",
                     env_vars={"pull_request": pull_data}
                 )
             )
             self._git_head.push()
             devdoc_pull = copy.copy(self._devdoc)
 
-            for assignee in assignees:
+            for assignee in issue_form.pull_assignees:
                 devdoc_pull.add_timeline_entry(
                     env_vars={
                         "event": "pull_request",
