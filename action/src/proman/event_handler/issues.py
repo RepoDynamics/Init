@@ -11,14 +11,14 @@ from loggerman import logger
 from controlman.file_gen.forms import pre_process_existence
 import mdit
 
-from proman.datatype import LabelType, Label, IssueStatus
+from proman.dtype import LabelType, IssueStatus
 from proman.exception import ProManException
 from proman.main import EventHandler
-from proman.changelog_manager import ChangelogManager
+from proman.manager.changelog import ChangelogManager
 
 if _TYPE_CHECKING:
-    from proman.datatype import IssueForm
-    from proman.user_manager import User
+    from proman.dstruct import IssueForm, Label
+    from proman.manager.user import User
 
 
 class IssuesEventHandler(EventHandler):
