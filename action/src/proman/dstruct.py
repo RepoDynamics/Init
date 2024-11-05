@@ -1,0 +1,227 @@
+from __future__ import annotations as _annotations
+
+from typing import TYPE_CHECKING as _TYPE_CHECKING, NamedTuple as _NamedTuple
+import datetime
+from dataclasses import dataclass as _dataclass
+
+import jinja2
+
+from github_contexts.property_dict import PropertyDict
+from loggerman import logger as _logger
+from versionman.pep440_semver import PEP440SemVer
+import pycolorit as _pcit
+
+from proman.exception import ProManException
+from proman.dtype import IssueStatus, LabelType
+
+if _TYPE_CHECKING:
+    from typing import Literal, Sequence, Callable
+
+    from conventional_commits import ConventionalCommitMessage
+    from github_contexts.github.enum import AuthorAssociation
+
+    from proman.dtype import BranchType, ReleaseAction
+
+
+
+class Branch(_NamedTuple):
+    type: BranchType
+    name: str
+    prefix: str | None = None
+    suffix: str | int | PEP440SemVer | tuple[int, str] | tuple[int, str, int] | None = None
+
+
+class Commit:
+
+    def __init__(
+        self,
+        writer: Callable[..., ConventionalCommitMessage],
+        type: str | None = None,
+        scope: Sequence[str] | None = None,
+        description: str | None = None,
+        body: str | None = None,
+        footer: dict | None = None,
+        action: ReleaseAction | None = None,
+        type_description: str | None = None,
+        sha: str | None = None,
+        author: User | None = None,
+        committer: User | None = None,
+        jinja_env_vars: dict | None = None,
+    ):
+        self._writer = writer
+        self.type = type
+        self.scope = scope or []
+        self.description = description or ""
+        self.body = body or ""
+        self.footer = CommitFooter(footer or {})
+        self.action = action
+        self.type_description = type_description
+        self.sha = sha
+        self.author = author
+        self.committer = committer
+        self.jinja_env_vars = jinja_env_vars or {}
+        return
+
+    @property
+    def conv_msg(self) -> ConventionalCommitMessage:
+        return self._writer(
+            type=self.type,
+            scope=self.scope,
+            description=self._fill_jinja_templates(self.description),
+            body=self._fill_jinja_templates(self.body),
+            footer=self._fill_jinja_templates(self.footer.as_dict),
+        )
+
+    def _fill_jinja_templates(self, templates: dict | list | str, env_vars: dict | None = None) -> dict | list | str:
+
+        def recursive_fill(template):
+            if isinstance(template, dict):
+                return {recursive_fill(key): recursive_fill(value) for key, value in template.items()}
+            if isinstance(template, list):
+                return [recursive_fill(value) for value in template]
+            if isinstance(template, str):
+                return jinja2.Template(template).render(
+                    self.jinja_env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
+                )
+            return template
+
+        return recursive_fill(templates)
+
+
+class CommitFooter:
+
+    def __init__(self, data):
+        self._data = data or {}
+        return
+
+    @property
+    def initialize_project(self) -> bool:
+        return "initialize-project" in self._data
+
+    @property
+    def squash(self) -> bool | None:
+        return self._data.get("squash")
+
+    @property
+    def publish(self) -> bool | None:
+        return self._data.get("publish")
+
+    @property
+    def version(self) -> PEP440SemVer | None:
+        version = self._data.get("version")
+        if version:
+            try:
+                return PEP440SemVer(version)
+            except Exception as e:
+                _logger.critical(f"Invalid version string '{version}' in commit footer: {e}")
+                raise ProManException()
+        return
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+        return
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+    def pop(self, key, default=None):
+        return self._data.pop(key, default)
+
+    def setdefault(self, key, default):
+        return self._data.setdefault(key, default)
+
+    @property
+    def as_dict(self):
+        return self._data
+
+
+class IssueForm(_NamedTuple):
+    id: str
+    commit: Commit
+    id_labels: list[Label]
+    issue_assignees: list[User]
+    pull_assignees: list[User]
+    review_assignees: list[User]
+    labels: list[Label]
+    pre_process: dict
+    post_process: dict
+    name: str
+    description: str
+    projects: list[str]
+    title: str
+    body: list[dict]
+
+
+@_dataclass(frozen=True)
+class Label:
+    """GitHub Issues Label.
+
+    Attributes
+    ----------
+    category : LabelType
+        Label category.
+    name : str
+        Full name of the label.
+    group_id : str
+        Key of the custom group.
+        Only available if `category` is `LabelType.CUSTOM_GROUP`.
+    id : IssueStatus | str
+        Key of the label.
+        Only available if `category` is not `LabelType.BRANCH`, `LabelType.VERSION`, or `LabelType.UNKNOWN`.
+        For `LabelType.STATUS`, it is a `IssueStatus` enum.
+    """
+    category: LabelType
+    name: str
+    group_id: str = ""
+    id: IssueStatus | str = ""
+    prefix: str = ""
+    suffix: str = ""
+    color: str = ""
+    description: str = ""
+
+    def __post_init__(self):
+        if self.category == LabelType.STATUS and not isinstance(self.id, IssueStatus):
+            object.__setattr__(self, "id", IssueStatus(self.id))
+        if self.color:
+            object.__setattr__(self, "color", _pcit.color.css(self.color).css_hex().removeprefix("#"))
+        return
+
+
+class User(PropertyDict):
+
+    def __init__(
+        self,
+        id: str | int,
+        association: Literal["member", "user", "external"],
+        data: dict,
+        github_association: AuthorAssociation | None = None,
+    ):
+        data["id"] = id
+        data["association"] = association
+        data["github_association"] = github_association.value.lower() if github_association else None
+        super().__init__(data)
+        return
+
+    @property
+    def changelog_entry(self) -> dict[str, str]:
+        return {"id": self.id, "association": self.association}
+
+    @property
+    def md_name(self) -> str:
+        """The user's name as a markdown link."""
+        name = self._data["name"]["full"]
+        url = (
+            self._data.get("github", {}).get("url")
+            or self._data.get("email", {}).get("url")
+            or self._data.get("linkedin", {}).get("url")
+            or self._data.get("researchgate", {}).get("url")
+            or self._data.get("twitter", {}).get("url")
+            or self._data.get("website", {}).get("url")
+            or self._data.get("orcid", {}).get("url")
+        )
+        if url:
+            return f"[{name}]({url})"
+        return name
