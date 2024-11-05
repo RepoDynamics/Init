@@ -1,14 +1,25 @@
+from __future__ import annotations as _annotations
+
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
+
 import pyserials as _ps
 from loggerman import logger
 
 from proman.datatype import (
-    CommitGroup,
     IssueForm,
     Label,
     LabelType,
     ReleaseAction,
-    ReleaseCommit,
 )
+
+
+if _TYPE_CHECKING:
+    from proman.commit_manager import CommitManager
+    from proman.user_manager import UserManager
+    from proman.datatype import IssueStatus
+    from versionman.pep440_semver import PEP440SemVer
+
 
 
 class DataManager(_ps.NestedDict):
@@ -21,6 +32,8 @@ class DataManager(_ps.NestedDict):
         self._issue_data: dict = {}
         self._label_name_to_obj: dict[str, Label] = {}
         self._label_id_to_obj: dict[tuple[str, str], Label] = {}
+        self.commit_manager: CommitManager | None = None
+        self.user_manager: UserManager | None = None
         return
 
     @property
@@ -38,7 +51,7 @@ class DataManager(_ps.NestedDict):
         return self._label_id_to_obj
 
     @property
-    def primary_action_commit_type_ids(self) -> list[str]:
+    def release_action_ids(self) -> list[str]:
         return [enum.value for enum in ReleaseAction]
 
     def issue_form_from_id(self, form_id: str) -> IssueForm:
@@ -46,6 +59,24 @@ class DataManager(_ps.NestedDict):
             if issue_form["id"] == form_id:
                 return self._make_issue_form(issue_form)
         raise ValueError(f"Could not find issue form with ID '{form_id}'.")
+
+    def label_from_id(self, group_id: str, label_id: str) -> Label:
+        return self.label_id_to_obj_map[(group_id, label_id)]
+
+    def label_status(self, status: str | IssueStatus) -> Label:
+        if not isinstance(status, str):
+            status = status.value
+        return self.label_from_id("status", status)
+
+    def label_version(self, version: str) -> Label:
+        return self.label_from_id("version", version)
+
+    def label_branch(self, branch: str) -> Label:
+        return self.label_from_id("branch", branch)
+
+    def label_version_to_branch(self, version_label: Label) -> Label:
+        branch_name = self.branch_name_from_version(version=version_label.suffix)
+        return self.label_branch(branch=branch_name)
 
     def resolve_labels(self, names: list[str]) -> dict[LabelType, list[Label]]:
         """
@@ -87,70 +118,24 @@ class DataManager(_ps.NestedDict):
                 return issue_form
         raise ValueError(f"Could not find issue form from labels {label_names}.")
 
-    def get_branch_from_version(self, version: str) -> str:
+    def branch_name_from_version(self, version: str) -> str:
         return self["project.version"][version]["branch"]
 
-    def get_all_conventional_commit_types(self, secondary_only: bool = False) -> list[str]:
-        if not self._commit_data:
-            self._commit_data = self._initialize_commit_data()
-        if secondary_only:
-            return [
-                conv_type for conv_type, commit_data in self._commit_data.items()
-                if commit_data.group is CommitGroup.SECONDARY_CUSTOM
-            ]
-        return list(self._commit_data.keys())
+    def branch_name_release(self, major_version: int) -> str:
+        """Generate the name of the release branch for a given major version."""
+        release_branch_prefix = self["branch.release.name"]
+        return f"{release_branch_prefix}{major_version}"
 
-    def get_commit_type_from_conventional_type(
-        self, conv_type: str
-    ) -> _PrimaryActionCommit | _PrimaryCustomCommit | _SecondaryActionCommit | _SecondaryCustomCommit:
-        if not self._commit_data:
-            self._commit_data = self._initialize_commit_data()
-        return self._commit_data[conv_type]
+    def branch_name_pre(self, version: PEP440SemVer) -> str:
+        """Generate the name of the pre-release branch for a given version."""
+        pre_release_branch_prefix = self["branch.pre.name"]
+        return f"{pre_release_branch_prefix}{version}"
 
-    def create_label_branch(self, source: Label | str) -> Label:
-        prefix = self["label.branch.prefix"]
-        if isinstance(source, str):
-            branch_name = source
-        elif isinstance(source, Label):
-            if source.category is not LabelType.VERSION:
-                raise ValueError(f"Label '{source.name}' is not a version label.")
-            branch_name = self.get_branch_from_version(version=source.suffix)
-        else:
-            raise TypeError(f"Invalid type for source: {type(source)}")
-        return Label(
-            category=LabelType.BRANCH,
-            name=f'{prefix}{branch_name}',
-            prefix=prefix,
-            suffix=branch_name,
-            color=self.get("label.branch.color", ""),
-            description=self.get("label.branch.description", ""),
-        )
+    def branch_name_dev(self, issue_nr: int, base_branch_name: str) -> str:
+        """Generate the name of the development branch for a given issue number and base branch."""
+        dev_branch_prefix = self["branch.dev.name"]
+        return f"{dev_branch_prefix}{issue_nr}/{base_branch_name}"
 
-    def _initialize_commit_data(self):
-        commit_type = {}
-        for group_id, group_data in self["commit.primary"].items():
-            if group_id in self.primary_action_commit_type_ids:
-                commit_type[group_data["type"]] = _PrimaryActionCommit(
-                    action=ReleaseAction(group_id),
-                    conv_type=group_data["type"],
-                )
-            else:
-                commit_type[group_data["type"]] = _PrimaryCustomCommit(
-                    group_id=group_id,
-                    conv_type=group_data["type"],
-                )
-        for conv_type, group_data in self["commit.secondary"].items():
-            commit_type[conv_type] = _SecondaryCustomCommit(
-                conv_type=conv_type,
-                changelog_id=group_data["changelog_id"],
-                changelog_section_id=group_data["changelog_section_id"],
-            )
-        for group_id, group_data in self["commit.auto"].items():
-            commit_type[group_data["type"]] = _SecondaryActionCommit(
-                action=_SecondaryActionCommitType(group_id),
-                conv_type=group_data["type"],
-            )
-        return commit_type
 
     def _initialize_label_data(self) -> tuple[dict[str, Label], dict[tuple[str, str], Label]]:
         name_to_obj = {}
@@ -187,19 +172,22 @@ class DataManager(_ps.NestedDict):
             self.label_id_to_obj_map[(group_id, label_id)]
             for group_id, label_id in issue_form["id_labels"]
         ]
-        commit = self["commit.release"][issue_form["commit"]]
         return IssueForm(
             id=issue_form["id"],
-            commit=ReleaseCommit(
-                type=commit["type"],
-                description=commit["description"],
-                action=ReleaseAction(commit["action"]) if commit.get("action") else None,
-                scope=commit.get("scope", ""),
-                body=commit.get("body", ""),
-                footer=commit.get("footer", {}),
-                commit_description=commit.get("commit_description", ""),
-            ),
+            commit=self.commit_manager.create_release(id=issue_form["commit"]),
             id_labels=id_labels,
+            issue_assignees=self.user_manager.from_issue_form_id(
+                issue_form_id=issue_form["id"],
+                assignment="issue",
+            ),
+            pull_assignees=self.user_manager.from_issue_form_id(
+                issue_form_id=issue_form["id"],
+                assignment="pull",
+            ),
+            review_assignees=self.user_manager.from_issue_form_id(
+                issue_form_id=issue_form["id"],
+                assignment="review",
+            ),
             labels=[
                 self.label_id_to_obj_map[(group_id, label_id)]
                 for group_id, label_id in issue_form.get("labels", [])
@@ -210,5 +198,5 @@ class DataManager(_ps.NestedDict):
             description=issue_form["description"],
             projects=issue_form.get("projects", []),
             title=issue_form.get("title", ""),
-            body=issue_form.get["body"],
+            body=issue_form.get("body", []),
         )
