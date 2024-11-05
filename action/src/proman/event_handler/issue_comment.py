@@ -5,10 +5,10 @@ from functools import partial
 
 import github_contexts
 from loggerman import logger
-from proman.datatype import BranchType
+from proman.dtype import BranchType
 import pysyntax
 
-from proman.datatype import RepoDynamicsBotCommand
+from proman.dtype import RepoDynamicsBotCommand
 from proman.main import EventHandler
 
 if TYPE_CHECKING:
