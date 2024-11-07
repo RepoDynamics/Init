@@ -1,3 +1,7 @@
+from __future__ import annotations as _annotations
+
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
 from pathlib import Path
 import re
 import datetime
@@ -5,11 +9,15 @@ import datetime
 from loggerman import logger
 import pyserials as ps
 
+if _TYPE_CHECKING:
+    from proman.manager import Manager
+
 
 class ChangelogManager:
 
-    def __init__(self, path: Path):
-        self._path = path
+    def __init__(self, manager: Manager):
+        self._manager = manager
+        self._path = self._manager.git.repo_path / self._manager.data["doc.changelog.path"]
         self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else {}
         return
 

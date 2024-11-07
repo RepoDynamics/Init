@@ -12,7 +12,7 @@ from versionman.pep440_semver import PEP440SemVer
 import pycolorit as _pcit
 
 from proman.exception import ProManException
-from proman.dtype import IssueStatus, LabelType
+from proman.dtype import IssueStatus, LabelType, BranchType
 
 if _TYPE_CHECKING:
     from typing import Literal, Sequence, Callable
@@ -20,15 +20,77 @@ if _TYPE_CHECKING:
     from conventional_commits import ConventionalCommitMessage
     from github_contexts.github.enum import AuthorAssociation
 
-    from proman.dtype import BranchType, ReleaseAction
+    from proman.dtype import ReleaseAction
 
+
+class Token:
+    """A token for a specific service.
+
+    This class is used to store a sensitive token,
+    obfuscating it when printed.
+    """
+
+    def __init__(self, token: str | None, name: str):
+        self._token = token
+        self.name = name
+        return
+
+    def get(self):
+        return self._token
+
+    def __repr__(self):
+        return f"<{self.name} Token>"
+
+    def __str__(self):
+        return f"***{self.name} Token***"
+
+    def __bool__(self):
+        return bool(self._token)
 
 
 class Branch(_NamedTuple):
+    """A branch in the repository.
+
+    Attributes
+    ----------
+    type
+        Type of the branch.
+    prefix
+        Prefix of the branch name.
+    version
+        This is the suffix for release branches,
+        denoting the major version number.
+    issue
+        This is the suffix for development and pre-release branches,
+        denoting the issue or pull number, respectively.
+    target
+        This is the second suffix for development branches,
+        denoting the target branch.
+    auto_type
+        This is the suffix for auto-update branches,
+        denoting the type of auto-update job.
+    """
+
     type: BranchType
-    name: str
-    prefix: str | None = None
-    suffix: str | int | PEP440SemVer | tuple[int, str] | tuple[int, str, int] | None = None
+    prefix: str
+    version: int | None = None
+    issue: int | None = None
+    target: Branch | None = None
+    auto_type: str | None = None
+    separator: str | None = None
+
+    @property
+    def name(self) -> str:
+        if self.type in [BranchType.MAIN, BranchType.OTHER]:
+            return self.prefix
+        if self.type is BranchType.RELEASE:
+            return f"{self.prefix}{self.version}"
+        if self.type is BranchType.PRE:
+            return f"{self.prefix}{self.issue}"
+        if self.type is BranchType.DEV:
+            return f"{self.prefix}{self.issue}{self.separator}{self.target.name}"
+        # BranchType.AUTO
+        return f"{self.prefix}{self.auto_type}{self.separator}{self.target.name}"
 
 
 class Commit:

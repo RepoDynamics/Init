@@ -9,8 +9,9 @@ from loggerman import logger as _logger
 import mdit
 
 from proman import exception as _exception, event_handler as _handler
-from proman.manager import OutputManager, ReportManager
-from proman.manager.report import make_sphinx_target_config
+from proman.output import OutputManager
+from proman.report import Reporter, make_sphinx_target_config
+from proman.dstruct import Token
 
 
 def run():
@@ -26,13 +27,15 @@ def run():
     }
     path_repo_base = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_BASE", typ=str)
     path_repo_head = _actionman.env_var.read(name="RD_PROMAN__PATH_REPO_HEAD", typ=str)
-    admin_token = _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str)
-    zenodo_token = _actionman.env_var.read(name="RD_PROMAN__ZENODO_TOKEN", typ=str)
+    admin_token = Token(
+        _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str), name="GitHub Admin"
+    )
+    zenodo_token = Token(_actionman.env_var.read(name="RD_PROMAN__ZENODO_TOKEN", typ=str), name="Zenodo")
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
     )
-    reporter = ReportManager(github_context=github_context)
-    output_writer = OutputManager(github_context=github_context, repo_path=path_repo_head)
+    reporter = Reporter(github_context=github_context)
+    output_writer = OutputManager()
     handler_class = event_to_handler.get(github_context.event_name)
     current_log_section_level = _logger.current_section_level
     if handler_class:
@@ -92,7 +95,7 @@ def run():
 
 
 @_logger.sectioner("Output Generation")
-def _finalize(github_context: _github_contexts.GitHubContext, reporter: ReportManager, output_writer: OutputManager):
+def _finalize(github_context: _github_contexts.GitHubContext, reporter: Reporter, output_writer: OutputManager):
     output = output_writer.generate(failed=reporter.failed)
     _write_step_outputs(output)
 

@@ -6,12 +6,10 @@ import shutil
 from github_contexts import github as _gh_context
 from loggerman import logger
 import controlman
-from proman.manager.data import DataManager
 import fileex as _fileex
 
 from proman.dtype import InitCheckAction
 from proman.main import EventHandler
-
 
 
 class PushEventHandler(EventHandler):
@@ -23,51 +21,51 @@ class PushEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: _gh_context.payload.PushPayload = self._context.event
-        self._head_commit = self._context.event.head_commit
-        if self._head_commit and self._head_commit.message:
-            self._head_commit = self._commit_manager.create_from_msg(self._head_commit.message)
+        self.payload: _gh_context.payload.PushPayload = self.gh_context.event
+        self.head_commit = self.gh_context.event.head_commit
+        if self.head_commit and self.head_commit.message:
+            self.head_commit = self.manager.commit.create_from_msg(self.head_commit.message)
         return
 
     @logger.sectioner("Push Handler Execution")
     def run(self):
-        if self._context.ref_type is not _gh_context.enum.RefType.BRANCH:
-            self._reporter.event(
-                f"Push to tag `{self._context.ref_name}`"
+        if self.gh_context.ref_type is not _gh_context.enum.RefType.BRANCH:
+            self.reporter.event(
+                f"Push to tag `{self.gh_context.ref_name}`"
             )
-            self._reporter.add(
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary="Push to tags does not trigger the workflow."
             )
             return
-        action = self._payload.action
+        action = self.payload.action
         if action not in (_gh_context.enum.ActionType.CREATED, _gh_context.enum.ActionType.EDITED):
-            self._reporter.event(
-                f"Deletion of branch `{self._context.ref_name}`"
+            self.reporter.event(
+                f"Deletion of branch `{self.gh_context.ref_name}`"
             )
-            self._reporter.add(
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary="Branch deletion does not trigger the workflow.",
             )
             return
-        is_main = self._context.ref_is_main
+        is_main = self.gh_context.ref_is_main
         has_tags = bool(self._git_head.get_tags())
         if action is _gh_context.enum.ActionType.CREATED:
             if not is_main:
-                self._reporter.event(f"Creation of branch `{self._context.ref_name}`")
-                self._reporter.add(
+                self.reporter.event(f"Creation of branch `{self.gh_context.ref_name}`")
+                self.reporter.add(
                     name="event",
                     status="skip",
                     summary="Branch creation does not trigger the workflow.",
                 )
                 return
             if not has_tags:
-                self._reporter.event("Repository creation")
+                self.reporter.event("Repository creation")
                 return self._run_repository_creation()
-            self._reporter.event(f"Creation of default branch `{self._context.ref_name}`")
-            self._reporter.add(
+            self.reporter.event(f"Creation of default branch `{self.gh_context.ref_name}`")
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary="Default branch created while a git tag is present. "
@@ -75,11 +73,11 @@ class PushEventHandler(EventHandler):
             )
             return
         # Branch edited
-        if self._context.event.repository.fork:
+        if self.gh_context.event.repository.fork:
             return self._run_branch_edited_fork()
         if not is_main:
-            self._reporter.event(f"Modification of branch `{self._context.ref_name}`")
-            self._reporter.add(
+            self.reporter.event(f"Modification of branch `{self.gh_context.ref_name}`")
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary="Modification of non-default branches does not trigger the workflow.",
@@ -88,11 +86,11 @@ class PushEventHandler(EventHandler):
         # Main branch edited
         if not has_tags:
             # The repository is in the initialization phase
-            if self._head_commit.footer.initialize_project:
+            if self.head_commit.footer.initialize_project:
                 # User is signaling the end of initialization phase
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
-            self._reporter.event("Repository initialization phase")
+            self.reporter.event("Repository initialization phase")
             return self._run_init_phase()
         return self._run_branch_edited_main_normal()
 
@@ -115,20 +113,15 @@ class PushEventHandler(EventHandler):
                 amend=True,
                 stage="all"
             )
-        cc_manager = self.get_cc_manager(
-            future_versions={self._context.event.repository.default_branch: "0.0.0"},
-            control_center_path=".control"
-        )
-        self._sync(
+        main_manager, _ = self.run_cca(
+            branch_manager=None,
             action=InitCheckAction.AMEND,
-            cc_manager=cc_manager,
-            base=False,
+            future_versions={self.gh_context.event.repository.default_branch: "0.0.0"},
         )
-        data = cc_manager.generate_data()
         with logger.sectioning("Repository Update"):
-            self._git_head.push(force_with_lease=True)
-        self._repo_config.reset_labels(data=DataManager(data))
-        self._reporter.add(
+            main_manager.git.push(force_with_lease=True)
+        main_manager.repo.reset_labels()
+        self.reporter.add(
             name="event",
             status="pass",
             summary=f"Repository created from RepoDynamics template.",
@@ -136,55 +129,54 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
-        new_data, job_runs, latest_hash = self.run_sync_fix(
+        version = "0.0.0"
+        new_manager, job_runs, latest_hash = self.run_sync_fix(
+            branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
-            future_versions={self._context.ref_name: "0.0.0"},
+            future_versions={self.gh_context.ref_name: version},
         )
-        self._repo_config.update_all(data_new=new_data, data_old=self._data_main, rulesets="ignore")
-        self._output.set(
-            data_branch=new_data,
+        new_manager.repo.update_all(manager_before=self.manager, update_rulesets=False)
+        self._output_manager.set(
+            main_manager=new_manager,
+            branch_manager=new_manager,
+            version=version,
             ref=latest_hash,
             website_deploy=True,
             package_lint=True,
+            test_lint=True,
             package_test=True,
             package_build=True,
         )
         return
 
     def _run_first_release(self):
-        self._reporter.event("Project initialization")
-        version = self._head_commit.footer.version or "0.0.0"
-        new_data, job_runs, latest_hash = self.run_sync_fix(
+        self.reporter.event("Project initialization")
+        version = self.head_commit.footer.version or "0.0.0"
+        new_manager, job_runs, latest_hash = self.run_sync_fix(
+            branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
-            future_versions={self._context.ref_name: version},
+            future_versions={self.gh_context.ref_name: version},
         )
-        data_main_before = self._data_main
-        self._data_main = new_data
         # By default, squash all commits into a single commit
-        if self._head_commit.footer.squash is not False:
+        if self.head_commit.footer.squash is not False:
             # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
             #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
-            self._git_head.checkout("temp", orphan=True)
-            self._git_head.commit(message=str(self._head_commit))
-            self._git_head.branch_delete(self._context.ref_name, force=True)
-            self._git_head.branch_rename(self._context.ref_name, force=True)
-            self._git_head.push(
-                target="origin", ref=self._context.ref_name, force_with_lease=True
+            new_manager.git.checkout("temp", orphan=True)
+            new_manager.git.commit(message=str(self.head_commit))
+            new_manager.git.branch_delete(self.gh_context.ref_name, force=True)
+            new_manager.git.branch_rename(self.gh_context.ref_name, force=True)
+            new_manager.git.push(
+                target="origin", ref=self.gh_context.ref_name, force_with_lease=True
             )
-            latest_hash = self._git_head.commit_hash_normal()
-        if self._head_commit.footer.publish:
-
-
-
-
+            latest_hash = new_manager.git.commit_hash_normal()
         self._tag_version(
             ver=version,
             base=False,
-            env_vars={"ccc": new_data},
+            env_vars={"ccc": new_manager},
         )
-        self._repo_config.update_all(data_new=new_data, data_old=data_main_before, rulesets="create")
-        self._output.set(
-            data_branch=new_data,
+        self.repo_manager.update_all(data_new=new_manager, data_old=data_main_before, rulesets="create")
+        self._output_manager.set(
+            data_branch=new_manager,
             ref=latest_hash,
             version=version,
             website_deploy=True,
@@ -194,36 +186,36 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_fork(self):
-        self._reporter.event("CI on fork")
-        new_data, job_runs, latest_hash = self.run_sync_fix(action=InitCheckAction.COMMIT)
+        self.reporter.event("CI on fork")
+        new_manager, job_runs, latest_hash = self.run_sync_fix(action=InitCheckAction.COMMIT)
         website_deploy = False
         if self._has_admin_token:
-            self._repo_config.activate_gh_pages()
+            self.repo_manager.activate_gh_pages()
             if job_runs["website_build"]:
                 website_deploy = True
-            if self._context.ref_is_main:
-                self._repo_config.update_all(
-                    data_new=new_data,
+            if self.gh_context.ref_is_main:
+                self.repo_manager.update_all(
+                    data_new=new_manager,
                     data_old=self._data_main,
                     rulesets="ignore"
                 )
-        self._output.set(
-            data_branch=new_data,
+        self._output_manager.set(
+            data_branch=new_manager,
             ref=latest_hash,
-            ref_before=self._context.hash_before,
+            ref_before=self.gh_context.hash_before,
             website_deploy=website_deploy,
             **job_runs,
         )
         return
 
     def _run_branch_edited_main_normal(self):
-        self._reporter.event("Repository configuration synchronization")
-        self._repo_config.update_all(
+        self.reporter.event("Repository configuration synchronization")
+        self.repo_manager.update_all(
             data_new=self._data_main,
             data_old=DataManager(
                 controlman.from_json_file_at_commit(
                     git_manager=self._git_head,
-                    commit_hash=self._context.hash_before,
+                    commit_hash=self.gh_context.hash_before,
                 ),
             ),
         )

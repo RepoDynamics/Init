@@ -50,7 +50,7 @@ class WorkflowDispatchEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: WorkflowDispatchPayload = self._context.event
+        self._payload: WorkflowDispatchPayload = self.gh_context.event
         logger.info(
             "User Inputs",
             str(self._payload.inputs),
@@ -63,7 +63,7 @@ class WorkflowDispatchEventHandler(EventHandler):
 
     def _run_event(self):
         if WorkflowDispatchInput.RELEASE in self._inputs:
-            if self._context.ref_is_main:
+            if self.gh_context.ref_is_main:
                 return self._release_first_major_version()
             logger.critical("Cannot create first major release: not on main branch")
             return
@@ -80,14 +80,14 @@ class WorkflowDispatchEventHandler(EventHandler):
         if latest_ver.major != 0:
             logger.critical("Cannot create first major release: latest version's major is not 0")
             return
-        cc_manager = self.get_cc_manager(future_versions={self._context.ref_name: "1.0.0"})
+        cc_manager = self.get_cc_manager(future_versions={self.gh_context.ref_name: "1.0.0"})
         self._ccm_main = cc_manager.generate_data()
         hash_before = self._git_head.commit_hash_normal()
-        self._sync(
+        self.run_cca(
             action=controlman.datatype.InitCheckAction.COMMIT,
             cc_manager=cc_manager,
             base=False,
-            branch=controlman.datatype.Branch(type=controlman.datatype.BranchType.MAIN, name=self._context.ref_name)
+            branch=controlman.datatype.Branch(type=controlman.datatype.BranchType.MAIN, name=self.gh_context.ref_name)
         )
         changelog_manager = ChangelogManager(
             changelog_metadata=self._ccm_main["changelog"],
@@ -108,10 +108,10 @@ class WorkflowDispatchEventHandler(EventHandler):
         hash_latest = self._git_head.push()
         tag = self._tag_version(ver="1.0.0", base=False)
 
-        self._output.set(
+        self._output_manager.set(
             data_branch=self._ccm_main,
             ref=hash_latest,
-            ref_before=self._context.hash_before,
+            ref_before=self.gh_context.hash_before,
             version="1.0.0",
             release_name=f"{self._ccm_main['name']} v1.0.0",
             release_tag=tag,

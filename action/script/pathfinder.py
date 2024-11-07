@@ -5,7 +5,7 @@ import sys
 import controlman
 import actionman
 from loggerman import logger
-from proman.manager.report import initialize_logger as proman_logger_initialize
+from proman.reporter import initialize_logger as proman_logger_initialize
 
 
 def get_local_dir_paths():

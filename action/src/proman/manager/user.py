@@ -6,59 +6,36 @@ import re
 
 import pyserials as ps
 from controlman import data_helper, data_validator
+import pylinks
 
 from proman.dstruct import User
 
 if _TYPE_CHECKING:
     from typing import Literal
-    from pathlib import Path
-    from controlman.cache_manager import CacheManager
-    from proman.manager.data import DataManager
-    from pylinks.api.github import GitHub
     from github_contexts.github.payload.object.issue import Issue
+    from proman.manager import Manager
 
 
 class UserManager:
 
-    def __init__(
-        self,
-        data_main: DataManager,
-        root_path: Path,
-        github_api: GitHub,
-        cache_manager: CacheManager,
-    ):
-        self._github_api = github_api
-        self._cache_manager = cache_manager
-        self._data_main = data_main
-        self._contributors_path_main = root_path / self._data_main["doc.contributors.path"]
-        self._contributors_main = ps.read.json_from_file(
-            self._contributors_path_main
-        ) if self._contributors_path_main.is_file() else {}
+    def __init__(self, manager: Manager):
+        self._manager = manager
+        self._gh_api = pylinks.api.github(token=self._manager.gh_context.token)
+        self._contributors_path = self._manager.git.repo_path / self._manager.data["doc.contributors.path"]
+        self._contributors = ps.read.json_from_file(
+            self._contributors_path
+        ) if self._contributors_path.is_file() else {}
         return
 
-    def citation_authors(self, data: DataManager | None = None) -> list[User]:
-        data = data or self._data_main
-        out = []
-        for member_id in data["citation"]["authors"]:
-            user = User(
-                id=member_id,
-                association="member",
-                data=data["team"][member_id],
-            )
-            out.append(user)
-        return out
-
-    def citation_contributors(self, data: DataManager | None = None) -> list[User]:
-        data = data or self._data_main
-        out = []
-        for member_id in data["citation"]["contributors"]:
-            user = User(
-                id=member_id,
-                association="member",
-                data=data["team"][member_id],
-            )
-            out.append(user)
-        return out
+    def from_member_id(self, member_id: str) -> User:
+        member = self._manager.data["team"].get(member_id)
+        if not member:
+            raise ValueError(f"No member data found in the data branch or main data for member ID {member_id}.")
+        return User(
+            id=member_id,
+            association="member",
+            data=member,
+        )
 
     def from_issue_form_id(
         self,
@@ -66,9 +43,9 @@ class UserManager:
         assignment: Literal["issue", "pull", "review"]
     ) -> list[User]:
         out = []
-        for member_id, member in self._data_main["team"].items():
+        for member_id, member in self._manager.data["team"].items():
             for member_role_id in member.get("role", {}).keys():
-                role = self._data_main["role"][member_role_id]
+                role = self._manager.data["role"][member_role_id]
                 issue_id_regex = role.get("assignment", {}).get(assignment)
                 if issue_id_regex and re.match(issue_id_regex, issue_form_id):
                     user = User(
@@ -86,20 +63,20 @@ class UserManager:
         add_to_contributors: bool = True,
         update_file: bool = False,
     ) -> User:
-        for member_id, member_data in self._data_main["team"].items():
+        for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
                 return User(id=member_id, association="member", data=member_data)
-        for github_user_id, github_user in self._contributors_main.items():
+        for github_user_id, github_user in self._contributors.items():
             if github_user_id == github_id:
                 return User(id=github_id, association="user", data=github_user)
         data = data_helper.fill_entity(
             entity={"github": {"rest_id": github_id}},
-            github_api=self._github_api,
-            cache_manager=self._cache_manager,
+            github_api=self._gh_api,
+            cache_manager=self._manager.cache,
             validator=partial(data_validator.validate, schema="entity"),
         )[0]
         if add_to_contributors:
-            existing_data = self._contributors_main.setdefault("github", {}).setdefault(github_id, {})
+            existing_data = self._contributors.setdefault("github", {}).setdefault(github_id, {})
             ps.update.dict_from_addon(data, existing_data)
             if update_file:
                 self.write_contributors()
@@ -115,8 +92,8 @@ class UserManager:
         )
 
     def write_contributors(self):
-        with open(self._contributors_path_main, "w") as contributors_file:
-            contributors_file.write(ps.write.to_json_string(self._contributors_main, sort_keys=True, indent=4))
+        with open(self._contributors_path, "w") as contributors_file:
+            contributors_file.write(ps.write.to_json_string(self._contributors, sort_keys=True, indent=4))
         return
 
 

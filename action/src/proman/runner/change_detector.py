@@ -1,16 +1,24 @@
 from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
+from pathlib import Path
 
 from controlman import const
+import htmp
+import mdit
 
 from proman.dtype import FileChangeType, RepoFileType
 
 if TYPE_CHECKING:
-    from proman.manager.data import DataManager
+    from pyserials import NestedDict
+    from proman.report import Reporter
 
 
-def run(data: DataManager, changes: dict):
+def run(
+    data: NestedDict,
+    changes: dict,
+    reporter: Reporter
+) -> dict[str, bool]:
     change_type_map = {
         "added": FileChangeType.ADDED,
         "deleted": FileChangeType.REMOVED,
@@ -35,10 +43,17 @@ def run(data: DataManager, changes: dict):
             typ, subtype = _determine_filetype(path, paths_abs, paths_start, paths_regex)
             is_dynamic = path in dynamic_files
             full_info.append((typ, subtype, change_type_map[change_type], is_dynamic, path))
-    return full_info
+    changed_filetypes, oneliner, body = _generate_report(full_info)
+    reporter.add(
+        name="file_change",
+        status="pass",
+        summary=oneliner,
+        body=body,
+    )
+    return _get_changed_project_components(full_info)
 
 
-def _make_filetype_patterns(data: DataManager):
+def _make_filetype_patterns(data: NestedDict):
     paths_abs = [
         (RepoFileType.CONFIG, "Metadata", const.FILEPATH_METADATA),
         (RepoFileType.CONFIG, "Git Ignore", const.FILEPATH_GITIGNORE),
@@ -118,10 +133,70 @@ def _determine_filetype(
     return RepoFileType.OTHER, "–"
 
 
-def _get_dynamic_file_paths(data: DataManager) -> list[str]:
+def _get_dynamic_file_paths(data: NestedDict) -> list[str]:
     dynamic_files = []
     for file_group in data.get("project.file", {}).values():
         dynamic_files.extend(list(file_group.values()))
     return dynamic_files
 
 
+def _generate_report(full_info: list):
+    changed_filetypes = {}
+    rows = [["Type", "Subtype", "Change", "Dynamic", "Path"]]
+    for typ, subtype, change_type, is_dynamic, path in sorted(full_info, key=lambda x: (x[0].value, x[1])):
+        changed_filetypes.setdefault(typ, []).append(change_type)
+        if is_dynamic:
+            changed_filetypes.setdefault(RepoFileType.DYNAMIC, []).append(change_type)
+        dynamic = htmp.element.span('✅' if is_dynamic else '❌',
+                                    title='Dynamic' if is_dynamic else 'Static')
+        change_sig = change_type.value
+        change = htmp.element.span(change_sig.emoji, title=change_sig.title)
+        subtype = subtype or Path(path).stem
+        rows.append([typ.value, subtype, change, dynamic, mdit.element.code_span(path)])
+    if not changed_filetypes:
+        oneliner = "No files were changed in this event."
+        body = None
+    else:
+        changed_types = ", ".join(sorted([typ.value for typ in changed_filetypes]))
+        oneliner = f"Following filetypes were changed: {changed_types}"
+        body = mdit.element.unordered_list()
+        intro_table_rows = [["Type", "Changes"]]
+        has_broken_changes = False
+        if RepoFileType.DYNAMIC in changed_filetypes:
+            warning = "⚠️ Dynamic files were changed; make sure to double-check that everything is correct."
+            body.append(warning)
+        for file_type, change_list in changed_filetypes.items():
+            change_list = sorted(set(change_list), key=lambda x: x.value.title)
+            changes = []
+            for change_type in change_list:
+                if change_type in (FileChangeType.BROKEN, FileChangeType.UNKNOWN):
+                    has_broken_changes = True
+                changes.append(
+                    f'<span title="{change_type.value.title}">{change_type.value.emoji}</span>'
+                )
+            changes_cell = "&nbsp;".join(changes)
+            intro_table_rows.append([file_type.value, changes_cell])
+        if has_broken_changes:
+            warning = "⚠️ Some changes were marked as 'broken' or 'unknown'; please investigate."
+            body.append(warning)
+        intro_table = mdit.element.table(intro_table_rows, num_rows_header=1)
+        body.append(["Following filetypes were changed:", intro_table])
+        body.append(["Following files were changed:", mdit.element.table(rows, num_rows_header=1)])
+    return changed_filetypes, oneliner, body
+
+
+def _get_changed_project_components(changed_filetypes):
+    def decide(filetypes: list[RepoFileType]):
+        return any(filetype in changed_filetypes for filetype in filetypes)
+
+    return {
+        "dynamic": any(filetype in changed_filetypes for filetype in (RepoFileType.CC, RepoFileType.DYNAMIC)),
+        "pkg": decide([RepoFileType.PKG_SOURCE, RepoFileType.PKG_CONFIG]),
+        "test": decide([RepoFileType.TEST_SOURCE, RepoFileType.TEST_CONFIG]),
+        "web": decide(
+            [
+                RepoFileType.CC, RepoFileType.WEB_CONFIG, RepoFileType.WEB_SOURCE,
+                RepoFileType.THEME, RepoFileType.PKG_SOURCE,
+            ]
+        )
+    }

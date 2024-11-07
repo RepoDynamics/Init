@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from typing import Literal
     from gittidy import Git
 
+
 def run(
     git: Git,
     config: dict,

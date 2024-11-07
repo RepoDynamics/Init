@@ -56,6 +56,7 @@ class InitCheckAction(_Enum):
     NONE = "none"
     FAIL = "fail"
     REPORT = "report"
+    ISSUE = "issue"
     PULL = "pull"
     COMMIT = "commit"
     AMEND = "amend"

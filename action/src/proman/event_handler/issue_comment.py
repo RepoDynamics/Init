@@ -25,7 +25,7 @@ class IssueCommentEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: IssueCommentPayload = self._context.event
+        self._payload: IssueCommentPayload = self.gh_context.event
         self._comment = self._payload.comment
         self._issue = self._payload.issue
         self._command_runner = {

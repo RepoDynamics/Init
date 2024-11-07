@@ -1,4 +1,5 @@
 from typing import Generator
+import re
 
 import conventional_commits.message
 from github_contexts import GitHubContext
@@ -15,54 +16,70 @@ class ScheduleEventHandler(EventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._payload: SchedulePayload = self._context.event
+        self._payload: SchedulePayload = self.gh_context.event
         return
 
     def _run_event(self):
         cron = self._payload.schedule
-        if cron == self._data_main["workflow"]["schedule"]["sync"]["cron"]:
-            return self._run_sync()
-        if cron == self._data_main["workflow"]["schedule"]["test"]["cron"]:
-            return self._run_test()
-        logger.critical(
-            f"Unknown cron expression for scheduled workflow: {cron}",
-            f"Valid cron expressions defined in 'workflow.init.schedule' metadata are:\n"
-            f"{self._data_main.workflow__init__schedule}",
-        )
-        return
-
-    def _run_sync(self):
-        cc_manager_generator = self._get_cc_manager_generator(
-            branch_types=(BranchType.AUTOUPDATE, ), exclude_branch_types=True
-        )
-        for cc_manager, branch, _ in cc_manager_generator:
-            self._sync(
-                action=InitCheckAction(self._data_main["workflow"]["schedule"]["sync"]["branch"][branch.type.value]),
-                cc_manager=cc_manager,
-                base=False,
-                branch=branch
+        for schedule_id, schedule in self._data_main["workflow"]["schedule"].items():
+            if schedule["cron"] == cron:
+                break
+        else:
+            self.reporter.event("Unknown scheduled workflow")
+            self.reporter.add(
+                name="event",
+                status="fail",
+                summary="Unknown cron expression for scheduled workflow.",
+                body=[
+                    f"The cron expression `{cron}` is not defined.",
+                    "Valid cron expressions defined in `$.workflow.schedule` are:",
+                    "\n".join(
+                        [
+                            f"- `{schedule['cron']}`"
+                            for schedule in self._data_main["workflow"]["schedule"].values()
+                        ]
+                    ),
+                ]
             )
-        self._git_head.checkout(branch=self._context.event.repository.default_branch)
-        commit_hash_announce = self._web_announcement_expiry_check()
-        if commit_hash_announce:
-            self._git_head.push()
-        return
+            return
+        self.reporter.event(f"Scheduled workflow `{schedule_id}`")
+        job = schedule["job"]
+        for branch_name in self._get_target_branches(schedule):
+            self._git_base.checkout(branch=branch_name)
+            commit_hashes = []
+            if "sync" in job:
+                self._data_branch_before = self.manager_from_metadata_file(base=True)
+                cc_manager = self.get_cc_manager(base=True)
+                commit_hash = self.run_cca(
+                    action=InitCheckAction(job["sync"]["action"]),
+                    cc_manager=cc_manager,
+                    base=True,
+                )
+                commit_hashes.append(commit_hash)
+                self._data_branch = cc_manager.generate_data()
+            else:
+                self._data_branch = self.manager_from_metadata_file(base=True)
+            if "announcement_expiry" in job:
+                pass
+            if "refactor" in job:
+                commit_hash = self.run_refactor(
+                    action=InitCheckAction(job["refactor"]["action"]),
+                    branch_manager=self._data_branch,
+                    base=True,
+                )
+                commit_hashes.append(commit_hash)
+            if any(commit_hashes):
+                self._git_base.push()
+            latest_hash = self._git_base.commit_hash_normal()
+            if "website" in job:
+                self._output_manager._set_web(
 
-    def _run_test(self):
-        cc_manager_generator = self._get_cc_manager_generator(
-            branch_types=(BranchType.MAIN, BranchType.RELEASE, BranchType.PRERELEASE)
-        )
-        for _, branch, sha in cc_manager_generator:
-            latest_hash = self._action_hooks(
-                action=InitCheckAction(
-                    self._data_main["workflow"]["schedule"]["test"]["branch"][branch.type.value]),
-                branch=branch,
-                base=False,
-                ref_range=None,
-            )
-            ccm_branch = controlman.read_from_json_file(path_repo=self._path_head)
-            self._output.set(
-                data_branch=ccm_branch,
+                )
+
+
+            self._output_manager.set(
+                data_branch=self._data_branch,
+
                 ref=latest_hash or sha,
                 ref_before=sha,
                 version=self._get_latest_version(base=False),
@@ -73,23 +90,25 @@ class ScheduleEventHandler(EventHandler):
                 package_test_source="PyPI",
                 package_build=True,
             )
+
+
+
         return
 
-    def _get_cc_manager_generator(
-        self, branch_types: tuple[BranchType, ...], exclude_branch_types: bool = False
-    ) -> Generator[tuple[controlman.CenterManager, Branch, str], None, None]:
+    def _get_target_branches(self, schedule: dict):
+        types = schedule.get("branch_types")
+        regex = re.compile(schedule["branch_regex"]) if "branch_regex" in schedule else None
+        target_branches = []
         for branch_data in self._gh_api.branches:
             branch_name = branch_data["name"]
             branch = self.resolve_branch(branch_name=branch_name)
-            if exclude_branch_types:
-                if branch.type in branch_types:
-                    continue
-            elif branch.type not in branch_types:
+            if types and branch.type.value not in types:
                 continue
-            self._git_head.fetch_remote_branches_by_name(branch_names=branch_name)
-            self._git_head.checkout(branch=branch_name)
-            cc_manager = self.get_cc_manager()
-            yield cc_manager, branch, branch_data["commit"]["sha"]
+            if regex and not regex.match(branch_name):
+                continue
+            target_branches.append(branch_name)
+        self._git_base.fetch_remote_branches_by_name(branch_names=target_branches)
+        return target_branches
 
     def _web_announcement_expiry_check(self) -> str | None:
         name = "Website Announcement Expiry Check"

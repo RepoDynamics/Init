@@ -1,4 +1,3 @@
-from pathlib import Path
 import functools
 import io
 from typing import Literal
@@ -13,6 +12,7 @@ from rich.text import Text
 
 
 from proman.dtype import _TitledEmoji
+from proman.exception import ProManException
 
 
 EMOJI = {
@@ -23,7 +23,7 @@ EMOJI = {
     }
 
 
-class ReportManager:
+class Reporter:
 
     def __init__(self, github_context: _gh_context.GitHubContext):
         self._context = github_context
@@ -71,6 +71,23 @@ class ReportManager:
             else:
                 data["section"].extend(section)
         return
+
+    def error_unsupported_triggering_action(self):
+        event_name = self._context.event_name.value
+        action_name = self._context.event.action.value
+        action_err_msg = f"Unsupported triggering action for '{event_name}' event"
+        action_err_details = (
+            f"The workflow was triggered by an event of type '{event_name}', "
+            f"but the triggering action '{action_name}' is not supported."
+        )
+        self.add(
+            name="main",
+            status="fail",
+            summary=action_err_msg,
+            body=action_err_details,
+        )
+        logger.critical(action_err_msg, action_err_details)
+        raise ProManException()
 
     @property
     def failed(self):

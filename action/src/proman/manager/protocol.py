@@ -2,66 +2,85 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 import re
-import datetime
 
-import jinja2
 from loggerman import logger
 import mdit
 import pyserials as ps
+from controlman.file_gen.forms import pre_process_existence
 
 from proman.dtype import IssueStatus
+from proman.exception import ProManException
 
 if TYPE_CHECKING:
-    from typing import Callable
     from github_contexts.github.payload.object.user import User as GitHubUser
+    from github_contexts.github.payload.object.issue import Issue
     from proman.manager.commit import Commit
+    from proman.manager import Manager
+    from proman.dstruct import IssueForm
 
 
 class ProtocolManager:
 
-    def __init__(
-        self,
-        data_main: ps.NestedDict,
-        commit_parser: Callable[[str], Commit],
-        env_vars: dict | None = None,
-        protocol: str | None = None,
-    ):
-        self._data_main = data_main
-        self._commit_parser = commit_parser
-        self.env_vars = env_vars or {}
-        self.protocol = protocol or ""
+    def __init__(self, manager: Manager):
+        self._manager = manager
+        self._protocol = ""
+        self._protocol_comment_id = None
+        self._protocol_issue_nr = None
         return
 
-    def generate(self, template: str, issue_form: dict, issue_inputs: dict, issue_body: str) -> str:
-        data = {}
-        env_vars = {
-            "data": data,
-            "form": issue_form,
-            "input": issue_inputs,
-            "issue_body": issue_body,
-        }
-        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title", "status"):
-            template_data = self._data_main.get(f"doc.protocol.{template_key}")
-            if template_data:
-                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
-        status_checkbox = self._data_main["doc.protocol.status_checkbox"]
-        if status_checkbox:
-            env_vars["status_checkbox"] = {}
-            for status_id, status_checkbox_data in status_checkbox.items():
-                env_vars["status_checkbox"][status_id] = self.create_data(
-                    id=f"status_checkbox.{status_id}", spec=status_checkbox_data, env_vars=env_vars
-                )
-        for data_id, data_value in self._data_main["doc.protocol.data"].items():
-            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
-        self.protocol = self.fill_jinja_template(
-            template=template,
-            env_vars=env_vars,
+    @property
+    def protocol(self) -> str:
+        return self._protocol
+
+    @protocol.setter
+    def protocol(self, value: str):
+        self._protocol = value
+        return
+
+    def generate_from_issue(self, issue: Issue, issue_form: IssueForm) -> dict:
+        body_template = issue_form.post_process.get("body")
+        issue_entries = self._extract_entries_from_issue_body(issue.body, issue_form.body)
+        if body_template:
+            body_processed = self._generate(
+                template=body_template,
+                issue_form=issue_form,
+                issue_inputs=issue_entries,
+                issue_body=issue.body
+            )
+        else:
+            logger.info("Issue Post Processing", "No post-process action defined in issue form.")
+            body_processed = issue.body
+        self.protocol = self._generate(
+            template=self._manager.data["doc.protocol.template"],
+            issue_form=issue_form,
+            issue_inputs=issue_entries,
+            issue_body=body_processed,
         )
+        return issue_entries, body_processed
+
+    def load_from_issue(self, issue: Issue) -> str:
+        if self._manager.data["doc.protocol.as_comment"]:
+            comments = self._manager.gh_api_actions.issue_comments(number=issue.number, max_count=10)
+            protocol_comment = comments[0]
+            self._protocol_comment_id = protocol_comment.get("id")
+            self.protocol = protocol_comment.get("body")
+        else:
+            self.protocol = issue.body
+            self._protocol_issue_nr = issue.number
         return self.protocol
+
+    def update_on_github(self):
+        if self._protocol_issue_nr:
+            return self._manager.gh_api_actions.issue_update(
+                number=self._protocol_issue_nr, body=self.protocol
+            )
+        return self._manager.gh_api_actions.issue_comment_update(
+            comment_id=self._protocol_comment_id, body=self.protocol
+        )
 
     def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
         marker_start, marker_end = self.make_text_marker(id=id, data=spec)
-        data_filled = self.fill_jinja_template(template=spec["value"], env_vars=env_vars)
+        data_filled = self._manager.fill_jinja_template(template=spec["value"], env_vars=env_vars)
         return f"{marker_start}{data_filled}{marker_end}"
 
     def get_data(self, id: str, spec: dict) -> str:
@@ -84,15 +103,15 @@ class ProtocolManager:
         return self.protocol
 
     def add_timeline_entry(self, env_vars: dict | None = None) -> str:
-        template = self._data_main["doc.protocol.timeline.template"]
+        template = self._manager.data["doc.protocol.timeline.template"]
         if not template:
             return self.protocol
-        entry = self.fill_jinja_template(template, env_vars)
+        entry = self._manager.fill_jinja_template(template, env_vars)
         if not entry.strip():
             return self.protocol
         return self.add_data(
             id="timeline",
-            spec=self._data_main["doc.protocol.timeline"],
+            spec=self._manager.data["doc.protocol.timeline"],
             data=entry,
             replace=False
         )
@@ -110,15 +129,15 @@ class ProtocolManager:
                 "title": ref_title,
             }
         }
-        template = self._data_main["doc.protocol.references.template"]
+        template = self._manager.data["doc.protocol.references.template"]
         if not template:
             return self.protocol
-        entry = self.fill_jinja_template(template, env_vars)
+        entry = self._manager.fill_jinja_template(template, env_vars)
         if not entry.strip():
             return self.protocol
         return self.add_data(
             id="references",
-            spec=self._data_main["doc.protocol.references"],
+            spec=self._manager.data["doc.protocol.references"],
             data=entry,
             replace=False
         )
@@ -131,7 +150,7 @@ class ProtocolManager:
             # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
             # https://docs.readthedocs.io/en/latest/guides/pull-requests.html
 
-            config = self._data_main["tool.readthedocs.config.workflow"]
+            config = self._manager.data["tool.readthedocs.config.workflow"]
             domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
             slug = config["name"]
             url = f"https://{slug}--{pull_nr}.{domain}/"
@@ -140,7 +159,7 @@ class ProtocolManager:
                 url += f"{language}/{pull_nr}/"
             return url
 
-        if not self._data_main["tool.readthedocs"]:
+        if not self._manager.data["tool.readthedocs"]:
             return self.protocol
         return self.add_reference(
             ref_id="readthedocs-preview",
@@ -149,31 +168,31 @@ class ProtocolManager:
         )
 
     def add_pr_list(self, pr_list: list[dict[str, str]]) -> str:
-        pr_list_template = self._data_main["doc.protocol.pr_list.template"]
+        pr_list_template = self._manager.data["doc.protocol.pr_list.template"]
         if not pr_list_template:
             return self.protocol
         env_vars = {"pulls": pr_list}
-        entry = self.fill_jinja_template(pr_list_template, env_vars)
+        entry = self._manager.fill_jinja_template(pr_list_template, env_vars)
         if not entry.strip():
             return self.protocol
         return self.add_data(
             id="pr_list",
-            spec=self._data_main["doc.protocol.pr_list"],
+            spec=self._manager.data["doc.protocol.pr_list"],
             data=entry,
             replace=True
         )
 
     def update_status(self, status: IssueStatus, env_vars: dict | None = None) -> str:
-        status_template = self._data_main["doc.protocol.status.template"]
+        status_template = self._manager.data["doc.protocol.status.template"]
         if not status_template:
             return self.protocol
         self.add_data(
             id="status",
-            spec=self._data_main["doc.protocol.status"],
-            data=self.fill_jinja_template(status_template, (env_vars or {}) | {"status": status.value}),
+            spec=self._manager.data["doc.protocol.status"],
+            data=self._manager.fill_jinja_template(status_template, (env_vars or {}) | {"status": status.value}),
             replace=True
         )
-        checkbox_templates = self._data_main.get("doc.protocol.status_checkbox", {})
+        checkbox_templates = self._manager.data.get("doc.protocol.status_checkbox", {})
         for status_id, checkbox_data in checkbox_templates.items():
             checkbox_level = IssueStatus(status_id).level if status_id != "deploy" else 10
             checkbox = self.get_data(id=f"status_checkbox.{status_id}", spec=checkbox_data)
@@ -235,7 +254,7 @@ class ProtocolManager:
                     sublist and all([subtask['complete'] for subtask in sublist])
                 )
                 if level == 0:
-                    conv_msg = self._commit_parser(summary)
+                    conv_msg = self._manager.commit.create_from_msg(summary)
                     tasklist_entries.append({
                         'complete': task_is_complete,
                         'commit': conv_msg,
@@ -251,7 +270,7 @@ class ProtocolManager:
                     })
             return tasklist_entries
 
-        tasklist = self.get_data(id="tasklist", spec=self._data_main["doc.protocol.tasklist"]).strip()
+        tasklist = self.get_data(id="tasklist", spec=self._manager.data["doc.protocol.tasklist"]).strip()
         body_md = mdit.element.code_block(self.protocol, language="markdown", caption="Protocol")
         if not tasklist:
             logger.warning(
@@ -270,31 +289,13 @@ class ProtocolManager:
         return tasklist
 
     def get_pr_title(self):
-        return self.get_data(id="pr_title", spec=self._data_main["doc.protocol.pr_title"]).strip()
+        return self.get_data(id="pr_title", spec=self._manager.data["doc.protocol.pr_title"]).strip()
 
     def make_text_marker(self, id: str, data: dict) -> tuple[str, str]:
         return tuple(
-            data[pos] if pos in data else self._data_main["doc.protocol.marker"][pos].format(id)
+            data[pos] if pos in data else self._manager.data["doc.protocol.marker"][pos].format(id)
             for pos in ("start", "end")
         )
-
-    def fill_jinja_template(self, template: str, env_vars: dict | None = None) -> str:
-        return jinja2.Template(template).render(
-            self.env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
-        )
-
-    def fill_jinja_templates(self, templates: dict, env_vars: dict | None = None) -> dict:
-
-        def recursive_fill(template):
-            if isinstance(template, dict):
-                return {recursive_fill(key): recursive_fill(value) for key, value in template.items()}
-            if isinstance(template, list):
-                return [recursive_fill(value) for value in template]
-            if isinstance(template, str):
-                return self.fill_jinja_template(template, env_vars)
-            return template
-
-        return recursive_fill(templates)
 
     def update_tasklist(self, entries: list[dict[str, bool | Commit | list]]) -> str:
         """Write an implementation tasklist as Markdown string
@@ -326,17 +327,37 @@ class ProtocolManager:
         tasklist = "\n".join(string).strip()
         return self.add_data(
             id="tasklist",
-            spec=self._data_main["doc.protocol.tasklist"],
+            spec=self._manager.data["doc.protocol.tasklist"],
             data=f"\n{tasklist}\n",
             replace=True
         )
 
-    @staticmethod
-    def make_user_mention(user: GitHubUser) -> str:
-        linked_username = f"[{user.login}]({user.html_url})"
-        if not user.name:
-            return linked_username
-        return f"{user.name} ({linked_username})"
+    def _generate(self, template: str, issue_form: dict, issue_inputs: dict, issue_body: str) -> str:
+        data = {}
+        env_vars = {
+            "data": data,
+            "form": issue_form,
+            "input": issue_inputs,
+            "issue_body": issue_body,
+        }
+        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title", "status"):
+            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
+            if template_data:
+                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
+        status_checkbox = self._manager.data["doc.protocol.status_checkbox"]
+        if status_checkbox:
+            env_vars["status_checkbox"] = {}
+            for status_id, status_checkbox_data in status_checkbox.items():
+                env_vars["status_checkbox"][status_id] = self.create_data(
+                    id=f"status_checkbox.{status_id}", spec=status_checkbox_data, env_vars=env_vars
+                )
+        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
+            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
+        protocol = self._manager.fill_jinja_template(
+            template=template,
+            env_vars=env_vars,
+        )
+        return protocol
 
     @staticmethod
     def toggle_checkbox(checkbox: str, check: bool) -> str:
@@ -356,3 +377,46 @@ class ProtocolManager:
             )
             return checkbox
         return re.sub(pattern, replacer, checkbox, count=1)
+
+    @staticmethod
+    def _extract_entries_from_issue_body(body: str, body_elems: list[dict]):
+        def create_pattern(parts_):
+            pattern_sections = []
+            for idx, part in enumerate(parts_):
+                pattern_content = f"(?P<{part['id']}>.*)" if part["id"] else "(?:.*)"
+                pattern_section = rf"### {re.escape(part['title'])}\n{pattern_content}"
+                if idx != 0:
+                    pattern_section = f"\n{pattern_section}"
+                if part["optional"]:
+                    pattern_section = f"(?:{pattern_section})?"
+                pattern_sections.append(pattern_section)
+            return "".join(pattern_sections)
+
+        parts = []
+        for elem in body_elems:
+            if elem["type"] == "markdown":
+                continue
+            pre_process = elem.get("pre_process")
+            if not pre_process or pre_process_existence(pre_process):
+                optional = False
+            else:
+                optional = True
+            parts.append({"id": elem.get("id"), "title": elem["attributes"]["label"], "optional": optional})
+        pattern = create_pattern(parts)
+        compiled_pattern = re.compile(pattern, re.S)
+        # Search for the pattern in the markdown
+        logger.debug("Issue body", mdit.element.code_block(body))
+        match = re.search(compiled_pattern, body)
+        if not match:
+            logger.critical(
+                "Issue Body Pattern Matching",
+                "Could not match the issue body to pattern defined in control center settings."
+            )
+            raise ProManException()
+        # Create a dictionary with titles as keys and matched content as values
+        sections = {
+            section_id: content.strip() if content else None
+            for section_id, content in match.groupdict().items()
+        }
+        logger.debug("Matched sections", str(sections))
+        return sections

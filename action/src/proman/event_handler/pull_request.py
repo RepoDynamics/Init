@@ -44,15 +44,15 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._git_base.fetch_remote_branches_by_name(branch_names=self._context.base_ref)
-        self._git_base.checkout(branch=self._context.base_ref)
+        self._git_base.fetch_remote_branches_by_name(branch_names=self.gh_context.base_ref)
+        self._git_base.checkout(branch=self.gh_context.base_ref)
         return
 
     @logger.sectioner("Pull Request Handler Execution")
     def run(self):
         if not self._head_to_base_allowed():
             return
-        self._devdoc.add_timeline_entry()
+        self.protocol_manager.add_timeline_entry()
         action = self._payload.action
         if action is _gh_context.enum.ActionType.OPENED:
             if self._branch_head.type is BranchType.PRE and self._branch_base.type in (
@@ -72,12 +72,12 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self.error_unsupported_triggering_action()
         self._gh_api.pull_update(
             number=self._pull.number,
-            body=self._devdoc.protocol,
+            body=self.protocol_manager.protocol,
         )
         return
 
     def _run_action_synchronize(self):
-        issue_form = self._data_main.issue_form_from_id_labels(self._pull.label_names)
+        issue_form = self._data_main.form_from_id_labels(self._pull.label_names)
         ccm_branch, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL,
             testpypi_publishable=(
@@ -87,7 +87,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             ),
         )
         tasks_complete = self._update_implementation_tasklist()
-        if tasks_complete and not self._reporter.failed:
+        if tasks_complete and not self.reporter.failed:
             self._gh_api.pull_update(
                 number=self._pull.number,
                 draft=False,
@@ -100,7 +100,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 base=False,
                 msg=f"Developmental release (issue: #{self._branch_head.suffix[0]}, target: {self._branch_base.name})",
             )
-        self._output.set(
+        self._output_manager.set(
             data_branch=ccm_branch,
             ref=latest_hash,
             website_url=self._data_main["web.url.base"]
@@ -111,13 +111,13 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _run_action_labeled(self):
         label = self._data_main.resolve_label(self._payload.label.name)
         if label.category is LabelType.STATUS:
-            self._primary_commit_type = self._data_main.issue_form_from_id_labels(self._pull.label_names).group_data
+            self._primary_commit_type = self._data_main.form_from_id_labels(self._pull.label_names).group_data
             if not self._status_label_allowed(label=label):
                 return
-            self._update_issue_status_labels(
+            self.manager.label.update_status_label_on_github(
                 issue_nr=self._pull.number,
-                labels=self._data_main.resolve_labels(self._pull.label_names)[LabelType.STATUS],
-                current_label=label,
+                old_status_labels=self._data_main.resolve_labels(self._pull.label_names)[LabelType.STATUS],
+                new_satus_label=label,
             )
             status = label.type
             if status in (IssueStatus.DEPLOY_ALPHA, IssueStatus.DEPLOY_BETA, IssueStatus.DEPLOY_RC):
@@ -197,7 +197,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return
 
     def _run_merge_implementation_to_release(self):
-        self._reporter.event(
+        self.reporter.event(
             f"Merge development branch '{self._branch_head.name}' "
             f"to release branch '{self._branch_base.name}'"
         )
@@ -231,7 +231,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         ):
             # Make a new release branch from the base branch for the previous major version
             self._git_base.checkout(
-                branch=self._data_main.branch_name_release(major_version=ver_base.major), create=True
+                branch=self._data_main.new_release(major_version=ver_base.major), create=True
             )
             self._git_base.push(target="origin", set_upstream=True)
             self._git_base.checkout(branch=self._branch_base.name)
@@ -241,14 +241,14 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             if self._branch_base.type is BranchType.MAIN:
                 # Base is the main branch; we can update the head branch directly
                 cc_manager = self.get_cc_manager(future_versions={self._branch_base.name: next_ver})
-                self._sync(
+                self.run_cca(
                     action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=False, branch=self._branch_head
                 )
             else:
                 # Base is a release branch; we need to update the main branch separately
                 self._git_base.checkout(branch=self._payload.repository.default_branch)
                 cc_manager = self.get_cc_manager(base=True, future_versions={self._branch_base.name: next_ver})
-                self._sync(
+                self.run_cca(
                     action=InitCheckAction.COMMIT, cc_manager=cc_manager, base=True, branch=self._branch_base
                 )
                 self._git_base.push()
@@ -266,7 +266,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         ccm_branch = DataManager(controlman.from_json_file(repo_path=self._path_head))
         hash_latest = merge_response["sha"]
         if not next_ver:
-            self._output.set(
+            self._output_manager.set(
                 data_branch=ccm_branch,
                 ref=hash_latest,
                 ref_before=hash_base,
@@ -288,7 +288,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             raise ProManException()
 
         tag = self._tag_version(ver=next_ver, base=True)
-        self._output.set(
+        self._output_manager.set(
             data_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
@@ -315,7 +315,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             IssueStatus.DEPLOY_RC: "rc",
         }[status]
         next_ver_pre = PEP440SemVer(f"{next_ver_final}.{pre_segment}{self._branch_head.suffix[0]}")
-        pre_release_branch_name = self._data_main.branch_name_pre(version=next_ver_pre)
+        pre_release_branch_name = self._data_main.new_pre(pull_nr=next_ver_pre)
         self._git_base.checkout(branch=pre_release_branch_name, create=True)
         self._git_base.commit(
             message=(
@@ -370,7 +370,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             make_latest=False,
         )
 
-        self._output.set(
+        self._output_manager.set(
             data_branch=ccm_branch,
             ref=hash_latest,
             ref_before=hash_base,
@@ -406,7 +406,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
         matching_pulls = self._gh_api.pull_list(
             state="open",
-            head=f"{self._context.repository_owner}:{self._context.base_ref}",
+            head=f"{self.gh_context.repository_owner}:{self.gh_context.base_ref}",
         )
         if not matching_pulls or len(matching_pulls) != 1:
             logger.error(
@@ -511,7 +511,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     def _get_next_ver_dist(self, prerelease_status: IssueStatus | None = None):
         ver_base, dist_base = self._get_latest_version(base=True)
-        primary_commit = self._data_main.issue_form_from_id_labels(self._pull.label_names).group_data
+        primary_commit = self._data_main.form_from_id_labels(self._pull.label_names).group_data
         if self._primary_type_is_package_publish(commit_type=primary_commit):
             if prerelease_status:
                 next_ver = "?"
@@ -581,7 +581,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             return all([entry['complete'] for entry in tasklist_entries])
 
         commits = self._gh_api.pull_commits(number=self._pull.number)
-        tasklist = self._devdoc.get_tasklist()
+        tasklist = self.protocol_manager.get_tasklist()
         if not tasklist:
             return False
         for commit in commits:
@@ -590,7 +590,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 else [commit.msg.summary, *commit.msg.body.strip().splitlines()]
             )
             apply(commit_details, tasklist)
-        self._devdoc.update_tasklist(tasklist)
+        self.protocol_manager.update_tasklist(tasklist)
         return update_complete(tasklist)
 
     def _write_pre_protocol(self, ver: str):
@@ -631,7 +631,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 err_msg,
                 err_details
             )
-            self._reporter.add(
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary=err_msg,
@@ -650,7 +650,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 err_msg,
                 err_details
             )
-            self._reporter.add(
+            self.reporter.add(
                 name="event",
                 status="skip",
                 summary=err_msg,
@@ -705,7 +705,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             err_msg,
             err_details,
         )
-        self._reporter.add(
+        self.reporter.add(
             name="event",
             status="skip",
             summary=err_msg,
@@ -725,7 +725,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             err_msg,
             err_details,
         )
-        self._reporter.add(
+        self.reporter.add(
             name="event",
             status="skip",
             summary=err_msg,
@@ -744,7 +744,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             err_msg,
             err_details,
         )
-        self._reporter.add(
+        self.reporter.add(
             name="event",
             status="skip",
             summary=err_msg,
@@ -764,7 +764,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             err_msg,
             err_details,
         )
-        self._reporter.add(
+        self.reporter.add(
             name="event",
             status="skip",
             summary=err_msg,

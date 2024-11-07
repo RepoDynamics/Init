@@ -72,9 +72,12 @@ outputs:
   run:
     value: ${{ steps.action.outputs.run }}
     description: Whether to run subsequent jobs.
-  website:
-    value: ${{ steps.action.outputs.website }}
+  web-build:
+    value: ${{ steps.action.outputs.web-build }}
     description: Configurations for website job.
+  web-deploy:
+    value: ${{ steps.action.outputs.web-deploy }}
+    description: Configurations for website deployment job.
   lint:
     value: ${{ steps.action.outputs.lint }}
     description: Configurations for lint job.
@@ -96,9 +99,9 @@ outputs:
   test-pypi:
     value: ${{ steps.action.outputs.test-pypi }}
     description: Configurations for test-pypi job.
-  finalize:
-    value: ${{ steps.action.outputs.finalize }}
-    description: Configurations for finalize job.
+  release:
+    value: ${{ steps.action.outputs.release }}
+    description: Configurations for release job.
 
 runs:
   using: composite
@@ -129,6 +132,7 @@ runs:
         python "${{ github.action_path }}/action/script/log.py" "1.1.2. Head Repo"
     - uses: actions/checkout@v4
       with:
+        token: ${{ inputs.admin-token || github.token }}
         repository: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name) || github.repository }}
         ref: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.ref) || github.ref }}
         fetch-depth: 0
