@@ -11,7 +11,6 @@ from loggerman import logger
 from versionman.pep440_semver import PEP440SemVer
 import controlman
 
-from proman.manager.data import DataManager
 from proman.dtype import (
     ReleaseAction,
     BranchType,

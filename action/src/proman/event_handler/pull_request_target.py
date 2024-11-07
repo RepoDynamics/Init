@@ -6,7 +6,7 @@ from github_contexts import github as _gh_context
 
 from loggerman import logger
 from proman.dtype import (
-    BranchType, Branch
+    BranchType
 )
 
 from proman.main import EventHandler
@@ -33,7 +33,6 @@ class PullRequestTargetEventHandler(EventHandler):
 
         self._payload: PullRequestPayload = self.gh_context.event
         self._pull: PullRequest = self._payload.pull_request
-        self._pull_author =
 
         self._branch_base = self.resolve_branch(self.gh_context.base_ref)
         self._branch_head = self.resolve_branch(self.gh_context.head_ref)
