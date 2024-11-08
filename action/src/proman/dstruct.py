@@ -124,6 +124,9 @@ class Commit:
         self.jinja_env_vars = jinja_env_vars or {}
         return
 
+    def __str__(self):
+        return self.conv_msg
+
     @property
     def conv_msg(self) -> ConventionalCommitMessage:
         return self._writer(
