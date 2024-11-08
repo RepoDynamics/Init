@@ -329,6 +329,10 @@ class EventHandler:
         )
         if not self.manager:
             self.manager = new_branch_manager
+        logger.log(
+            "ControlMan Report",
+            logger.inspect(report)
+        )
         summary = report.body["summary"].content
         if cc_reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
