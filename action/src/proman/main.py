@@ -329,30 +329,6 @@ class EventHandler:
         )
         if not self.manager:
             self.manager = new_branch_manager
-
-
-        for metadata in cc_reporter.metadata:
-            logger.info(
-                "Changed Metadata",
-                str(metadata)
-            )
-            from controlman.datatype import DynamicFileChangeType
-        for file in cc_reporter.files:
-            if file.change not in (DynamicFileChangeType.DISABLED, DynamicFileChangeType.UNCHANGED):
-                logger.info(
-                    "Changed File",
-                    str(file)
-                )
-        for dir_ in cc_reporter.dirs:
-            if dir_.change not in (DynamicFileChangeType.DISABLED, DynamicFileChangeType.UNCHANGED):
-                logger.info(
-                    "Changed Directory",
-                    str(dir_)
-                )
-
-
-
-
         summary = report.body["summary"].content
         if cc_reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
             with logger.sectioning("Synchronization"):
