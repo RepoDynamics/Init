@@ -410,6 +410,10 @@ class EventHandler:
             )
             return
         config = branch_manager.data["tool.pre-commit.config.file.content"]
+        logger.info(
+            "Pre-commit Config",
+            str(config)
+        )
         if not config:
             if not internal:
                 oneliner = "Hooks are enabled but no pre-commit config set in <code>$.tool.pre-commit.config.file.content</code>."
