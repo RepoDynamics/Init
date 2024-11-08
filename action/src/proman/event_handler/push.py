@@ -109,7 +109,7 @@ class PushEventHandler(EventHandler):
                 shutil.move(item, self._path_head)
             shutil.rmtree(template_dir)
             self._git_head.commit(
-                message="init: Create repository from RepoDynamics template.",
+                message=f"init: Create repository from RepoDynamics template v{self.current_proman_version}.",
                 amend=True,
                 stage="all"
             )
