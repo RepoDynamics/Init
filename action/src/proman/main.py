@@ -331,7 +331,7 @@ class EventHandler:
             self.manager = new_branch_manager
         logger.info(
             "ControlMan Report",
-            logger.inspect(report)
+            logger.inspect(cc_reporter)
         )
         summary = report.body["summary"].content
         if cc_reporter.has_changes and action not in [InitCheckAction.FAIL, InitCheckAction.REPORT]:
