@@ -177,28 +177,29 @@ class OutputManager:
     def _set_lint(self, component: Literal["pkg", "test"]):
         if component not in self._branch_manager.data:
             return
-        self._out_lint.append(
-            {
-                "repository": self._repository,
-                "ref-name": self._ref_name,
-                "ref": self._ref,
-                "ref-before": self._ref_before,
-                "os-name": [self._branch_manager.data[f"{component}.os.{key}.name"] for key in ("linux", "macos", "windows")],
-                "os": [
-                    {
-                        "name": self._branch_manager.data[f"{component}.os.{key}.name"],
-                        "runner": self._branch_manager.data[f"{component}.os.{key}.runner"],
-                    } for key in ("linux", "macos", "windows")
-                ],
-                "pkg": self._branch_manager.data[component],
-                "python-ver-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
-                "tool": self._branch_manager.data["tool"],
-                "job-name": self._branch_manager.fill_jinja_template(
-                    self._main_manager.data[f"workflow.job.{component}_lint.name"],
-                    env_vars=self._jinja_env_vars,
-                ),
-            }
-        )
+        out = {
+            "repository": self._repository,
+            "ref-name": self._ref_name,
+            "ref": self._ref,
+            "ref-before": self._ref_before,
+            "os-name": [self._branch_manager.data[f"{component}.os.{key}.name"] for key in ("linux", "macos", "windows")],
+            "os": [
+                {
+                    "name": self._branch_manager.data[f"{component}.os.{key}.name"],
+                    "runner": self._branch_manager.data[f"{component}.os.{key}.runner"],
+                } for key in ("linux", "macos", "windows")
+            ],
+            "pkg": self._branch_manager.data[component],
+            "pkg2": self._branch_manager.data["pkg" if component == "test" else "test"],
+            "python-ver-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
+            "tool": self._branch_manager.data["tool"],
+            "job-name": self._branch_manager.fill_jinja_template(
+                self._main_manager.data[f"workflow.job.{component}_lint.name"],
+                env_vars=self._jinja_env_vars,
+            ),
+            "type": component,
+        }
+        self._out_lint.append(out)
         return
 
     def set_package_build_and_publish(
@@ -321,12 +322,12 @@ class OutputManager:
             "test-path": self._branch_manager.data["test.path.root"],
             "test-name": self._branch_manager.data["test.import_name"],
             "test-version": self._version,
-            "test-req-path": self._branch_manager.data["test.dependency.env.pip.path"],
+            "test-req-path": self._branch_manager.data["test.dependency.env.pip.path"] if source == "testpypi" else "",
             "pkg-src": source.lower(),
             "pkg-path": self._branch_manager.data["pkg.path.root"],
             "pkg-name": self._branch_manager.data["pkg.name"],
             "pkg-version": self._version,
-            "pkg-req-path": self._branch_manager.data["pkg.dependency.env.pip.path"],
+            "pkg-req-path": self._branch_manager.data["pkg.dependency.env.pip.path"] if source == "testpypi" else "",
             "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
             "args": ps.write.to_json_string(args) if args else "",
             "overrides": ps.write.to_json_string(overrides) if overrides else "",
