@@ -143,7 +143,7 @@ def _get_dynamic_file_paths(data: NestedDict) -> list[str]:
 def _generate_report(full_info: list):
     changed_filetypes = {}
     rows = [["Type", "Subtype", "Change", "Dynamic", "Path"]]
-    for typ, subtype, change_type, is_dynamic, path in sorted(full_info, key=lambda x: (x[0].value, x[1])):
+    for typ, subtype, change_type, is_dynamic, path in sorted(full_info, key=lambda x: (x[0].value, x[1] or "")):
         changed_filetypes.setdefault(typ, []).append(change_type)
         if is_dynamic:
             changed_filetypes.setdefault(RepoFileType.DYNAMIC, []).append(change_type)
