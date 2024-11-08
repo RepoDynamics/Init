@@ -125,7 +125,7 @@ class Commit:
         return
 
     def __str__(self):
-        return self.conv_msg
+        return str(self.conv_msg)
 
     @property
     def conv_msg(self) -> ConventionalCommitMessage:
