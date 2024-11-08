@@ -54,8 +54,8 @@ class EventHandler:
     def __init__(
         self,
         github_context: GitHubContext,
-        reporter: ReportManager,
-        output_manager: OutputManager,
+        reporter: Reporter,
+        output_writer: OutputManager,
         admin_token: Token,
         zenodo_token: Token,
         path_repo_base: str,
@@ -142,7 +142,7 @@ class EventHandler:
 
         self._gh_context = github_context
         self._reporter = reporter
-        self._output_manager = output_manager
+        self._output_manager = output_writer
         self._zenodo_token = zenodo_token
 
         in_repo_creation_event = (
