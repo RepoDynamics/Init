@@ -257,6 +257,10 @@ class EventHandler:
             "package_lint": changes["pkg"],
             "package_publish_testpypi": changes["pkg"] and testpypi_publishable,
         }
+        logger.info(
+            "Job Runs",
+            str(job_runs),
+        )
         return new_manager, job_runs, latest_hash
 
     @logger.sectioner("File Change Detection")
@@ -272,6 +276,10 @@ class EventHandler:
             data=branch_manager.data,
             changes=changes,
             reporter=self.reporter,
+        )
+        logger.info(
+            "Changed Project Components",
+            str(changed_components),
         )
         return changed_components
 
