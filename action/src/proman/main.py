@@ -329,7 +329,7 @@ class EventHandler:
         )
         if not self.manager:
             self.manager = new_branch_manager
-        logger.log(
+        logger.info(
             "ControlMan Report",
             logger.inspect(report)
         )
