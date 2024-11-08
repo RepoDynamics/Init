@@ -334,20 +334,20 @@ class EventHandler:
         for metadata in cc_reporter.metadata:
             logger.info(
                 "Changed Metadata",
-                metadata
+                str(metadata)
             )
             from controlman.datatype import DynamicFileChangeType
         for file in cc_reporter.files:
             if file.change not in (DynamicFileChangeType.DISABLED, DynamicFileChangeType.UNCHANGED):
                 logger.info(
                     "Changed File",
-                    file
+                    str(file)
                 )
         for dir_ in cc_reporter.dirs:
             if dir_.change not in (DynamicFileChangeType.DISABLED, DynamicFileChangeType.UNCHANGED):
                 logger.info(
                     "Changed Directory",
-                    dir_
+                    str(dir_)
                 )
 
 
