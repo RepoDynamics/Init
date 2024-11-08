@@ -7,9 +7,9 @@ import conventional_commits
 from loggerman import logger as _logger
 
 from proman.dtype import ReleaseAction
+from proman.dstruct import Commit
 
 if _TYPE_CHECKING:
-    from proman.dstruct import Commit
     from proman.manager import Manager
 
 
