@@ -437,7 +437,10 @@ class EventHandler:
         if not config:
             if not internal:
                 oneliner = "Hooks are enabled but no pre-commit config set in <code>$.tool.pre-commit.config.file.content</code>."
-                logger.error(oneliner)
+                logger.error(
+                    "Pre-commit Config",
+                    oneliner
+                )
                 self.reporter.add(
                     name="hooks",
                     status="fail",
@@ -456,16 +459,13 @@ class EventHandler:
         if action == InitCheckAction.PULL:
             pr_branch = self.manager.branch.new_auto(auto_type="refactor")
             branch_manager.branch.checkout_to_auto(branch=pr_branch)
-        try:
-            hooks_output = runner.refactor.run(
-                git=branch_manager.git,
-                ref_range=ref_range,
-                action=input_action.value,
-                commit_message=str(commit_msg),
-                config=config,
-            )
-        except Exception as e:
-            raise ProManException() from e
+        hooks_output = runner.refactor.run(
+            git=branch_manager.git,
+            ref_range=ref_range,
+            action=input_action.value,
+            commit_message=str(commit_msg),
+            config=config,
+        )
         passed = hooks_output["passed"]
         modified = hooks_output["modified"]
         commit_hash = None
