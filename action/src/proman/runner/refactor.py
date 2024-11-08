@@ -26,14 +26,14 @@ def run(
     commit_message: str = "",
 ):
     assert action in ["report", "amend", "commit"], f"Invalid action '{action}'."
-    if action == "commit":
-        assert bool(commit_message), "Argument 'commit_message' must be specified if action is 'commit'."
-    if ref_range:
-        assert (
-            isinstance(ref_range, (tuple, list))
-            and len(ref_range) == 2
-            and all(isinstance(ref, str) for ref in ref_range)
-        ), f"Argument 'ref_range' must be a list or tuple of two strings, but got {ref_range}."
+    if action == "commit" and not commit_message:
+        raise ValueError("Argument 'commit_message' must be specified if action is 'commit'.")
+    if ref_range and not (
+        isinstance(ref_range, (tuple, list))
+        and len(ref_range) == 2
+        and all(isinstance(ref, str) for ref in ref_range)
+    ):
+        raise ValueError(f"Argument 'ref_range' must be a list or tuple of two strings, but got {ref_range}.")
     version_result = _pyshellman.run(
         command=["pre-commit", "--version"],
         raise_execution=False,
