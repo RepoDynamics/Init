@@ -88,18 +88,18 @@ class IssuesEventHandler(EventHandler):
 
         def add_labels() -> list[Label]:
             label_objs = [
-                self.manager.data.label_status(IssueStatus.TRIAGE)
+                self.manager.label.status_label(IssueStatus.TRIAGE)
             ] + issue_form.id_labels + issue_form.labels
             if "version" in issue_entries:
                 versions = [version.strip() for version in issue_entries["version"].split(",")]
                 for version in versions:
-                    label_objs.append(self.manager.data.label_version(version))
-                    branch = self.manager.data.from_version(version)
-                    label_objs.append(self.manager.data.label_branch(branch))
+                    label_objs.append(self.manager.label.label_version(version))
+                    branch = self.manager.branch.from_version(version)
+                    label_objs.append(self.manager.label.label_branch(branch))
             elif "branch" in issue_entries:
                 branches = [branch.strip() for branch in issue_entries["branch"].split(",")]
                 for branch in branches:
-                    label_objs.append(self.manager.data.label_branch(branch))
+                    label_objs.append(self.manager.label.label_branch(branch))
             else:
                 logger.info(
                     "Issue Label Update",

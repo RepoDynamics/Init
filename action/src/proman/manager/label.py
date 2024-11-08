@@ -23,17 +23,17 @@ class LabelManager:
         return
 
     def from_id(self, group_id: str, label_id: str) -> Label:
-        return self.label_id_to_obj_map[(group_id, label_id)]
+        return self.id_to_obj_map[(group_id, label_id)]
 
     @property
-    def label_name_to_obj_map(self) -> dict[str, Label]:
+    def name_to_obj_map(self) -> dict[str, Label]:
         """All repository labels, as a dictionary mapping full label names to Label objects."""
         if not self._label_name_to_obj:
             self._label_name_to_obj, self._label_id_to_obj = self._initialize_label_data()
         return self._label_name_to_obj
 
     @property
-    def label_id_to_obj_map(self) -> dict[tuple[str, str], Label]:
+    def id_to_obj_map(self) -> dict[tuple[str, str], Label]:
         """All repository labels, as a dictionary mapping full label IDs to Label objects."""
         if not self._label_id_to_obj:
             self._label_name_to_obj, self._label_id_to_obj = self._initialize_label_data()
@@ -56,7 +56,7 @@ class LabelManager:
                     )
         return
 
-    def label_status(self, status: str | IssueStatus) -> Label:
+    def status_label(self, status: str | IssueStatus) -> Label:
         if not isinstance(status, str):
             status = status.value
         return self.from_id("status", status)
@@ -95,7 +95,7 @@ class LabelManager:
         name : str
             Name of the label.
         """
-        label = self.label_name_to_obj_map.get(name)
+        label = self.name_to_obj_map.get(name)
         if label:
             return label
         logger.warning(
