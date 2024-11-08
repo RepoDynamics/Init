@@ -69,7 +69,7 @@ class EventHandler:
             link_gen = pylinks.site.github.user(repo_user).repo(repo_name)
             api_admin, api_actions = (
                 pylinks.api.github(token=token).user(repo_user).repo(repo_name)
-                for token in (admin_token, self.gh_context.token)
+                for token in (admin_token.get(), self.gh_context.token)
             )
             log_title = "Admin Token Verification"
             if not admin_token:
