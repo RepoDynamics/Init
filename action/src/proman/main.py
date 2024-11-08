@@ -157,6 +157,7 @@ class EventHandler:
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
         self._jinja_env_vars = {}
+        self.manager = None
         if not in_repo_creation_event:
             self.manager = self.manager_from_metadata_file(repo="base")
         return

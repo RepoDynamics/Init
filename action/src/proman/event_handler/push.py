@@ -23,7 +23,7 @@ class PushEventHandler(EventHandler):
         super().__init__(**kwargs)
         self.payload: _gh_context.payload.PushPayload = self.gh_context.event
         self.head_commit = self.gh_context.event.head_commit
-        if self.head_commit and self.head_commit.message:
+        if self.manager and self.head_commit and self.head_commit.message:
             self.head_commit = self.manager.commit.create_from_msg(self.head_commit.message)
         return
 
