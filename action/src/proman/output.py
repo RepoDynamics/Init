@@ -58,6 +58,10 @@ class OutputManager:
         package_publish_pypi: bool = False,
         package_release: bool = False,
     ):
+        logger.info(
+            "Output Set",
+            logger.pretty(locals())
+        )
         self._main_manager = main_manager
         self._branch_manager = branch_manager
         self._version = version
