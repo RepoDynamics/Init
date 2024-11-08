@@ -165,7 +165,7 @@ class Reporter:
             (self._context, "GitHub Context", "🎬"),
             (self._context.event, "Event Payload", "📥"),
         ):
-            code = mdit.element.code_block(ps.write.to_yaml_string(data), language="yaml")
+            code = mdit.element.code_block(ps.write.to_yaml_string(data.as_dict), language="yaml")
             dropdown = mdit.element.dropdown(
                 title=summary,
                 body=code,
