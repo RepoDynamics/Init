@@ -25,7 +25,13 @@ def run(
     action: Literal["report", "amend", "commit"] = "amend",
     commit_message: str = "",
 ):
-    assert action in ["report", "amend", "commit"], f"Invalid action '{action}'."
+    logger.info(
+        "Pre-Commit",
+        f"Running Pre-Commit hooks in '{action}' mode.",
+        f"Ref Range: {ref_range}",
+    )
+    if action not in ["report", "amend", "commit"]:
+        raise ValueError(f"Invalid action '{action}'.")
     if action == "commit" and not commit_message:
         raise ValueError("Argument 'commit_message' must be specified if action is 'commit'.")
     if ref_range and not (
