@@ -174,11 +174,12 @@ class PushEventHandler(EventHandler):
             base=False,
             env_vars={"ccc": new_manager},
         )
-        self.repo_manager.update_all(data_new=new_manager, data_old=data_main_before, rulesets="create")
+        new_manager.repo.update_all(manager_before=self.manager)
         self._output_manager.set(
-            data_branch=new_manager,
+            main_manager=new_manager,
+            branch_manager=new_manager,
             ref=latest_hash,
-            version=version,
+            version=str(version),
             website_deploy=True,
             package_publish_testpypi=True,
             package_publish_pypi=True,
