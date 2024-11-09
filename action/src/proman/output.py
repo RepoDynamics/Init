@@ -364,7 +364,7 @@ class OutputManager:
             "include-hidden": artifact.get("include_hidden", "false"),
         }
         if include_merge:
-            out["merge"] = self._create_merge(artifact, jinja_env_vars),
+            out["merge"] = self._create_merge(artifact, jinja_env_vars)
         return out
 
     def _create_workflow_artifact_merge_config_single(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
@@ -377,7 +377,7 @@ class OutputManager:
     def _create_merge(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
         return {
             "name": self._fill_jinja(artifact["merge"]["name"], jinja_env_vars),
-            "pattern": artifact["merge"]["pattern"],
+            "pattern": self._fill_jinja(artifact["merge"]["pattern"], jinja_env_vars),
         } if "merge" in artifact else False
 
     def _fill_jinja(self, template: str, env_vars: dict | None = None) -> str:
