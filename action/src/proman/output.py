@@ -26,15 +26,12 @@ class OutputManager:
         self._version: str = ""
         self._jinja_env_vars = {}
 
-        self._out_web_build: list[dict] = []
-        self._out_web_deploy: dict = {}
+        self._out_web: list[dict] = []
         self._out_lint: list[dict] = []
         self._out_test: list[dict] = []
         self._out_build: list[dict] = []
-        self._out_publish_testpypi: list[dict] = []
-        self._out_test_testpypi: list[dict] = []
-        self._out_publish_pypi: list[dict] = []
-        self._out_test_pypi: list[dict] = []
+        self._out_publish_testpypi: dict = {}
+        self._out_publish_pypi: dict = {}
         self._out_release: dict = {}
         return
 
@@ -102,37 +99,20 @@ class OutputManager:
     def generate(self, failed: bool) -> dict:
         if failed:
             # Just to be safe, disable publish/deploy/release jobs if fail is True
-            self._out_web_deploy = {}
-            self._out_publish_testpypi = {}
-            self._out_test_testpypi = []
-            self._out_publish_pypi = {}
-            self._out_test_pypi = []
-            if self._out_release.get("release"):
-                self._out_release["release"] = False
+            for web_config in self._out_web:
+                web_config["job"]["deploy"] = False
+            self._out_publish_testpypi = False
+            self._out_publish_pypi = False
+            self._out_release = False
         output = {
             "fail": failed,
-            "run": {
-                "web-build": bool(self._out_web_build),
-                "web-deploy": bool(self._out_web_deploy),
-                "lint": bool(self._out_lint),
-                "test": bool(self._out_test),
-                "build": bool(self._out_build),
-                "publish-testpypi": bool(self._out_publish_testpypi),
-                "test-testpypi": bool(self._out_test_testpypi),
-                "publish-pypi": bool(self._out_publish_pypi),
-                "test-pypi": bool(self._out_test_pypi),
-                "release": bool(self._out_release),
-            },
-            "web-build": self._out_web_build,
-            "web-deploy": self._out_web_deploy,
-            "lint": self._out_lint,
-            "test": self._out_test,
-            "build": self._out_build,
-            "publish-testpypi": self._out_publish_testpypi,
-            "test-testpypi": self._out_test_testpypi,
-            "publish-pypi": self._out_publish_pypi,
-            "test-pypi": self._out_test_pypi,
-            "release": self._out_release,
+            "web": self._out_web or False,
+            "lint": self._out_lint or False,
+            "test": self._out_test or False,
+            "build": self._out_build or False,
+            "publish-testpypi": self._out_publish_testpypi or False,
+            "publish-pypi": self._out_publish_pypi or False,
+            "release": self._out_release or False,
         }
         output_yaml = ps.write.to_yaml_string(output)
         logger.info(
@@ -144,65 +124,51 @@ class OutputManager:
     def _set_web(self, deploy: bool):
         if "web" not in self._branch_manager.data:
             return
-        build = {
-            "repository": self._repository,
-            "ref": self._ref,
-            "path-env": self._branch_manager.data["web.env.file.conda.path"],
-            "path-web": self._branch_manager.data["web.path.root"],
-            "path-pkg": self._branch_manager.data.get(
-                "pkg.path.root", ""
-            ) if self._branch_manager.data["web.sphinx.needs_package"] else "",
-            "job-name": self._branch_manager.fill_jinja_template(
-                self._main_manager.data["workflow.job.web_build.name"],
-                env_vars=self._jinja_env_vars,
-            ),
-            "build-artifact-name": self._branch_manager.fill_jinja_template(
-                self._main_manager.data["workflow.job.web_build.artifact.build.name"],
-                env_vars=self._jinja_env_vars,
-            ),
-            "pages-artifact-name": self._branch_manager.fill_jinja_template(
-                self._main_manager.data["workflow.job.web_build.artifact.pages.name"],
-                env_vars=self._jinja_env_vars,
-            ),
-        }
-        self._out_web_build.append(build)
-        if deploy:
-            self._out_web_deploy = {
-                "job-name": self._branch_manager.fill_jinja_template(
-                    self._main_manager.data["workflow.job.web_deploy.name"],
-                    env_vars=self._jinja_env_vars,
-                ),
-                "env-name": self._main_manager.data["workflow.job.web_deploy.env.name"],
-                "env-url": self._main_manager.data["workflow.job.web_deploy.env.url"],
-                "pages-artifact-name": build["pages-artifact-name"]
+        job_config = self._main_manager.data["workflow.job.web"]
+        out = {
+            "name": self._fill_jinja(job_config["name"]),
+            "job": {
+                "repository": self._repository,
+                "ref": self._ref,
+                "path-env": self._branch_manager.data["web.env.file.conda.path"],
+                "path-web": self._branch_manager.data["web.path.root"],
+                "path-pkg": self._branch_manager.data.get(
+                    "pkg.path.root", ""
+                ) if self._branch_manager.data["web.sphinx.needs_package"] else "",
+                "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
+                "deploy": deploy,
+                "env": job_config["env"],
             }
+        }
+        self._out_web.append(out)
         return
 
     def _set_lint(self, component: Literal["pkg", "test"]):
         if component not in self._branch_manager.data:
             return
         out = {
-            "repository": self._repository,
-            "ref-name": self._ref_name,
-            "ref": self._ref,
-            "ref-before": self._ref_before,
-            "os-name": [self._branch_manager.data[f"{component}.os.{key}.name"] for key in ("linux", "macos", "windows")],
-            "os": [
-                {
-                    "name": self._branch_manager.data[f"{component}.os.{key}.name"],
-                    "runner": self._branch_manager.data[f"{component}.os.{key}.runner"],
-                } for key in ("linux", "macos", "windows")
-            ],
-            "pkg": self._branch_manager.data[component],
-            "pkg2": self._branch_manager.data["pkg" if component == "test" else "test"],
-            "python-ver-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
-            "tool": self._branch_manager.data["tool"],
-            "job-name": self._branch_manager.fill_jinja_template(
-                self._main_manager.data[f"workflow.job.{component}_lint.name"],
-                env_vars=self._jinja_env_vars,
-            ),
-            "type": component,
+            "job": {
+                "repository": self._repository,
+                "ref-name": self._ref_name,
+                "ref": self._ref,
+                "ref-before": self._ref_before,
+                "os": [
+                    {
+                        "name": self._branch_manager.data[f"{component}.os.{key}.name"],
+                        "runner": self._branch_manager.data[f"{component}.os.{key}.runner"],
+                    } for key in ("linux", "macos", "windows")
+                ],
+                "pkg": self._branch_manager.data[component],
+                "pkg2": self._branch_manager.data["pkg" if component == "test" else "test"],
+                "python-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
+                "tool": self._branch_manager.data["tool"],
+                "type": component,
+            } | self._jinja_env_vars
         }
+        out["name"] = self._fill_jinja(
+            self._main_manager.data[f"workflow.job.lint.name"],
+            env_vars=out,
+        )
         self._out_lint.append(out)
         return
 
@@ -222,68 +188,78 @@ class OutputManager:
                 for cibw_platform in ci_build:
                     for py_ver in self._branch_manager.data[f"{typ}.python.version.minors"]:
                         cibw_py_ver = f"cp{py_ver.replace('.', '')}"
-                        platforms.append(
-                            {
-                                "runner": os["runner"],
-                                "platform": cibw_platform,
-                                "python_version": cibw_py_ver,
-                                "wheel-artifact-name": self._branch_manager.fill_jinja_template(
-                                    self._main_manager.data["workflow.job.pkg_build.artifact.wheel.name"],
-                                    env_vars=self._jinja_env_vars | {
-                                        "platform": cibw_platform,
-                                        "python": cibw_py_ver,
-                                    },
-                                ),
-                            }
-                        )
+                        out = {
+                            "runner": os["runner"],
+                            "platform": cibw_platform,
+                            "python": cibw_py_ver,
+                        }
+                        out["artifact"] = {
+                            "wheel": self._create_workflow_artifact_config_single(
+                                self._main_manager.data["workflow.job.build.artifact.wheel"],
+                                jinja_env_vars=out | os,
+                            )
+                        }
+                        platforms.append(out)
             return platforms
 
+        build_jobs = {}
+        job_config = self._main_manager.data[f"workflow.job.build"]
         for typ in ("pkg", "test"):
-            build = {
+            cibw = cibw_platforms(typ)
+            build_job = {
                 "repository": self._repository,
                 "ref": self._ref_name,
-                "pure-python": self._branch_manager.data[f"{typ}.python.pure"],
-                "path-pkg": self._branch_manager.data[f"{typ}.path.root"],
-                "path-readme": self._branch_manager.data[f"{typ}.readme.path"] or "",
-                "cibw": cibw_platforms(typ),
-                "job-name": self._branch_manager.fill_jinja_template(
-                    self._main_manager.data[f"workflow.job.{typ}_build.name"],
-                    env_vars=self._jinja_env_vars,
-                ),
-                "sdist-artifact-name": self._branch_manager.fill_jinja_template(
-                    self._main_manager.data[f"workflow.job.{typ}_build.artifact.sdist.name"],
-                    env_vars=self._jinja_env_vars,
-                ),
+                "cibw": cibw or False,
+                "pkg": self._branch_manager.data[typ],
             }
-            self._out_build.append(build)
-            for target, publish, publish_out, in (
-                ("testpypi", publish_testpypi, self._out_publish_testpypi),
-                ("pypi", publish_pypi, self._out_publish_pypi),
-            ):
-                if not publish:
-                    continue
-                publish_out.append(
+            build_job["artifact"] = self._create_workflow_artifact_config(
+                job_config["artifact"],
+                jinja_env_vars=build_job | {"platform": "any", "python": "3"},
+                include_merge=True,
+            )
+            out = {
+                "name": self._fill_jinja(
+                    job_config["name"],
+                    env_vars=build_job,
+                ),
+                "job": build_job,
+            }
+            self._out_build.append(out)
+            build_jobs[typ] = build_job
+
+        for target, do_publish, in (("testpypi", publish_testpypi), ("pypi", publish_pypi)):
+            if not do_publish:
+                continue
+            job_config = self._main_manager.data[f"workflow.job.publish_{target}"]
+            publish_out = {
+                "name": self._fill_jinja(job_config["name"]),
+                "job": {
+                    "publish": [],
+                    "test": self._create_output_package_test(source=target),
+                }
+            }
+            for typ, build in build_jobs.items():
+                publish_out["job"]["publish"].append(
                     {
-                        "job-name": self._branch_manager.fill_jinja_template(
-                            self._main_manager.data[f"workflow.job.{typ}_publish_{target}.name"],
-                            env_vars=self._jinja_env_vars,
+                        "name": self._fill_jinja(
+                            job_config["task_name"],
+                            env_vars=build,
                         ),
-                        "env-name": self._main_manager.data[f"workflow.job.{typ}_publish_{target}.env.name"],
-                        "env-url": self._branch_manager.fill_jinja_template(
-                            self._main_manager.data[f"workflow.job.{typ}_publish_{target}.env.url"],
-                            env_vars=self._jinja_env_vars,
-                        ),
+                        "env": {
+                            "name": self._fill_jinja(job_config["env"]["name"], env_vars=build),
+                            "url": self._fill_jinja(
+                                job_config["env"]["url"],
+                                env_vars=build,
+                            ),
+                        },
+                        "artifact": build["artifact"],
                         "index-url": self._branch_manager.fill_jinja_template(
                             self._main_manager.data[f"workflow.job.{typ}_publish_{target}.index.url"],
                             env_vars=self._jinja_env_vars,
                         ),
-                        "build-artifact-names": [build["sdist-artifact-name"]] + [
-                            build["wheel-artifact-name"] for build in build["cibw"]
-                        ],
                     }
                 )
-                if typ == "pkg":
-                    setattr(self, f"_out_test_{target}", self._create_output_package_test(source=target))
+            setattr(self, f"_out_publish_{target}", publish_out)
         return
 
     def set_release(
@@ -315,51 +291,95 @@ class OutputManager:
         pyargs: list[str] | None = None,
         args: list[str] | None = None,
         overrides: dict[str, str] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         env_vars = {
             "source": {"github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI"}[source]
         }
-        common = {
-            "repository": self._repository,
-            "ref": self._ref_name,
-            "test-src": source.lower(),
-            "test-path": self._branch_manager.data["test.path.root"],
-            "test-name": self._branch_manager.data["test.import_name"],
-            "test-version": self._version,
-            "test-req-path": self._branch_manager.data["test.dependency.env.pip.path"] if source == "testpypi" else "",
-            "pkg-src": source.lower(),
-            "pkg-path": self._branch_manager.data["pkg.path.root"],
-            "pkg-name": self._branch_manager.data["pkg.name"],
-            "pkg-version": self._version,
-            "pkg-req-path": self._branch_manager.data["pkg.dependency.env.pip.path"] if source == "testpypi" else "",
-            "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
-            "args": ps.write.to_json_string(args) if args else "",
-            "overrides": ps.write.to_json_string(overrides) if overrides else "",
-            "codecov-yml-path": self._branch_manager.data["tool.codecov.config.file.path"],
-            "job-name": self._branch_manager.fill_jinja_template(
-                self._main_manager.data[f"workflow.job.pkg_test.name"],
-                env_vars=self._jinja_env_vars | env_vars,
-            ),
+        job_config = self._main_manager.data["workflow.job.test"]
+        out = {
+            "name": self._fill_jinja(job_config["name"], env_vars),
+            "job": {
+                "repository": self._repository,
+                "ref": self._ref_name,
+                "test-src": source.lower(),
+                "test-path": self._branch_manager.data["test.path.root"],
+                "test-name": self._branch_manager.data["test.import_name"],
+                "test-version": self._version,
+                "test-req-path": self._branch_manager.data["test.dependency.env.pip.path"] if source == "testpypi" else "",
+                "pkg-src": source.lower(),
+                "pkg-path": self._branch_manager.data["pkg.path.root"],
+                "pkg-name": self._branch_manager.data["pkg.name"],
+                "pkg-version": self._version,
+                "pkg-req-path": self._branch_manager.data["pkg.dependency.env.pip.path"] if source == "testpypi" else "",
+                "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
+                "args": ps.write.to_json_string(args) if args else "",
+                "overrides": ps.write.to_json_string(overrides) if overrides else "",
+                "codecov-yml-path": self._branch_manager.data["tool.codecov.config.file.path"],
+                "artifact": self._create_workflow_artifact_merge_config(job_config["artifact"], env_vars),
+                "tasks": []
+            }
         }
-        out = []
         for os_key in ("linux", "macos", "windows"):
             os = self._branch_manager.data["pkg.os"].get(os_key)
             if not os:
                 continue
             for python_version in self._branch_manager.data["pkg.python.version.minors"]:
-                out.append(
-                    {
-                        **common,
-                        "runner": os["runner"],
-                        "os-name": os["name"],
-                        "python-version": python_version,
-                        "report-artifact-name": self._branch_manager.fill_jinja_template(
-                            self._main_manager.data["workflow.job.pkg_test.artifact.report.name"],
-                            env_vars=self._jinja_env_vars | env_vars | {
-                                "os": os["name"],
-                                "python": python_version,
-                            },
-                        ),
-                    }
-                )
+                task = {
+                    "runner": os["runner"],
+                    "python": python_version,
+                }
+                task_env_vars = env_vars | task | {"os": os["name"]}
+                task |= {
+                    "name": self._fill_jinja(job_config["task_name"], task_env_vars),
+                    "artifact": self._create_workflow_artifact_config(job_config["artifact"], task_env_vars),
+                }
+                out["tasks"].append(task)
         return out
+
+
+    def _create_workflow_artifact_config(
+        self,
+        artifact: dict,
+        jinja_env_vars: dict | None = None,
+        include_merge: bool = False,
+    ) -> dict:
+        return {
+            k: self._create_workflow_artifact_config_single(v, jinja_env_vars, include_merge) for k, v in artifact.items()
+        }
+
+    def _create_workflow_artifact_merge_config(self, artifact: dict, jinja_env_vars: dict | None = None) -> dict | bool:
+        return {
+            k: self._create_workflow_artifact_merge_config_single(v, jinja_env_vars) for k, v in artifact.items()
+        }
+
+    def _create_workflow_artifact_config_single(
+        self,
+        artifact: dict,
+        jinja_env_vars: dict | None = None,
+        include_merge: bool = False
+    ) -> dict:
+        out = {
+            "name": self._fill_jinja(artifact["name"], jinja_env_vars),
+            "retention-days": artifact.get("retention_days", ""),
+            "include-hidden": artifact.get("include_hidden", "false"),
+        }
+        if include_merge:
+            out["merge"] = self._create_merge(artifact, jinja_env_vars),
+        return out
+
+    def _create_workflow_artifact_merge_config_single(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
+        return {
+            "merge": self._create_merge(artifact, jinja_env_vars),
+            "include-hidden": artifact.get("include_hidden", "false"),
+            "retention-days": artifact.get("retention_days", ""),
+        }
+
+    def _create_merge(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
+        return {
+            "name": self._fill_jinja(artifact["merge"]["name"], jinja_env_vars),
+            "pattern": artifact["merge"]["pattern"],
+        } if "merge" in artifact else False
+
+    def _fill_jinja(self, template: str, env_vars: dict | None = None) -> str:
+        return self._branch_manager.fill_jinja_template(template, env_vars= self._jinja_env_vars | (env_vars or {}))
+
