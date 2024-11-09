@@ -360,8 +360,8 @@ class OutputManager:
     ) -> dict:
         out = {
             "name": self._fill_jinja(artifact["name"], jinja_env_vars),
-            "retention-days": artifact.get("retention_days", ""),
-            "include-hidden": artifact.get("include_hidden", "false"),
+            "retention-days": str(artifact.get("retention_days", "")),
+            "include-hidden": str(artifact.get("include_hidden", "false")),
         }
         if include_merge:
             out["merge"] = self._create_merge(artifact, jinja_env_vars)
@@ -370,8 +370,8 @@ class OutputManager:
     def _create_workflow_artifact_merge_config_single(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
         return {
             "merge": self._create_merge(artifact, jinja_env_vars),
-            "include-hidden": artifact.get("include_hidden", "false"),
-            "retention-days": artifact.get("retention_days", ""),
+            "include-hidden": str(artifact.get("include_hidden", "false")),
+            "retention-days": str(artifact.get("retention_days", "")),
         }
 
     def _create_merge(self, artifact: dict, jinja_env_vars: dict) -> dict | bool:
