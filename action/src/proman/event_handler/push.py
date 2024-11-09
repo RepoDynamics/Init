@@ -218,13 +218,10 @@ class PushEventHandler(EventHandler):
 
     def _run_branch_edited_main_normal(self):
         self.reporter.event("Repository configuration synchronization")
-        self.repo_manager.update_all(
-            data_new=self._data_main,
-            data_old=DataManager(
-                controlman.from_json_file_at_commit(
-                    git_manager=self._git_head,
-                    commit_hash=self.gh_context.hash_before,
-                ),
-            ),
+        self.manager.repo.update_all(
+            manager_before=self.manager_from_metadata_file(
+                repo="base",
+                commit_hash=self.gh_context.hash_before,
+            )
         )
         return
