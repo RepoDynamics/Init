@@ -333,7 +333,7 @@ class OutputManager:
                     "name": self._fill_jinja(job_config["task_name"], task_env_vars),
                     "artifact": self._create_workflow_artifact_config(job_config["artifact"], task_env_vars),
                 }
-                out["tasks"].append(task)
+                out["job"]["tasks"].append(task)
         return out
 
 
