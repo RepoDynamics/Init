@@ -24,7 +24,7 @@ class PushEventHandler(EventHandler):
         self.payload: _gh_context.payload.PushPayload = self.gh_context.event
         self.head_commit = self.gh_context.event.head_commit
         if self.manager and self.head_commit:
-            self.head_commit = self.manager.commit.create_from_msg(self.head_commit.message)
+            self.head_commit_msg = self.manager.commit.create_from_msg(self.head_commit.message)
         return
 
     @logger.sectioner("Push Handler Execution")
@@ -93,7 +93,7 @@ class PushEventHandler(EventHandler):
         # Main branch edited
         if not has_tags:
             # The repository is in the initialization phase
-            if self.head_commit.footer.initialize_project:
+            if self.head_commit_msg.footer.initialize_project:
                 # User is signaling the end of initialization phase
                 return self._run_first_release()
             # User is still setting up the repository (still in initialization phase)
@@ -158,18 +158,18 @@ class PushEventHandler(EventHandler):
 
     def _run_first_release(self):
         self.reporter.event("Project initialization")
-        version = self.head_commit.footer.version or "0.0.0"
+        version = self.head_commit_msg.footer.version or "0.0.0"
         new_manager, job_runs, latest_hash = self.run_sync_fix(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
             future_versions={self.gh_context.ref_name: version},
         )
         # By default, squash all commits into a single commit
-        if self.head_commit.footer.squash is not False:
+        if self.head_commit_msg.footer.squash is not False:
             # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
             #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
             new_manager.git.checkout("temp", orphan=True)
-            new_manager.git.commit(message=str(self.head_commit))
+            new_manager.git.commit(message=str(self.head_commit_msg))
             new_manager.git.branch_delete(self.gh_context.ref_name, force=True)
             new_manager.git.branch_rename(self.gh_context.ref_name, force=True)
             new_manager.git.push(
