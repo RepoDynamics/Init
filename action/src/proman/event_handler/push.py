@@ -195,24 +195,25 @@ class PushEventHandler(EventHandler):
 
     def _run_branch_edited_fork(self):
         self.reporter.event("CI on fork")
-        new_manager, job_runs, latest_hash = self.run_sync_fix(action=InitCheckAction.COMMIT)
+        branch_manager = self.manager_from_metadata_file(repo="head")
+        new_manager, job_runs, latest_hash = self.run_sync_fix(
+            branch_manager=branch_manager,
+            action=InitCheckAction.COMMIT,
+        )
         website_deploy = False
         if self._has_admin_token:
-            self.repo_manager.activate_gh_pages()
-            if job_runs["website_build"]:
+            new_manager.repo.activate_gh_pages()
+            if job_runs["web_build"]:
                 website_deploy = True
-            if self.gh_context.ref_is_main:
-                self.repo_manager.update_all(
-                    data_new=new_manager,
-                    data_old=self._data_main,
-                    rulesets="ignore"
-                )
+            new_manager.repo.update_all(
+                manager_before=branch_manager,
+                update_rulesets=False,
+            )
         self._output_manager.set(
-            data_branch=new_manager,
-            ref=latest_hash,
-            ref_before=self.gh_context.hash_before,
+            main_manager=new_manager,
+            branch_manager=new_manager,
             website_deploy=website_deploy,
-            **job_runs,
+
         )
         return
 
