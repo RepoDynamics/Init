@@ -167,7 +167,7 @@ class OutputManager:
         }
         out["name"] = self._fill_jinja(
             self._main_manager.data[f"workflow.job.lint.name"],
-            env_vars=out,
+            env_vars=out["job"],
         )
         self._out_lint.append(out)
         return
