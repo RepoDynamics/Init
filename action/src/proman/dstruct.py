@@ -132,6 +132,9 @@ class Branch(_NamedTuple):
         # BranchType.AUTO
         return f"{self.prefix}{self.auto_type}{self.separator}{self.target.name}"
 
+    def __str__(self):
+        return self.name
+
 
 class Commit:
 
