@@ -26,6 +26,10 @@ class PushEventHandler(EventHandler):
         self.head_commit = self.gh_context.event.head_commit
         if self.manager and self.head_commit:
             self.head_commit_msg = self.manager.commit.create_from_msg(self.head_commit.message)
+            logger.info(
+                "Head Commit",
+                repr(self.head_commit_msg)
+            )
         return
 
     @logger.sectioner("Push Handler Execution")

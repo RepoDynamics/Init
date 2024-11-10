@@ -167,6 +167,23 @@ class Commit:
     def __str__(self):
         return str(self.conv_msg)
 
+    def __repr__(self):
+        parts = ["Commit("] + [
+            f"  {name} = {val}," for name, val in (
+                ("type", self.type),
+                ("scope", self.scope),
+                ("description", self.description),
+                ("body", self.body),
+                ("footer", self.footer),
+                ("action", self.action),
+                ("sha", self.sha),
+                ("author", self.author),
+                ("committer", self.committer),
+                ("jinja_env_vars", self.jinja_env_vars),
+            )
+        ] + [")"]
+        return "\n".join(parts)
+
     @property
     def conv_msg(self) -> ConventionalCommitMessage:
         return self._writer(
@@ -228,6 +245,12 @@ class CommitFooter:
     def __setitem__(self, key, value):
         self._data[key] = value
         return
+
+    def __str__(self):
+        return str(self._data)
+
+    def __repr__(self):
+        return repr(self._data)
 
     def get(self, key, default=None):
         return self._data.get(key, default)

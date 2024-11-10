@@ -76,7 +76,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return
 
     def _run_action_synchronize(self):
-        issue_form = self._data_main.form_from_id_labels(self._pull.label_names)
+        issue_form = self.manager.issue.form_from_id_labels(self._pull.label_names)
         ccm_branch, job_runs, latest_hash = self.run_sync_fix(
             action=InitCheckAction.COMMIT if self._payload.internal else InitCheckAction.FAIL,
             testpypi_publishable=(
