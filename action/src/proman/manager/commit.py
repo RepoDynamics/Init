@@ -45,6 +45,13 @@ class CommitManager:
     def create_from_msg(self, message: str) -> Commit:
         try:
             msg = self._msg_parser.parse(message)
+            _logger.info(
+                "Commit Parse",
+                "Plain message:",
+                repr(message),
+                "Parsed message:",
+                repr(msg)
+            )
             return Commit(
                 writer=self._msg_writer,
                 type=msg.type,
