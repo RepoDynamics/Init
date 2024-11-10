@@ -204,7 +204,7 @@ class IssuesEventHandler(EventHandler):
                     common_labels.extend(group_labels)
             if self._label_groups.get(LabelType.VERSION):
                 for version_label in self._label_groups[LabelType.VERSION]:
-                    branch_label = self.manager.data.label_version_to_branch(version_label)
+                    branch_label = self.manager.label.label_version_to_branch(version_label)
                     all_labels_for_branch = common_labels + [version_label, branch_label]
                     base_branches_and_labels[branch_label.suffix] = all_labels_for_branch
             else:
@@ -225,21 +225,20 @@ class IssuesEventHandler(EventHandler):
                 name=head_branch_name,
             )
 
-            self._git_head.fetch_remote_branches_by_name(branch_names=head_branch_name)
-            self._git_head.checkout(head_branch_name)
+            self.manager.git.fetch_remote_branches_by_name(branch_names=head_branch_name)
+            self.manager.git.checkout(head_branch_name)
 
             # Create changelog entry
-            changelogger = ChangelogManager(self._path_head / self.manager.data["doc.changelog.path"])
             changelog_entry = {
                 "id": issue_form.id,
                 "issue": self._create_changelog_issue_entry(),
             }
             if self.issue.milestone:
                 changelog_entry["milestone"] = self._create_changelog_milestone_entry()
-            changelogger.update_current(changelog_entry)
+            self.manager.changelog.update_current(changelog_entry)
             # Write initial changelog to create a commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
-            changelogger.write()
+            self.manager.changelog.write()
 
             branch_data = {
                 "head": {
@@ -252,13 +251,13 @@ class IssuesEventHandler(EventHandler):
                     "url": self._gh_link.branch(base_branch_name).homepage,
                 },
             }
-            self._git_head.commit(
+            self.manager.git.commit(
                 message=self.manager.commit.create_auto(
                     id="dev_branch_creation",
                     env_vars=branch_data,
                 )
             )
-            self._git_head.push(target="origin", set_upstream=True)
+            self.manager.git.push(target="origin", set_upstream=True)
             pull_data = self._gh_api.pull_create(
                 head=new_branch["name"],
                 base=base_branch_name,
@@ -293,18 +292,18 @@ class IssuesEventHandler(EventHandler):
             )
 
             # Update changelog entry with pull request information
-            changelogger.update_current({"pull_request": self._create_changelog_pull_entry(pull_data)})
-            changelogger.write()
+            self.manager.changelog.update_current({"pull_request": self._create_changelog_pull_entry(pull_data)})
+            self.manager.changelog.write()
 
             implementation_branches_info.append(pull_data)
 
-            self._git_head.commit(
+            self.manager.git.commit(
                 message=self.manager.commit.create_auto(
                     id="changelog_init",
                     env_vars={"pull_request": pull_data}
                 )
             )
-            self._git_head.push()
+            self.manager.git.push()
             devdoc_pull = copy.copy(self.manager.protocol)
 
             for assignee in issue_form.pull_assignees:
