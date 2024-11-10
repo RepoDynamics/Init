@@ -243,12 +243,12 @@ class IssuesEventHandler(EventHandler):
             branch_data = {
                 "head": {
                     "name": head_branch.name,
-                    "url": self._gh_link.branch(head_branch.name).homepage,
+                    "url": str(self._gh_link.branch(head_branch.name).homepage),
                 },
                 "base": {
                     "name": base_branch_name,
                     "sha": branch_sha[base_branch_name],
-                    "url": self._gh_link.branch(base_branch_name).homepage,
+                    "url": str(self._gh_link.branch(base_branch_name).homepage),
                 },
             }
             self.manager.git.commit(
