@@ -6,6 +6,7 @@ from pylinks.exception.api import WebAPIError
 
 from loggerman import logger
 import mdit
+import pycolorit as _pcit
 
 from proman.dtype import LabelType as _LabelType
 
@@ -238,7 +239,7 @@ class RepoManager:
                     self._manager.gh_api_actions.label_update(
                         name=label_old.name,
                         new_name=f"{label_data_new['prefix']}{label_old_suffix}",
-                        color=label_data_new["color"],
+                        color= _pcit.color.css(label_data_new["color"]).css_hex().removeprefix("#"),
                         description=label_data_new["description"],
                     )
         return
