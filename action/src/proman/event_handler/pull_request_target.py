@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING
 from github_contexts import github as _gh_context
 
 from loggerman import logger
-from proman.dtype import (
-    BranchType
-)
+from proman.dtype import BranchType
+
 
 from proman.main import EventHandler
 
 if TYPE_CHECKING:
     from github_contexts.github.payload import PullRequestPayload
     from github_contexts.github.payload.object import PullRequest
+    from proman.dstruct import Branch
 
 
 class PullRequestTargetEventHandler(EventHandler):
@@ -34,8 +34,8 @@ class PullRequestTargetEventHandler(EventHandler):
         self._payload: PullRequestPayload = self.gh_context.event
         self._pull: PullRequest = self._payload.pull_request
 
-        self._branch_base = self.resolve_branch(self.gh_context.base_ref)
-        self._branch_head = self.resolve_branch(self.gh_context.head_ref)
+        self._branch_base = self.manager.branch.from_name(self.gh_context.base_ref)
+        self._branch_head = self.manager.branch.from_name(self.gh_context.head_ref)
 
         self.protocol_manager.protocol = self._pull.body
         self.protocol_manager.env_vars |= {
