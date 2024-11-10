@@ -68,8 +68,8 @@ class LabelManager:
         return self.from_id("branch", branch)
 
     def label_version_to_branch(self, version_label: Label) -> Label:
-        branch_name = self._manager.branch.name_from_version(version=version_label.suffix)
-        return self.label_branch(branch=branch_name)
+        branch = self._manager.branch.from_version(version=version_label.suffix)
+        return self.label_branch(branch=branch.name)
 
     def resolve_labels(self, names: list[str]) -> dict[LabelType, list[Label]]:
         """
