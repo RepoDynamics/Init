@@ -33,6 +33,7 @@ class ChangelogManager:
             addon=current,
         )
         self._changelog["current"] = data
+        print(repr(data))
         logger.info(
             "Changelog Update",
             mdit.element.code_block(
