@@ -225,8 +225,8 @@ class IssuesEventHandler(EventHandler):
                 name=head_branch.name,
             )
 
-            self.manager.git.fetch_remote_branches_by_name(branch_names=head_branch)
-            self.manager.git.checkout(head_branch)
+            self.manager.git.fetch_remote_branches_by_name(branch_names=head_branch.name)
+            self.manager.git.checkout(head_branch.name)
 
             # Create changelog entry
             changelog_entry = {
@@ -242,8 +242,8 @@ class IssuesEventHandler(EventHandler):
 
             branch_data = {
                 "head": {
-                    "name": head_branch,
-                    "url": self._gh_link.branch(head_branch).homepage,
+                    "name": head_branch.name,
+                    "url": self._gh_link.branch(head_branch.name).homepage,
                 },
                 "base": {
                     "name": base_branch_name,
