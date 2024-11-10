@@ -2,6 +2,7 @@ from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 import datetime
+import copy
 
 import jinja2
 
@@ -23,9 +24,11 @@ from proman.manager.user import UserManager
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
+    from github_contexts.github.payload.object import PullRequest
     from gittidy import Git
     from pyserials.nested_dict import NestedDict
     from pylinks.api.github import Repo as GitHubRepoAPI
+    from pylinks.site.github import Repo as GitHubLink
     from proman.report import Reporter
 
 
@@ -39,6 +42,7 @@ class Manager:
         github_context: GitHubContext,
         github_api_actions: GitHubRepoAPI,
         github_api_admin: GitHubRepoAPI,
+        github_link: GitHubLink,
     ):
         self._data = data
         self._git = git_api
@@ -46,6 +50,7 @@ class Manager:
         self._gh_context = github_context
         self._gh_api_actions = github_api_actions
         self._gh_api_admin = github_api_admin
+        self._gh_link = github_link
 
         self._cache_manager = CacheManager(
             path_local_cache=self._git.repo_path / data["local.cache.path"],
@@ -86,6 +91,9 @@ class Manager:
     def gh_api_admin(self) -> GitHubRepoAPI:
         return self._gh_api_admin
 
+    @property
+    def gh_link(self) -> GitHubLink:
+        return self._gh_link
 
     @property
     def branch(self) -> BranchManager:
@@ -126,6 +134,14 @@ class Manager:
     @property
     def user(self) -> UserManager:
         return self._user_manager
+
+    def add_pull_request_jinja_env_var(self, pull: PullRequest | dict) -> PullRequest | dict:
+        pull = copy.deepcopy(pull)
+        pull["user"] = self.user.from_issue_author(pull)
+        pull["head"] = self.branch.from_pull_request_branch(pull["head"])
+        pull["base"] = self.branch.from_pull_request_branch(pull["base"])
+        self.jinja_env_vars["pull_request"] = pull
+        return pull
 
     def fill_jinja_template(self, template: str, env_vars: dict | None = None) -> str:
         return jinja2.Template(template).render(
