@@ -14,7 +14,7 @@ from proman.main import EventHandler
 from proman.manager.changelog import ChangelogManager
 
 if _TYPE_CHECKING:
-    from proman.dstruct import Label
+    from proman.dstruct import Label, Branch
     from proman.manager.user import User
 
 
@@ -196,8 +196,8 @@ class IssuesEventHandler(EventHandler):
                 logger.info("Pull Request Assignment", "No assignees found for pull request.")
             return
 
-        def get_base_branches() -> dict[str, list[Label]]:
-            base_branches_and_labels = {}
+        def get_base_branches() -> list[tuple[Branch, list[Label]]]:
+            base_branches_and_labels = []
             common_labels = []
             for label_group, group_labels in self._label_groups.items():
                 if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
@@ -205,23 +205,24 @@ class IssuesEventHandler(EventHandler):
             if self._label_groups.get(LabelType.VERSION):
                 for version_label in self._label_groups[LabelType.VERSION]:
                     branch_label = self.manager.label.label_version_to_branch(version_label)
+                    branch = self.manager.branch.from_name(branch_label.suffix)
                     all_labels_for_branch = common_labels + [version_label, branch_label]
-                    base_branches_and_labels[branch_label.suffix] = all_labels_for_branch
+                    base_branches_and_labels.append((branch, all_labels_for_branch))
             else:
                 for branch_label in self._label_groups[LabelType.BRANCH]:
-                    base_branches_and_labels[branch_label.suffix] = common_labels + [branch_label.name]
+                    branch = self.manager.branch.from_name(branch_label.suffix)
+                    base_branches_and_labels.append((branch, common_labels + [branch_label.name]))
             return base_branches_and_labels
 
         issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
-        branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in self._gh_api.branches}
         implementation_branches_info = []
-        for base_branch_name, labels in get_base_branches().items():
+        for base_branch, labels in get_base_branches():
             head_branch = self.manager.branch.new_dev(
-                issue_nr=self.issue.number, target=base_branch_name
+                issue_nr=self.issue.number, target=base_branch.name
             )
             new_branch = self._gh_api_admin.branch_create_linked(
                 issue_id=self.issue.node_id,
-                base_sha=branch_sha[base_branch_name],
+                base_sha=base_branch.sha,
                 name=head_branch.name,
             )
 
@@ -239,37 +240,25 @@ class IssuesEventHandler(EventHandler):
             # Write initial changelog to create a commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
             self.manager.changelog.write()
-
-            branch_data = {
-                "head": {
-                    "name": head_branch.name,
-                    "url": str(self._gh_link.branch(head_branch.name).homepage),
-                },
-                "base": {
-                    "name": base_branch_name,
-                    "sha": branch_sha[base_branch_name],
-                    "url": str(self._gh_link.branch(base_branch_name).homepage),
-                },
-            }
             self.manager.git.commit(
                 message=str(
                     self.manager.commit.create_auto(
                         id="dev_branch_creation",
-                        env_vars=branch_data,
+                        env_vars={"head": head_branch, "base": base_branch},
                     )
                 )
             )
             self.manager.git.push(target="origin", set_upstream=True)
             pull_data = self._gh_api.pull_create(
                 head=new_branch["name"],
-                base=base_branch_name,
+                base=base_branch,
                 title=self.manager.protocol.get_pr_title() or self.issue.title,
                 body=self.manager.protocol.protocol,
                 maintainer_can_modify=True,
                 draft=True,
             )
             logger.info(
-                f"Pull Request Creation ({new_branch['name']} -> {base_branch_name})",
+                f"Pull Request Creation ({new_branch['name']} -> {base_branch})",
                 logger.pretty(pull_data)
             )
             label_data = self._gh_api.issue_labels_set(
@@ -277,33 +266,26 @@ class IssuesEventHandler(EventHandler):
                 labels=[label.name for label in labels]
             )
             logger.info(
-                f"Pull Request Labels Update ({new_branch['name']} -> {base_branch_name})",
+                f"Pull Request Labels Update ({new_branch['name']} -> {base_branch})",
                 logger.pretty(label_data)
             )
             assign_pr()
-
-            pull_data["user"] = self.manager.user.get_from_github_rest_id(pull_data["user"]["id"])
-            pull_data["head"] = branch_data["head"] | pull_data["head"]
-            pull_data["base"] = branch_data["base"] | pull_data["base"]
+            pull = self.manager.add_pull_request_jinja_env_var(pull_data)
             self.manager.protocol.add_timeline_entry(
-                env_vars={
-                    "event": "pull_request",
-                    "action": "opened",
-                    "pull_request": pull_data,
-                },
+                env_vars={"event": "pull_request", "action": "opened"},
             )
 
             # Update changelog entry with pull request information
-            self.manager.changelog.update_current({"pull_request": self._create_changelog_pull_entry(pull_data)})
+            self.manager.changelog.update_current({"pull_request": self._create_changelog_pull_entry(pull)})
             self.manager.changelog.write()
 
-            implementation_branches_info.append(pull_data)
+            implementation_branches_info.append(pull)
 
             self.manager.git.commit(
                 message=str(
                     self.manager.commit.create_auto(
                     id="changelog_init",
-                    env_vars={"pull_request": pull_data}
+                    env_vars={"pull_request": pull}
                     )
                 )
             )
@@ -315,12 +297,12 @@ class IssuesEventHandler(EventHandler):
                     env_vars={
                         "event": "pull_request",
                         "action": "assigned",
-                        "pull_request": pull_data,
+                        "pull_request": pull,
                         "assignee": assignee,
                     },
                 )
-            devdoc_pull.add_reference_readthedocs(pull_nr=pull_data["number"])
-            self._gh_api.pull_update(number=pull_data["number"], body=devdoc_pull.protocol)
+            devdoc_pull.add_reference_readthedocs(pull_nr=pull["number"])
+            self._gh_api.pull_update(number=pull["number"], body=devdoc_pull.protocol)
         self.manager.protocol.add_pr_list(implementation_branches_info)
         return
 
@@ -379,14 +361,12 @@ class IssuesEventHandler(EventHandler):
             "title": pull["title"],
             "internal": True,
             "base": {
-                "ref": pull["base"]["ref"],
-                "sha": pull["base"]["sha"],
-                "url": pull["base"]["url"],
+                "ref": pull["base"].name,
+                "sha": pull["base"].sha,
             },
             "head": {
-                "ref": pull["head"]["ref"],
-                "sha": pull["head"]["sha"],
-                "url": pull["head"]["url"],
+                "ref": pull["head"].name,
+                "sha": pull["head"].sha,
             },
         }
 
