@@ -265,7 +265,7 @@ class OutputManager:
                         },
                         "artifact": build["artifact"],
                         "index-url": self._branch_manager.fill_jinja_template(
-                            self._main_manager.data[f"workflow.job.{typ}_publish_{target}.index.url"],
+                            self._main_manager.data[f"workflow.job.publish_{target}.index.url"],
                             env_vars=self._jinja_env_vars,
                         ),
                     }

@@ -28,10 +28,6 @@ class CommitManager:
             body_separator_regex=self._manager.data["commit.config.regex.separator.body"],
             footer_separator_regex=self._manager.data["commit.config.regex.separator.footer"],
         )
-        _logger.info(
-            "Commit Parser",
-            repr(self._manager.data["commit.config.regex"])
-        )
         self._msg_writer = partial(
             conventional_commits.create,
             scope_start=self._manager.data["commit.config.scope_start"],
