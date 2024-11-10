@@ -158,7 +158,7 @@ class EventHandler:
         self.manager = None
         if not in_repo_creation_event:
             self._jinja_env_vars = {
-                "event": self.gh_context.event_name,
+                "event": self.gh_context.event_name.value,
                 "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
                 "context": self.gh_context,
                 "payload": self.gh_context.event,
