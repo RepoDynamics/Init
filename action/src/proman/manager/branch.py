@@ -74,7 +74,7 @@ class BranchManager:
             prefix=data["name"],
             issue=issue_nr,
             target=target,
-            separator=data["separator"],
+            separator=data["name_separator"],
         )
 
     def new_auto(self, auto_type: Literal["refactor", "config_sync"], target: str | Branch | None = None) -> Branch:
