@@ -95,7 +95,7 @@ class IssuesEventHandler(EventHandler):
                 for version in versions:
                     label_objs.append(self.manager.label.label_version(version))
                     branch = self.manager.branch.from_version(version)
-                    label_objs.append(self.manager.label.label_branch(branch))
+                    label_objs.append(self.manager.label.label_branch(branch.name))
             elif "branch" in issue_entries:
                 branches = [branch.strip() for branch in issue_entries["branch"].split(",")]
                 for branch in branches:
