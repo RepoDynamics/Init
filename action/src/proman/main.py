@@ -155,10 +155,17 @@ class EventHandler:
         self._git_base, self._git_head = init_git_api()
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
-        self._jinja_env_vars = {}
         self.manager = None
         if not in_repo_creation_event:
+            self._jinja_env_vars = {
+                "event": self.gh_context.event_name,
+                "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
+                "context": self.gh_context,
+                "payload": self.gh_context.event,
+                "sender": self.payload_sender,
+            }
             self.manager = self.manager_from_metadata_file(repo="base")
+            self._jinja_env_vars["ccc"] = self.manager.data
         return
 
     @property
@@ -183,14 +190,7 @@ class EventHandler:
 
     @property
     def jinja_env_vars(self) -> dict:
-        return {
-            "ccc": self.manager.data,
-            "event": self.gh_context.event_name,
-            "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
-            "context": self.gh_context,
-            "payload": self.gh_context.event,
-            "sender": self.payload_sender,
-        } | self._jinja_env_vars
+        return self._jinja_env_vars
 
     @logger.sectioner("Metadata Load")
     def manager_from_metadata_file(
@@ -200,7 +200,7 @@ class EventHandler:
     ) -> Manager:
         return manager.from_metadata_json(
             git_api=self._git_base if repo == "base" else self._git_head,
-            jinja_env_vars=self._jinja_env_vars,
+            jinja_env_vars=self.jinja_env_vars,
             github_context=self.gh_context,
             github_api_actions=self._gh_api,
             github_api_admin=self._gh_api_admin,
