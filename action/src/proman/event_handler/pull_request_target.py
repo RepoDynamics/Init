@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from typing import TYPE_CHECKING
 
 from github_contexts import github as _gh_context
@@ -31,13 +32,17 @@ class PullRequestTargetEventHandler(EventHandler):
 
         super().__init__(**kwargs)
 
-        self._payload: PullRequestPayload = self.gh_context.event
-        self._pull: PullRequest = self._payload.pull_request
+        self.payload: PullRequestPayload = self.gh_context.event
+        self.pull: PullRequest = self.payload.pull_request
+        self.pull_author = self.manager.user.from_issue_author(self.pull)
+        pull = copy.deepcopy(self.pull.as_dict)
+        pull["user"] = self.pull_author
+        self.jinja_env_vars["pull_request"] = pull
 
         self._branch_base = self.manager.branch.from_name(self.gh_context.base_ref)
         self._branch_head = self.manager.branch.from_name(self.gh_context.head_ref)
 
-        self.protocol_manager.protocol = self._pull.body
+        self.protocol_manager.protocol = self.pull.body
         self.protocol_manager.env_vars |= {
             "workflow_url": self._gh_link.workflow_run(run_id=self.gh_context.run_id),
             "head": make_branch_env_vars(self._branch_head),
@@ -45,9 +50,9 @@ class PullRequestTargetEventHandler(EventHandler):
         }
 
         {
-            "actor": self._payload.sender,
-            "payload": self._payload,
-            "pull": self._pull,
+            "actor": self.payload.sender,
+            "payload": self.payload,
+            "pull": self.pull,
         }
 
         logger.info("Base Branch Resolution", str(self._branch_base))
@@ -55,9 +60,9 @@ class PullRequestTargetEventHandler(EventHandler):
         return
 
     def run(self):
-        if self._payload.internal:
+        if self.payload.internal:
             return
-        action = self._payload.action
+        action = self.payload.action
         if action != _gh_context.enum.ActionType.OPENED:
             self.error_unsupported_triggering_action()
             return

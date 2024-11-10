@@ -73,8 +73,7 @@ class UserManager:
             entity={"github": {"rest_id": github_id}},
             github_api=self._gh_api,
             cache_manager=self._manager.cache,
-            validator=partial(data_validator.validate, schema="entity"),
-        )[0]
+            )[0]
         if add_to_contributors:
             existing_data = self._contributors.setdefault("github", {}).setdefault(github_id, {})
             ps.update.dict_from_addon(data, existing_data)
