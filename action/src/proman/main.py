@@ -162,10 +162,9 @@ class EventHandler:
                 "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
                 "context": self.gh_context,
                 "payload": self.gh_context.event,
-                "sender": self.payload_sender,
             }
             self.manager = self.manager_from_metadata_file(repo="base")
-            self._jinja_env_vars["ccc"] = self.manager.data
+            self._jinja_env_vars.update({"ccc": self.manager.data, "sender": self.payload_sender})
         return
 
     @property
