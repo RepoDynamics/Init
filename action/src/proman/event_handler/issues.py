@@ -212,11 +212,11 @@ class IssuesEventHandler(EventHandler):
                     base_branches_and_labels[branch_label.suffix] = common_labels + [branch_label.name]
             return base_branches_and_labels
 
-        issue_form = self.manager.data.form_from_id_labels(self.issue.label_names)
+        issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
         branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in self._gh_api.branches}
         implementation_branches_info = []
         for base_branch_name, labels in get_base_branches().items():
-            head_branch_name = self.manager.data.new_dev(
+            head_branch_name = self.manager.branch.new_dev(
                 issue_nr=self.issue.number, target=base_branch_name
             )
             new_branch = self._gh_api_admin.branch_create_linked(
