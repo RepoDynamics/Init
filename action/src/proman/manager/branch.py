@@ -9,6 +9,7 @@ from proman.dtype import BranchType
 if _TYPE_CHECKING:
     from typing import Literal
     from proman.manager import Manager
+    from github_contexts.github.payload.object.head_base import HeadBase
 
 
 class BranchManager:
@@ -16,17 +17,46 @@ class BranchManager:
     def __init__(self, manager: Manager):
         self._manager = manager
         self._current_auto_base_branch: Branch | None = None
+        self._remote_data = {branch["name"]: branch for branch in self._manager.gh_api_actions.branches}
         return
+
+    def _make(self, type: BranchType, prefix: str, name: str | None = None, **kwargs):
+        remote = self._remote_data.get(name, {})
+        return Branch(
+            type=type,
+            prefix=prefix,
+            url=self._manager.gh_link.branch(name),
+            sha=remote.get("commit", {}).get("sha"),
+            protected=remote.get("protected"),
+            protection=remote.get("protection"),
+            **kwargs
+        )
+
+    def from_pull_request_branch(self, branch: HeadBase | dict):
+        b = self.from_name(branch["ref"])
+        return Branch(
+            type=b.type,
+            prefix=b.prefix,
+            url=b.url,
+            version=b.version,
+            issue=b.issue,
+            target=b.target,
+            auto_type=b.auto_type,
+            separator=b.separator,
+            sha=branch["sha"],
+            protected=b.protected,
+            protection=b.protection
+        )
 
     def from_name(self, branch_name: str | None = None) -> Branch:
         if not branch_name:
             branch_name = self._manager.git.current_branch_name()
         if branch_name == self._manager.gh_context.event.repository.default_branch:
-            return Branch(type=BranchType.MAIN, prefix=branch_name)
+            return self._make(type=BranchType.MAIN, prefix=branch_name, name=branch_name)
         for branch_type, branch_data in self._manager.data["branch"].items():
             if branch_name.startswith(branch_data["name"]):
                 branch_type = BranchType(branch_type)
-                args = {"type": branch_type, "prefix": branch_data["name"], "separator": branch_data["separator"]}
+                args = {"type": branch_type, "prefix": branch_data["name"], "separator": branch_data["name_separator"]}
                 suffix_raw = branch_name.removeprefix(branch_data["name"])
                 if branch_type is BranchType.RELEASE:
                     args["version"] = int(suffix_raw)
@@ -38,8 +68,8 @@ class BranchManager:
                 else:
                     auto_type, target_branch = suffix_raw.split(branch_data["separator"], 1)
                     args |= {"auto_type": auto_type, "target": self.from_name(target_branch)}
-                return Branch(**args)
-        return Branch(type=BranchType.OTHER, prefix=branch_name)
+                return self._make(**args, name=branch_name)
+        return self._make(type=BranchType.OTHER, prefix=branch_name, name=branch_name)
 
     def from_version(self, version: str) -> Branch:
         return self.from_name(self._manager.data["project.version"][version]["branch"])
@@ -47,7 +77,7 @@ class BranchManager:
     def new_release(self, major_version: int) -> Branch:
         """Generate the name of the release branch for a given major version."""
         data = self._manager.data["branch.release"]
-        return Branch(
+        return self._make(
             type=BranchType.RELEASE,
             prefix=data["name"],
             version=major_version,
@@ -57,7 +87,7 @@ class BranchManager:
     def new_pre(self, pull_nr: int) -> Branch:
         """Generate the name of the pre-release branch for a given version."""
         data = self._manager.data["branch.pre"]
-        return Branch(
+        return self._make(
             type=BranchType.PRE,
             prefix=data["name"],
             issue=pull_nr,
@@ -69,7 +99,7 @@ class BranchManager:
         data = self._manager.data["branch.dev"]
         if isinstance(target, str):
             target = self.from_name(target)
-        return Branch(
+        return self._make(
             type=BranchType.DEV,
             prefix=data["name"],
             issue=issue_nr,
@@ -82,7 +112,7 @@ class BranchManager:
         if not isinstance(target, Branch):
             target = self.from_name(target)
         data = self._manager.data["branch.auto"]
-        return Branch(
+        return self._make(
             type=BranchType.AUTO,
             prefix=data["name"],
             auto_type=self._manager.data["commit.auto"][auto_type]["type"],
