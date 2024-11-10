@@ -8,6 +8,7 @@ import datetime
 
 from loggerman import logger
 import pyserials as ps
+import mdit
 
 if _TYPE_CHECKING:
     from proman.manager import Manager
@@ -31,11 +32,19 @@ class ChangelogManager:
             data=data,
             addon=current,
         )
+        logger.info(
+            "Changelog Update",
+            mdit.element.code_block(
+                ps.write.to_yaml_string(self._changelog["current"]),
+                language="yaml"
+            )
+        )
         return
 
     def write(self, path: Path | None = None):
+        out = ps.write.to_json_string(self._changelog, sort_keys=True, indent=4)
         with open(path or self._path, "w") as changelog_file:
-            changelog_file.write(ps.write.to_json_string(self._changelog, sort_keys=True, indent=4))
+            changelog_file.write(out)
         return
 
 
