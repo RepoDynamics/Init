@@ -216,17 +216,17 @@ class IssuesEventHandler(EventHandler):
         branch_sha = {branch["name"]: branch["commit"]["sha"] for branch in self._gh_api.branches}
         implementation_branches_info = []
         for base_branch_name, labels in get_base_branches().items():
-            head_branch_name = self.manager.branch.new_dev(
+            head_branch = self.manager.branch.new_dev(
                 issue_nr=self.issue.number, target=base_branch_name
             )
             new_branch = self._gh_api_admin.branch_create_linked(
                 issue_id=self.issue.node_id,
                 base_sha=branch_sha[base_branch_name],
-                name=head_branch_name,
+                name=head_branch.name,
             )
 
-            self.manager.git.fetch_remote_branches_by_name(branch_names=head_branch_name)
-            self.manager.git.checkout(head_branch_name)
+            self.manager.git.fetch_remote_branches_by_name(branch_names=head_branch)
+            self.manager.git.checkout(head_branch)
 
             # Create changelog entry
             changelog_entry = {
@@ -242,8 +242,8 @@ class IssuesEventHandler(EventHandler):
 
             branch_data = {
                 "head": {
-                    "name": head_branch_name,
-                    "url": self._gh_link.branch(head_branch_name).homepage,
+                    "name": head_branch,
+                    "url": self._gh_link.branch(head_branch).homepage,
                 },
                 "base": {
                     "name": base_branch_name,
