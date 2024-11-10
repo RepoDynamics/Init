@@ -171,6 +171,12 @@ def from_metadata_json(
             log_title,
             f"Metadata loaded successfully {address}.",
         )
+        logger.info(
+            "Commit Config",
+            repr(data["commit.config.regex"]),
+            "test",
+            repr("\\n")
+        )
         return Manager(
             data=data,
             git_api=git_api,
