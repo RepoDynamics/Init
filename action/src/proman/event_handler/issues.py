@@ -173,9 +173,9 @@ class IssuesEventHandler(EventHandler):
             old_status_labels=self._label_groups[LabelType.STATUS],
             new_status_label=label,
         )
-        if label.type in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
+        if label.id in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
             self._gh_api.issue_update(number=self.issue.number, state="closed", state_reason="not_planned")
-        elif label.type is IssueStatus.IMPLEMENTATION:
+        elif label.id is IssueStatus.IMPLEMENTATION:
             self._run_labeled_status_implementation()
         self.manager.protocol.update_on_github()
         return
