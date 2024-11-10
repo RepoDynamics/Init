@@ -49,7 +49,7 @@ class Manager:
 
         self._cache_manager = CacheManager(
             path_local_cache=self._git.repo_path / data["local.cache.path"],
-            retention_hours=data["control.cache.retention.hours"],
+            retention_hours=data["control.cache.retention_hours"],
         )
         self._branch_manager = BranchManager(self)
         self._changelog_manager = ChangelogManager(self)
