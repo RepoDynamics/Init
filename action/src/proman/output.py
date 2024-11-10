@@ -173,11 +173,12 @@ class OutputManager:
                 "python-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
                 "tool": self._branch_manager.data["tool"],
                 "type": component,
-            } | self._jinja_env_vars
+                "version": self.version,
+            }
         }
         out["name"] = self._fill_jinja(
             self._main_manager.data[f"workflow.job.lint.name"],
-            env_vars=out["job"],
+            env_vars=out["job"] | self._jinja_env_vars,
         )
         self._out_lint.append(out)
         return

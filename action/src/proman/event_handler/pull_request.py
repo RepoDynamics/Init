@@ -771,7 +771,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         )
         return
 
-
     @staticmethod
     def _primary_type_is_package_publish(
         commit_type: PrimaryActionCommit | PrimaryCustomCommit,
