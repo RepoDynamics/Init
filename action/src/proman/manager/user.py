@@ -13,6 +13,7 @@ from proman.dstruct import User
 if _TYPE_CHECKING:
     from typing import Literal
     from github_contexts.github.payload.object.issue import Issue
+    from github_contexts.github.payload.object.pull_request import PullRequest
     from proman.manager import Manager
 
 
@@ -81,13 +82,13 @@ class UserManager:
                 self.write_contributors()
         return User(id=github_id, association="user", data=data)
 
-    def from_issue_author(self, issue: Issue) -> User:
-        user = self.get_from_github_rest_id(issue.user.id)
+    def from_issue_author(self, issue: Issue | PullRequest | dict) -> User:
+        user = self.get_from_github_rest_id(issue["user"]["id"])
         return User(
             id=user.id,
             association=user.association,
             data=user.as_dict,
-            github_association=issue.author_association,
+            github_association=issue.get("author_association"),
         )
 
     def write_contributors(self):
