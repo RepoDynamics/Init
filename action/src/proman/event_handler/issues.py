@@ -300,9 +300,11 @@ class IssuesEventHandler(EventHandler):
             implementation_branches_info.append(pull_data)
 
             self.manager.git.commit(
-                message=self.manager.commit.create_auto(
+                message=str(
+                    self.manager.commit.create_auto(
                     id="changelog_init",
                     env_vars={"pull_request": pull_data}
+                    )
                 )
             )
             self.manager.git.push()
