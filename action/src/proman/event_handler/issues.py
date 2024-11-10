@@ -252,9 +252,11 @@ class IssuesEventHandler(EventHandler):
                 },
             }
             self.manager.git.commit(
-                message=self.manager.commit.create_auto(
-                    id="dev_branch_creation",
-                    env_vars=branch_data,
+                message=str(
+                    self.manager.commit.create_auto(
+                        id="dev_branch_creation",
+                        env_vars=branch_data,
+                    )
                 )
             )
             self.manager.git.push(target="origin", set_upstream=True)
