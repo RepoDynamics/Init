@@ -40,7 +40,7 @@ class OutputManager:
         self,
         main_manager: Manager,
         branch_manager: Manager,
-        version: VersionTag | Version | None = None,
+        version: VersionTag | Version,
         repository: str | None = None,
         ref: str | None = None,
         ref_name: str | None = None,
@@ -68,7 +68,7 @@ class OutputManager:
         self._ref_name = ref_name or self._branch_manager.git.current_branch_name()
         self._ref_before = ref_before or self._branch_manager.gh_context.hash_before
         self._jinja_env_vars = {
-            "version": version,
+            "version": version if isinstance(version, Version) else version.version,
             "branch": self._ref_name,
             "commit": self._ref,
         }
