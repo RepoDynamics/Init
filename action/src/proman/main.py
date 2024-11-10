@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 import datetime
 
@@ -19,8 +18,8 @@ import gittidy
 from versionman.pep440_semver import PEP440SemVer
 
 from proman import runner
-from proman.dtype import FileChangeType, RepoFileType, InitCheckAction
-from proman.dstruct import Branch, Label
+from proman.dtype import RepoFileType, InitCheckAction
+from proman.dstruct import Branch
 from proman.exception import ProManException
 from proman import manager
 
@@ -477,55 +476,6 @@ class EventHandler:
                 section=hooks_output["section"],
             )
         return commit_hash
-
-    def _get_latest_version(
-        self,
-        branch: str | None = None,
-        dev_only: bool = False,
-        base: bool = True,
-    ) -> tuple[PEP440SemVer | None, int | None]:
-
-        def get_latest_version() -> PEP440SemVer | None:
-            tags_lists = git.get_tags()
-            if not tags_lists:
-                return
-            for tags_list in tags_lists:
-                ver_tags = []
-                for tag in tags_list:
-                    if tag.startswith(ver_tag_prefix):
-                        ver_tags.append(PEP440SemVer(tag.removeprefix(ver_tag_prefix)))
-                if ver_tags:
-                    if dev_only:
-                        ver_tags = sorted(ver_tags, reverse=True)
-                        for ver_tag in ver_tags:
-                            if ver_tag.release_type == "dev":
-                                return ver_tag
-                    else:
-                        return max(ver_tags)
-            return
-
-        git = self._git_base if base else self._git_head
-        ver_tag_prefix = self._data_main["tag.version.prefix"]
-        if branch:
-            git.stash()
-            curr_branch = git.current_branch_name()
-            git.checkout(branch=branch)
-        latest_version = get_latest_version()
-        distance = git.get_distance(
-            ref_start=f"refs/tags/{ver_tag_prefix}{latest_version.input}"
-        ) if latest_version else None
-        if branch:
-            git.checkout(branch=curr_branch)
-            git.stash_pop()
-        if not latest_version and not dev_only:
-            logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
-        return latest_version, distance
-
-    def get_current_dirty_version(self):
-        version = versioningit.get_version(
-            project_dir=repo_path / data_branch["pkg.path.root"],
-            config=data_branch["pkg.build.tool.versioningit"],
-        )
 
     @property
     def payload_sender(self) -> User | None:

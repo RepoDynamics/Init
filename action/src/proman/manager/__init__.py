@@ -59,6 +59,7 @@ class Manager:
         self._protocol_manager = ProtocolManager(self)
         self._user_manager = UserManager(self)
         self._repo_manager = RepoManager(self)
+        self._release_manager = ReleaseManager(self)
         return
 
     @property
@@ -113,6 +114,10 @@ class Manager:
     @property
     def protocol(self) -> ProtocolManager:
         return self._protocol_manager
+
+    @property
+    def release(self) -> ReleaseManager:
+        return self._release_manager
 
     @property
     def repo(self) -> RepoManager:

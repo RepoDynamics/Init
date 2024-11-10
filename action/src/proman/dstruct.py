@@ -15,7 +15,7 @@ from proman.exception import ProManException
 from proman.dtype import IssueStatus, LabelType, BranchType
 
 if _TYPE_CHECKING:
-    from typing import Literal, Sequence, Callable
+    from typing import Literal, Sequence, Callable, Any
 
     from conventional_commits import ConventionalCommitMessage
     from github_contexts.github.enum import AuthorAssociation
@@ -46,6 +46,46 @@ class Token:
 
     def __bool__(self):
         return bool(self._token)
+
+
+@_dataclass
+class Version:
+    public: PEP440SemVer | str
+    local: tuple[Any, ...] | None = None
+
+    def __post_init__(self):
+        if isinstance(self.public, str):
+            self.public = PEP440SemVer(self.public)
+        if not self.local:
+            self.local = tuple()
+
+    @property
+    def full(self) -> str:
+        if not self.local:
+            return str(self.public)
+        return f"{self.public}+{'.'.join(map(str, self.local))}"
+
+    @property
+    def is_local(self) -> bool:
+        return bool(self.local)
+
+    def __str__(self):
+        return self.full
+
+    def __repr__(self):
+        return self.full
+
+
+class VersionTag(_NamedTuple):
+    tag_prefix: str
+    version: PEP440SemVer
+
+    @property
+    def name(self) -> str:
+        return f"{self.tag_prefix}{self.version}"
+
+    def __str__(self):
+        return self.name
 
 
 class Branch(_NamedTuple):

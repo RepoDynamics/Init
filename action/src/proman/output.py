@@ -8,6 +8,7 @@ import pyserials as ps
 import mdit
 import versioningit
 
+from proman.dstruct import VersionTag, Version
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -23,7 +24,7 @@ class OutputManager:
         self._ref: str = ""
         self._ref_name: str = ""
         self._ref_before: str = ""
-        self._version: str = ""
+        self._version: VersionTag | Version | None = None
         self._jinja_env_vars = {}
 
         self._out_web: list[dict] = []
@@ -39,7 +40,7 @@ class OutputManager:
         self,
         main_manager: Manager,
         branch_manager: Manager,
-        version: str,
+        version: VersionTag | Version | None = None,
         repository: str | None = None,
         ref: str | None = None,
         ref_name: str | None = None,
@@ -120,6 +121,15 @@ class OutputManager:
             mdit.element.code_block(output_yaml, language="yaml"),
         )
         return output
+
+    @property
+    def version(self) -> str:
+        if not self._version:
+            return ""
+        if isinstance(self._version, Version):
+            return str(self._version)
+        return str(self._version.version)
+
 
     def _set_web(self, deploy: bool):
         if "web" not in self._branch_manager.data:
@@ -262,17 +272,20 @@ class OutputManager:
             setattr(self, f"_out_publish_{target}", publish_out)
         return
 
-    def set_release(
-        self,
-        name: str,
-        tag: str,
-        body: str | None = None,
-        prerelease: bool | None = None,
-        make_latest: Literal["legacy", "latest", "none"] | None = None,
-        discussion_category_name: str | None = None,
-        website_artifact_name: str = "Documentation",
-        package_artifact_name: str = "Package",
-    ):
+    def set_release(self):
+        gh_data = self._branch_manager.data["release.github"]
+        github_config = {
+            "tag_name": self._version.name,
+            "name": self._fill_jinja(gh_data["name"]),
+            "body": self._fill_jinja(gh_data["body"]),
+            "draft": gh_data["draft"],
+            "prerelease": gh_data["prerelease"],
+            "discussion_category_name": self._fill_jinja(gh_data["discussion_category_name"]),
+
+        }
+
+
+
         self._out_release["github"] = {
             "name": name,
             "tag-name": tag,
@@ -292,6 +305,7 @@ class OutputManager:
         args: list[str] | None = None,
         overrides: dict[str, str] | None = None,
     ) -> dict:
+        source = source.lower()
         env_vars = {
             "source": {"github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI"}[source]
         }
@@ -301,15 +315,15 @@ class OutputManager:
             "job": {
                 "repository": self._repository,
                 "ref": self._ref_name,
-                "test-src": source.lower(),
+                "test-src": source,
                 "test-path": self._branch_manager.data["test.path.root"],
                 "test-name": self._branch_manager.data["test.import_name"],
-                "test-version": self._version,
+                "test-version": self.version,
                 "test-req-path": self._branch_manager.data["test.dependency.env.pip.path"] if source == "testpypi" else "",
-                "pkg-src": source.lower(),
+                "pkg-src": source,
                 "pkg-path": self._branch_manager.data["pkg.path.root"],
                 "pkg-name": self._branch_manager.data["pkg.name"],
-                "pkg-version": self._version,
+                "pkg-version": self.version,
                 "pkg-req-path": self._branch_manager.data["pkg.dependency.env.pip.path"] if source == "testpypi" else "",
                 "pyargs": ps.write.to_json_string(pyargs) if pyargs else "",
                 "args": ps.write.to_json_string(args) if args else "",

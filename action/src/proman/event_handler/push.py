@@ -8,6 +8,7 @@ from loggerman import logger
 import controlman
 import fileex as _fileex
 
+from proman.dstruct import Version
 from proman.dtype import InitCheckAction
 from proman.main import EventHandler
 
@@ -146,7 +147,7 @@ class PushEventHandler(EventHandler):
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
-            version=version,
+            version=Version(version),
             ref=latest_hash,
             website_deploy=True,
             package_lint=True,
@@ -176,18 +177,20 @@ class PushEventHandler(EventHandler):
                 target="origin", ref=self.gh_context.ref_name, force_with_lease=True
             )
             latest_hash = new_manager.git.commit_hash_normal()
-        self._tag_version(
+        version_tag = new_manager.release.tag_version(
             ver=version,
-            base=False,
             env_vars={"ccc": new_manager},
         )
         new_manager.repo.update_all(manager_before=self.manager)
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
+            version=version_tag,
             ref=latest_hash,
-            version=str(version),
             website_deploy=True,
+            package_lint=True,
+            test_lint=True,
+            package_test=True,
             package_publish_testpypi=True,
             package_publish_pypi=True,
         )
