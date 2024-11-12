@@ -133,7 +133,7 @@ class IssuesEventHandler(EventHandler):
             )
         for label in labels:
             self.manager.protocol.add_timeline_entry(
-                env_vars={"action": "labeled", "label": self.make_label_env_var(label)}
+                env_vars={"action": "labeled", "label": label}
             )
         logger.info(
             "Development Protocol",
@@ -160,7 +160,7 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled(self):
         label = self.manager.label.resolve_label(self.payload.label.name)
-        self.manager.protocol.add_timeline_entry(env_vars={"label": self.make_label_env_var(label)})
+        self.manager.protocol.add_timeline_entry(env_vars={"label": label})
         if label.category is not LabelType.STATUS:
             self.reporter.event(f"Issue #{self.issue.number} labeled `{label.name}`")
             self.manager.protocol.update_on_github()
@@ -369,16 +369,3 @@ class IssuesEventHandler(EventHandler):
                 "sha": pull["head"].sha,
             },
         }
-
-    def make_label_env_var(self, label: Label):
-        return {
-            "category": label.category.value,
-            "name": label.name,
-            "group_id": label.group_id,
-            "id": label.id.value if isinstance(label.id, Enum) else label.id,
-            "prefix": label.prefix,
-            "suffix": label.suffix,
-            "color": label.color,
-            "description": label.description,
-        }
-
