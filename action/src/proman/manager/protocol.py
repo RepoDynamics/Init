@@ -39,7 +39,7 @@ class ProtocolManager:
         self._protocol = value
         return
 
-    def generate_from_issue(self, issue: Issue, issue_form: IssueForm) -> dict:
+    def generate_from_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str]:
         body_template = issue_form.post_process.get("body")
         issue_entries = self._extract_entries_from_issue_body(issue.body, issue_form.body)
         if body_template:
@@ -343,7 +343,7 @@ class ProtocolManager:
             replace=True
         )
 
-    def _generate(self, template: str, issue_form: dict, issue_inputs: dict, issue_body: str) -> str:
+    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
         data = {}
         env_vars = {
             "data": data,
