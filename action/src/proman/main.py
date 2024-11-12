@@ -155,7 +155,7 @@ class EventHandler:
         self._git_base, self._git_head = init_git_api()
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
-        self.manager = None
+        self.manager: Manager = None
         if not in_repo_creation_event:
             self._jinja_env_vars = {
                 "event": self.gh_context.event_name.value,
@@ -253,7 +253,8 @@ class EventHandler:
             "package_test": changes["pkg"] or changes["test"],
             "package_build": changes["pkg"],
             "package_lint": changes["pkg"],
-            "package_publish_testpypi": changes["pkg"] and testpypi_publishable,
+            "test_lint": changes["test"],
+            "package_publish_testpypi": (changes["pkg"] or changes["test"]) and testpypi_publishable,
         }
         logger.info(
             "Job Runs",
