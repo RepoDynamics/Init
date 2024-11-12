@@ -9,13 +9,15 @@ import pyserials as ps
 
 from proman.dstruct import Version, VersionTag
 
+from proman.dtype import IssueStatus, ReleaseAction
+
 if _TYPE_CHECKING:
+    from typing import Literal
     from gittidy import Git
     from versionman.pep440_semver import PEP440SemVer
     from proman.manager.user import User
     from proman.manager import Manager
     from proman.dstruct import Branch
-    from proman.dtype import ReleaseAction
 
 
 class ReleaseManager:
@@ -49,6 +51,82 @@ class ReleaseManager:
         if data["citation"]:
             self._prepare_citation_for_release(version=version, doi=doi)
         return zenodo_output
+
+    def calculate_next_version(
+        self,
+        issue_num: int | str,
+        deploy_type: IssueStatus,
+        action: ReleaseAction | None,
+        git_base: Git | None = None,
+    ) -> Version:
+        ver_base = self.latest_version(git=git_base)
+        if not action:
+            # Internal changes; return next local version
+            return Version(
+                public=ver_base.public,
+                local=(ver_base.local[0] + 1, )
+            )
+        if ver_base.public.pre:
+            ver_base_pre_phase = ver_base.public.pre[0]
+            if ver_base_pre_phase == "rc":
+                # Can only be the next post
+                return Version(public=ver_base.public.next_post)
+            if (
+                deploy_type is IssueStatus.DEPLOY_FINAL
+                or deploy_type.prerelease_type > ver_base_pre_phase
+            ):
+                # Next pre-release phase
+                new_pre_phase = self._next_prerelease_phase(ver_base_pre_phase)
+                new_ver = f"{ver_base.public.base}{new_pre_phase}{ver_base.public.pre[1]}"
+                return Version(public=PEP440SemVer(new_ver))
+            return Version(public=ver_base.public.next_post)
+        next_final_ver = self.next_version(version=ver_base.public, action=action)
+        if action is ReleaseAction.POST or deploy_type is IssueStatus.DEPLOY_FINAL:
+            return Version(next_final_ver)
+        version = f"{next_final_ver.base}{deploy_type.prerelease_type}{issue_num}"
+        return Version(PEP440SemVer(version))
+
+    def next_dev_version(
+        self,
+        issue_num: int | str,
+        git_base: Git,
+        git_head: Git,
+        action: ReleaseAction,
+    ) -> VersionTag:
+        ver_base = self.latest_version(git=git_base, dev_only=False)
+        ver_head = self.latest_version(git=git_head, dev_only=True)
+        ver_last_base = ver_base.public
+        if ver_last_base.pre:
+            # The base branch is a pre-release branch
+            next_ver = ver_last_base.next_post
+            if (
+                ver_head
+                and ver_head.public.release == next_ver.release
+                and ver_head.public.pre == next_ver.pre
+                and ver_head.public.dev is not None
+            ):
+                dev = ver_head.public.dev + 1
+            else:
+                dev = 0
+            next_ver_str = f"{next_ver}.dev{dev}"
+        else:
+            next_ver = self.next_version(ver_last_base, action)
+            next_ver_str = str(next_ver)
+            if action is not ReleaseAction.POST:
+                next_ver_str += f".a{issue_num}"
+            if not ver_head:
+                dev = 0
+            elif action is ReleaseAction.POST:
+                if ver_head.public.post is not None and ver_head.public.post == next_ver.post:
+                    dev = ver_head.public.dev + 1
+                else:
+                    dev = 0
+            elif ver_head.public.pre is not None and ver_head.public.pre == ("a", int(issue_num)):
+                dev = ver_head.public.dev + 1
+            else:
+                dev = 0
+            next_ver_str += f".dev{dev}"
+        return self.tag_version(PEP440SemVer(next_ver_str), git=git_head)
 
     def latest_version(
         self,
@@ -113,22 +191,6 @@ class ReleaseManager:
         git.create_tag(tag=tag, message=msg)
         return VersionTag(tag_prefix=prefix, version=ver)
 
-    @staticmethod
-    def next_version(version: PEP440SemVer, action: ReleaseAction) -> PEP440SemVer:
-        if action is ReleaseAction.MAJOR:
-            if version.major == 0:
-                return version.next_minor
-            return version.next_major
-        if action == ReleaseAction.MINOR:
-            if version.major == 0:
-                return version.next_patch
-            return version.next_minor
-        if action == ReleaseAction.PATCH:
-            return version.next_patch
-        if action == ReleaseAction.POST:
-            return version.next_post
-        return version
-
     def _create_zenodo_depo(
         self, version: PEP440SemVer, contributors: list[User], embargo_date: str | None = None
     ):
@@ -189,3 +251,27 @@ class ReleaseManager:
     #         project_dir=repo_path / data_branch["pkg.path.root"],
     #         config=data_branch["pkg.build.tool.versioningit"],
     #     )
+
+    @staticmethod
+    def _next_prerelease_phase(current_phase: Literal["a", "b", "rc"]) -> Literal["a", "b", "rc"]:
+        return {
+            "rc": "rc",
+            "b": "rc",
+            "a": "b",
+        }[current_phase]
+
+    @staticmethod
+    def next_version(version: PEP440SemVer, action: ReleaseAction) -> PEP440SemVer:
+        if action is ReleaseAction.MAJOR:
+            if version.major == 0:
+                return version.next_minor
+            return version.next_major
+        if action == ReleaseAction.MINOR:
+            if version.major == 0:
+                return version.next_patch
+            return version.next_minor
+        if action == ReleaseAction.PATCH:
+            return version.next_patch
+        if action == ReleaseAction.POST:
+            return version.next_post
+        return version
