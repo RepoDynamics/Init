@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import copy
 from typing import TYPE_CHECKING
 
 from github_contexts import github as _gh_context
-
 from loggerman import logger
+
 from proman.dtype import BranchType
-
-
 from proman.main import EventHandler
 
 if TYPE_CHECKING:
@@ -37,11 +34,13 @@ class PullRequestTargetEventHandler(EventHandler):
             return
         action = self.payload.action
         if action != _gh_context.enum.ActionType.OPENED:
-            self.error_unsupported_triggering_action()
+            self.reporter.error_unsupported_triggering_action()
             return
         if self.branch_head.type is BranchType.DEV:
             return self.opened_head_dev()
+        return
 
+    def run_assigned(self):
         return
 
     def opened_head_dev(self):
