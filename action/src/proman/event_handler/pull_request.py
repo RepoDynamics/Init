@@ -18,7 +18,6 @@ from proman.dtype import (
     InitCheckAction,
     LabelType,
 )
-
 from proman.manager.changelog import ChangelogManager
 from proman.event_handler.pull_request_target import PullRequestTargetEventHandler
 from proman.exception import ProManException
