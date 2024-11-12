@@ -117,7 +117,9 @@ class IssuesEventHandler(EventHandler):
 
         self.reporter.event(f"Issue #{self.issue.number} opened")
         issue_form = self.manager.issue.form_from_issue_body(self.issue.body)
-        issue_entries, body_processed = self.manager.protocol.generate_from_issue(issue=self.issue, issue_form=issue_form)
+        issue_entries, body_processed = self.manager.protocol.generate_from_issue(
+            issue=self.issue, issue_form=issue_form
+        )
         self.manager.protocol.add_timeline_entry()
         self.manager.protocol.update_status(IssueStatus.TRIAGE)
 
