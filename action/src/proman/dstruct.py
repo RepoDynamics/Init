@@ -210,6 +210,12 @@ class Commit:
             footer=self._fill_jinja_templates(self.footer.as_dict),
         )
 
+    @property
+    def summary(self) -> str:
+        if not self.type:
+            return self.description
+        return self.conv_msg.summary
+
     def _fill_jinja_templates(self, templates: dict | list | str, env_vars: dict | None = None) -> dict | list | str:
 
         def recursive_fill(template):
