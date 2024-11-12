@@ -14,6 +14,7 @@ from proman.exception import ProManException
 if TYPE_CHECKING:
     from github_contexts.github.payload.object.user import User as GitHubUser
     from github_contexts.github.payload.object.issue import Issue
+    from github_contexts.github.payload.object.pull_request import PullRequest
     from proman.manager.commit import Commit
     from proman.manager import Manager
     from proman.dstruct import IssueForm
@@ -26,6 +27,7 @@ class ProtocolManager:
         self._protocol = ""
         self._protocol_comment_id = None
         self._protocol_issue_nr = None
+        self._protocol_pull_nr = None
         return
 
     @property
@@ -69,10 +71,19 @@ class ProtocolManager:
             self._protocol_issue_nr = issue.number
         return self.protocol
 
+    def load_from_pull(self, pull: PullRequest) -> str:
+        self._protocol_pull_nr = pull.number
+        self.protocol = pull.body
+        return self.protocol
+
     def update_on_github(self):
         if self._protocol_issue_nr:
             return self._manager.gh_api_actions.issue_update(
                 number=self._protocol_issue_nr, body=self.protocol
+            )
+        if self._protocol_pull_nr:
+            return self._manager.gh_api_actions.pull_update(
+                number=self._protocol_pull_nr, body=self.protocol
             )
         return self._manager.gh_api_actions.issue_comment_update(
             comment_id=self._protocol_comment_id, body=self.protocol
