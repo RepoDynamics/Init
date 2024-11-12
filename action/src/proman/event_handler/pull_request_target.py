@@ -25,9 +25,9 @@ class PullRequestTargetEventHandler(EventHandler):
         self.pull: PullRequest = self.payload.pull_request
         pull_internalized = self.manager.add_pull_request_jinja_env_var(self.pull)
         self.pull_author = pull_internalized["user"]
-        self.branch_base = pull_internalized["base"]
-        self.branch_head = pull_internalized["head"]
-        self.manager.protocol = self.pull.body
+        self.branch_base: Branch = pull_internalized["base"]
+        self.branch_head: Branch = pull_internalized["head"]
+        self.manager.protocol.load_from_pull(self.pull)
         logger.info("Base Branch Resolution", str(self.branch_base))
         logger.info("Head Branch Resolution", str(self.branch_head))
         return
