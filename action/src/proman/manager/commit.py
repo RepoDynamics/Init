@@ -11,6 +11,7 @@ from proman.dstruct import Commit
 
 if _TYPE_CHECKING:
     from proman.manager import Manager
+    from gittidy import Git
 
 
 class CommitManager:
@@ -104,24 +105,13 @@ class CommitManager:
             jinja_env_vars=self._manager.jinja_env_vars | (env_vars or {}),
         )
 
-    # def _get_commits(self, base: bool = False) -> list[Commit]:
-    #     git = self._git_base if base else self._git_head
-    #     commits = git.get_commits(f"{self._context.hash_before}..{self._context.hash_after}")
-    #     logger.info("Read commits from git history", json.dumps(commits, indent=4))
-    #
-    #     parsed_commits = []
-    #     for commit in commits:
-    #         conv_msg = parser.parse(message=commit["msg"])
-    #         if not conv_msg:
-    #             parsed_commits.append(
-    #                 Commit(
-    #                     **commit, group_data=NonConventionalCommit()
-    #                 )
-    #             )
-    #         else:
-    #             group = self._data_main.get_commit_type_from_conventional_type(conv_type=conv_msg.type)
-    #             commit["msg"] = conv_msg
-    #             parsed_commits.append(Commit(**commit, group_data=group))
-    #     return parsed_commits
-
-
+    def from_git(
+        self,
+        revision_range: str | None = None,
+        git: Git | None = None,
+    ) -> list[Commit]:
+        git = git or self._manager.git
+        commits = git.get_commits(
+            revision_range or f"{self._manager.gh_context.hash_before}..{self._manager.gh_context.hash_after}"
+        )
+        return [self.create_from_msg(commit["msg"]) for commit in commits]
