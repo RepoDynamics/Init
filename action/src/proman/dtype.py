@@ -1,7 +1,10 @@
 from __future__ import annotations as _annotations
 
 from enum import Enum as _Enum
-from typing import NamedTuple as _NamedTuple
+from typing import NamedTuple as _NamedTuple, TYPE_CHECKING as _TYPE_CHECKING
+
+if _TYPE_CHECKING:
+    from typing import Literal
 
 
 class RepoDynamicsBotCommand(_Enum):
@@ -102,6 +105,16 @@ class IssueStatus(_Enum):
             IssueStatus.DEPLOY_FINAL: 10,
         }
         return level[self]
+
+    @property
+    def prerelease_type(self) -> Literal["a", "b", "rc"] | None:
+        if self is IssueStatus.DEPLOY_ALPHA:
+            return "a"
+        if self is IssueStatus.DEPLOY_BETA:
+            return "b"
+        if self is IssueStatus.DEPLOY_RC:
+            return "rc"
+        return
 
 
 class LabelType(_Enum):
