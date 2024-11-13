@@ -129,6 +129,36 @@ class CommitManager:
         )
         return [self.create_from_msg(commit["msg"]) for commit in commits]
 
-    def from_pull_request(self, pull_nr: int | str):
-        commits = self._manager.gh_api_actions.pull_commits(number=pull_nr)
+    def from_pull_request(
+        self,
+        pull_nr: int | str,
+        head_manager: Manager,
+        revision_range: str | None = None,
+        add_to_contributors: bool = True,
+    ) -> list[Commit]:
+        def make_user(user: dict):
+            github_username = user.get("user", {}).get("login")
+            if github_username:
+                return head_manager.user.from_github_username(
+                    username=github_username,
+                    add_to_contributors=add_to_contributors,
+                )
+            return head_manager.user.from_name_and_email(
+                name=user["name"],
+                email=user["email"],
+                add_to_contributors=add_to_contributors,
+            )
 
+        commits = []
+        commits_data = self._manager.gh_api_actions.pull_commits(
+            number=pull_nr,
+            count=len(self.from_git(revision_range=revision_range, git=head_manager.git)),
+            sort="last",
+        )
+        for commit_data in commits_data:
+            commit = self.create_from_msg(commit_data["commit"]["message"])
+            commit.authors = [make_user(author) for author in commit_data["commit"]["authors"]]
+            if not commit_data["commit"]["authoredByCommitter"]:
+                commit.committer = make_user(commit_data["commit"]["committer"])
+            commits.append(commit)
+        return commits
