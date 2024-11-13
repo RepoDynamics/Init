@@ -205,9 +205,9 @@ class ReleaseManager:
                 out["gnd"] = entity["gnd"]["id"]
             return out
 
-        metadata = self._manager.data_branch["release.zenodo"]
+        metadata = self._manager.data["release.zenodo"]
         metadata["creators"] = [
-            create_person(entity=entity) for entity in self._manager.user_manager.citation_authors(self._data)
+            create_person(entity=entity) for entity in self._manager.user.citation_authors(self._data)
         ]
         if "communities" in metadata:
             metadata["communities"] = [{"identifier": identifier} for identifier in metadata["communities"]]
