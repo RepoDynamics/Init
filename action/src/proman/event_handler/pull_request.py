@@ -25,6 +25,7 @@ from proman.exception import ProManException
 if TYPE_CHECKING:
     from typing import Sequence
     from proman.dstruct import Label, Commit, IssueForm, MainTasklistEntry, SubTasklistEntry
+    from proman.manager import Manager
 
 
 class PullRequestEventHandler(PullRequestTargetEventHandler):
@@ -79,28 +80,30 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
         old_head_manager = self.manager_from_metadata_file(repo="head")
         changes = self.run_change_detection(branch_manager=old_head_manager)
+        action = InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL
         if "dynamic" in changes:
             new_manager, commit_hash_cca = self.run_cca(
                 branch_manager=old_head_manager,
-                action=InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL,
+                action=action,
             )
         else:
             new_manager = old_head_manager
             commit_hash_cca = None
+        tasklist = self._update_changelogs(manager=new_manager)
+        if new_manager.git.has_changes():
+            commit_hash_changelog = new_manager.git.commit(
+                message=self.manager.commit.create_auto("changelog_sync")
+            )
+        else: commit_hash_changelog = None
 
+        commit_hash_refactor = self.run_refactor(
+            branch_manager=new_manager,
+            action=action,
+            ref_range=(self.gh_context.hash_before, commit_hash_changelog or self.gh_context.hash_after),
+        ) if new_manager.data["tool.pre-commit.config.file.content"] else None
 
         issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
-        head_manager, job_runs, latest_hash = self.run_sync_fix(
-            branch_manager=old_head_manager,
-            action=InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL,
-            testpypi_publishable=(
-                self.branch_head.type is BranchType.DEV
-                and self.payload.internal
-                and issue_form.commit.action
-            ),
-        )
-        tasks_complete = self.update_tasklist()
-        if tasks_complete and not self.reporter.failed:
+        if self.pull.draft and tasklist.complete and not self.reporter.failed:
             status_label = self.manager.label.status_label(IssueStatus.TESTING)
             label_groups = self.manager.label.resolve_labels(self.pull.label_names)
             self.manager.label.update_status_label_on_github(
@@ -118,7 +121,16 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 number=self.pull.number,
                 reviewers=[user["github"]["id"] for user in issue_form.review_assignees]
             )
-        if job_runs["package_publish_testpypi"]:
+            for reviewer in issue_form.review_assignees:
+                self.manager.protocol.add_timeline_entry(
+                    {"event": "review_requested", "requested_reviewer": reviewer}
+                )
+        publish_testpypi = (changes["pkg"] or changes["test"]) and (
+            self.branch_head.type is BranchType.DEV
+            and self.payload.internal
+            and issue_form.commit.action
+        )
+        if publish_testpypi:
             version = self.manager.release.next_dev_version(
                 issue_num=self.pull.number,
                 git_base=self._git_base,
@@ -127,17 +139,22 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             )
         else:
             version = self.manager.release.latest_version(git=self._git_head)
+        commit_hash = publish_testpypi or commit_hash_refactor or commit_hash_changelog or commit_hash_cca
+
+        if self.payload.internal and (publish_testpypi or commit_hash):
+            with logger.sectioning("Repository Update"):
+                new_manager.git.push()
         self._output_manager.set(
             main_manager=self.manager,
-            branch_manager=head_manager,
+            branch_manager=new_manager,
             version=version,
-            ref=latest_hash,
+            ref=commit_hash or self.gh_context.hash_after,
             ref_name=self.branch_head.name,
-            website_build=job_runs["web_build"],
-            package_lint=job_runs["package_lint"],
-            test_lint=job_runs["test_lint"],
-            package_test=job_runs["package_test"],
-            package_publish_testpypi=job_runs["package_publish_testpypi"],
+            website_build=changes["web"],
+            package_lint=changes["pkg"],
+            test_lint=changes["test"],
+            package_test=changes["pkg"] or changes["test"],
+            package_publish_testpypi=publish_testpypi,
         )
         return
 
@@ -507,46 +524,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return response
 
     @logger.sectioner("Changelog Generation")
-    def _update_changelogs(
-        self, ver_dist: str, commit_type: str, commit_title: str, hash_base: str, prerelease: bool = False
-    ):
-
-
-        parser = conventional_commits.create_parser(
-            types=self._data_main.get_all_conventional_commit_types(secondary_only=True),
-        )
-
-        tasklist = self._extract_tasklist(body=self.pull.body)
-
-        changelog_manager = ChangelogManager(
-            changelog_metadata=self._data_main["changelog"],
-            ver_dist=ver_dist,
-            commit_type=commit_type,
-            commit_title=commit_title,
-            parent_commit_hash=hash_base,
-            parent_commit_url=self._gh_link.commit(hash_base),
-            path_root=self._path_head,
-        )
-        for task in tasklist:
-            conv_msg = parser.parse(message=task["summary"])
-            if conv_msg:
-                group_data = self._data_main.get_commit_type_from_conventional_type(conv_type=conv_msg.type)
-                if prerelease:
-                    if group_data.changelog_id != "package_public":
-                        continue
-                    changelog_id = "package_public_prerelease"
-                else:
-                    changelog_id = group_data.changelog_id
-                changelog_manager.add_change(
-                    changelog_id=changelog_id,
-                    section_id=group_data.changelog_section_id,
-                    change_title=conv_msg.description,
-                    change_details=task["description"],
-                )
-        changelog_manager.write_all_changelogs()
-        return changelog_manager
-
-    def update_tasklist(self) -> bool:
+    def _update_changelogs(self, manager: Manager):
 
         def extract_commit_body(commit_body: str, level: int = 0) -> list[dict[str, bool | str | list]]:
             pattern = rf'{" " * level * 2}- (.+?)(?=\n{" " * level * 2}- |\Z)'
@@ -592,12 +570,29 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                     apply(commit_entry["subtasks"], subtask.subtasks)
             return
 
-        commits = self.manager.commit.from_git(git=self._git_head)
+        base_version = self.manager.release.latest_version()
+        manager.changelog.update_parent(
+            sha=self._git_base.commit_hash_normal(),
+            local_version=str(base_version),
+            public_version=str(base_version.public),
+        )
+        manager.changelog.update_pull_request(
+            pull=self.pull,
+            labels=self.manager.label.resolve_labels(self.pull.label_names)
+        )
+        if not self.pull.draft:
+            manager.changelog.update_pull_request_reviewers(self.pull)
+        commits = manager.commit.from_pull_request(
+            pull_nr=self.pull.number,
+            head_manager=manager,
+        )
         tasklist = self.manager.protocol.get_tasklist()
-        if not tasklist:
-            return False
         for commit in commits:
-            if not commit.dev_id:
+            for author in commit.authors:
+                manager.changelog.add_pull_contributor(author, role="authors")
+            if commit.committer:
+                manager.changelog.add_pull_contributor(commit.committer, role="committers")
+            if not (tasklist and commit.dev_id):
                 continue
             for task in tasklist.tasks:
                 if task.complete or task.summary.casefold() != commit.summary.casefold():
@@ -607,8 +602,12 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 else:
                     apply(extract_commit_body(commit.body), task.subtasks)
                 break
+        manager.changelog.update_protocol_tasklist(tasklist)
+        manager.changelog.update_protocol_data(self.manager.protocol.get_all_data())
+        manager.changelog.write()
+        manager.user.write_contributors()
         self.manager.protocol.write_tasklist(tasklist)
-        return tasklist.complete
+        return tasklist
 
     def _write_pre_protocol(self, ver: str):
         filepath = self._path_head / self._data_main["issue"]["protocol"]["prerelease_temp_path"]
