@@ -67,7 +67,7 @@ class UserManager:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
                 return User(id=member_id, association="member", data=member_data)
-        for github_user_id, github_user in self._contributors.items():
+        for github_user_id, github_user in self._contributors["github"].items():
             if github_user_id == github_id:
                 return User(id=github_id, association="user", data=github_user)
         data = data_helper.fill_entity(
@@ -75,12 +75,54 @@ class UserManager:
             github_api=self._gh_api,
             cache_manager=self._manager.cache,
             )[0]
+        user = User(id=github_id, association="user", data=data)
         if add_to_contributors:
-            existing_data = self._contributors.setdefault("github", {}).setdefault(github_id, {})
-            ps.update.dict_from_addon(data, existing_data)
-            if update_file:
-                self.write_contributors()
-        return User(id=github_id, association="user", data=data)
+            self.add_contributor(user=user, write=update_file)
+        return user
+
+    def from_github_username(
+        self,
+        username: str,
+        add_to_contributors: bool = False,
+        update_file: bool = False,
+    ):
+        for member_id, member_data in self._manager.data["team"].items():
+            if member_data.get("github", {}).get("id") == username:
+                return User(id=member_id, association="member", data=member_data)
+        for github_user in self._contributors["github"].values():
+            if github_user["github"]["id"] == username:
+                return User(id=github_user["github"]["id"], association="user", data=github_user)
+        data = data_helper.fill_entity(
+            entity={"github": {"id": username}},
+            github_api=self._gh_api,
+            cache_manager=self._manager.cache,
+            )[0]
+        user = User(id=data["github"]["id"], association="user", data=data)
+        if add_to_contributors:
+            self.add_contributor(user=user, write=update_file)
+        return user
+
+    def from_name_and_email(
+        self,
+        name: str,
+        email: str,
+        add_to_contributors: bool = False,
+        update_file: bool = False,
+    ):
+        for member_id, member_data in self._manager.data["team"].items():
+            if member_data["name"]["full"] == name and member_data.get("email", {}).get("id") == email:
+                return User(id=member_id, association="member", data=member_data)
+        for github_user in self._contributors["github"].values():
+            if github_user["name"]["full"] == name and github_user.get("email", {}).get("id") == email:
+                return User(id=github_user["github"]["id"], association="user", data=github_user)
+        user = User(
+            id=f"{name}_{email}",
+            association="external",
+            data={"name": {"full": name}, "email": {"id": email, "url": f"mailto:{email}"}}
+        )
+        if add_to_contributors:
+            self.add_contributor(user=user, write=update_file)
+        return user
 
     def from_issue_author(
         self,
@@ -99,6 +141,20 @@ class UserManager:
             data=user.as_dict,
             github_association=issue.get("author_association"),
         )
+
+    def add_contributor(self, user: User, write: bool = False):
+        github_id = user.get("github", {}).get("id")
+        entity = user.as_dict
+        if github_id:
+            existing_data = self._contributors.setdefault("github", {}).setdefault(github_id, {})
+            ps.update.dict_from_addon(existing_data, entity)
+        else:
+            user_id = f"{user.name.full}_{user.email.id}"
+            existing_data = self._contributors.setdefault("external", {}).setdefault(user_id, {})
+            ps.update.dict_from_addon(existing_data, entity)
+        if write:
+            self.write_contributors()
+        return
 
     def write_contributors(self):
         with open(self._contributors_path, "w") as contributors_file:
