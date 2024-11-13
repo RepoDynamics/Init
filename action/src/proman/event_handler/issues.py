@@ -221,7 +221,7 @@ class IssuesEventHandler(EventHandler):
             self._git_base.push(target="origin", set_upstream=True)
             return head, base_version
 
-        def create_pull(head: Branch, base: Branch) -> dict:
+        def create_pull(head: Branch, base: Branch, labels: list[Label]) -> dict:
             api_response_pull = self._gh_api.pull_create(
                 head=head.name,
                 base=base.name,
@@ -279,7 +279,7 @@ class IssuesEventHandler(EventHandler):
         base_protocol = copy.copy(self.manager.protocol)
         for base_branch, labels in get_base_branches():
             head_branch, base_version = create_head_branch(base=base_branch)
-            pull = create_pull(head=head_branch, base=base_branch)
+            pull = create_pull(head=head_branch, base=base_branch, labels=labels)
             implementation_branches_info.append(pull)
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
@@ -287,6 +287,7 @@ class IssuesEventHandler(EventHandler):
             head_manager.changelog.create_current_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
+                labels=labels,
                 pull=pull,
                 protocol=self.manager.protocol,
                 base_version=base_version,
