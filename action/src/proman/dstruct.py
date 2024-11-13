@@ -162,7 +162,7 @@ class Commit:
         action: ReleaseAction | None = None,
         type_description: str | None = None,
         sha: str | None = None,
-        author: User | None = None,
+        authors: Sequence[User] | None = None,
         committer: User | None = None,
         jinja_env_vars: dict | None = None,
         dev_id: str | None = None,
@@ -176,7 +176,7 @@ class Commit:
         self.action = action
         self.type_description = type_description
         self.sha = sha
-        self.author = author
+        self.authors = authors or []
         self.committer = committer
         self.jinja_env_vars = jinja_env_vars or {}
         self.dev_id = dev_id
@@ -195,7 +195,7 @@ class Commit:
                 ("footer", self.footer),
                 ("action", self.action),
                 ("sha", self.sha),
-                ("author", self.author),
+                ("authors", self.authors),
                 ("committer", self.committer),
                 ("jinja_env_vars", self.jinja_env_vars),
             )
