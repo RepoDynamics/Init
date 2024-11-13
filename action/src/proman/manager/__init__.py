@@ -24,12 +24,13 @@ from proman.manager.user import UserManager
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
-    from github_contexts.github.payload.object import PullRequest
+    from github_contexts.github.payload.object import Issue, PullRequest
     from gittidy import Git
     from pyserials.nested_dict import NestedDict
     from pylinks.api.github import Repo as GitHubRepoAPI
     from pylinks.site.github import Repo as GitHubLink
     from proman.report import Reporter
+    from proman.dstruct import User
 
 
 class Manager:
@@ -135,9 +136,19 @@ class Manager:
     def user(self) -> UserManager:
         return self._user_manager
 
-    def add_pull_request_jinja_env_var(self, pull: PullRequest | dict) -> PullRequest | dict:
+    def add_issue_jinja_env_var(self, issue: Issue):
+        issue = copy.deepcopy(issue)
+        issue["user"] = self.user.from_issue_author(issue)
+        self.jinja_env_vars["issue"] = issue
+        return issue
+
+    def add_pull_request_jinja_env_var(
+        self,
+        pull: PullRequest | dict,
+        author: User | None = None
+    ) -> PullRequest | dict:
         pull = copy.deepcopy(pull)
-        pull["user"] = self.user.from_issue_author(pull)
+        pull["user"] = author or self.user.from_issue_author(pull)
         pull["head"] = self.branch.from_pull_request_branch(pull["head"])
         pull["base"] = self.branch.from_pull_request_branch(pull["base"])
         self.jinja_env_vars["pull_request"] = pull
@@ -161,6 +172,10 @@ class Manager:
 
         return recursive_fill(templates)
 
+    @staticmethod
+    def normalize_github_date(date: str) -> str:
+        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d")
+
 
 def from_metadata_json(
     git_api: Git,
@@ -168,6 +183,7 @@ def from_metadata_json(
     github_context: GitHubContext,
     github_api_actions: GitHubRepoAPI,
     github_api_admin: GitHubRepoAPI,
+    github_link: GitHubLink,
     reporter: Reporter,
     commit_hash: str | None = None,
 ) -> Manager:
@@ -194,6 +210,7 @@ def from_metadata_json(
             github_context=github_context,
             github_api_actions=github_api_actions,
             github_api_admin=github_api_admin,
+            github_link=github_link,
         )
     except controlman.exception.load.ControlManInvalidMetadataError as e:
         logger.critical(

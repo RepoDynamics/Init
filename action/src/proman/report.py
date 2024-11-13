@@ -115,6 +115,14 @@ class Reporter:
         )
         return gha_summary, full_summary
 
+    @staticmethod
+    def api_response_code_block(response_data, api_name: str = "GitHub") -> mdit.element.CodeBlock:
+        return mdit.element.code_block(
+            ps.write.to_yaml_string(response_data),
+            language="yaml",
+            caption=f"{api_name} API Response"
+        )
+
     def _generate_summary(self) -> tuple[mdit.element.InlineImage, mdit.element.Table]:
         failed = False
         skipped = False

@@ -23,7 +23,8 @@ from proman.event_handler.pull_request_target import PullRequestTargetEventHandl
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
-    from proman.dstruct import Label, Commit, IssueForm
+    from typing import Sequence
+    from proman.dstruct import Label, Commit, IssueForm, MainTasklistEntry, SubTasklistEntry
 
 
 class PullRequestEventHandler(PullRequestTargetEventHandler):
@@ -45,6 +46,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         self._git_base.fetch_remote_branches_by_name(branch_names=self.gh_context.base_ref)
         self._git_base.checkout(branch=self.gh_context.base_ref)
 
+        self.manager.protocol.load_from_pull(self.pull)
         self.issue_form: IssueForm = None
         return
 
@@ -73,8 +75,21 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         return
 
     def _run_action_synchronize(self):
-        issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
+        self.manager.protocol.add_timeline_entry()
+
         old_head_manager = self.manager_from_metadata_file(repo="head")
+        changes = self.run_change_detection(branch_manager=old_head_manager)
+        if "dynamic" in changes:
+            new_manager, commit_hash_cca = self.run_cca(
+                branch_manager=old_head_manager,
+                action=InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL,
+            )
+        else:
+            new_manager = old_head_manager
+            commit_hash_cca = None
+
+
+        issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
         head_manager, job_runs, latest_hash = self.run_sync_fix(
             branch_manager=old_head_manager,
             action=InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL,
@@ -84,7 +99,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 and issue_form.commit.action
             ),
         )
-        tasks_complete = self._update_implementation_tasklist()
+        tasks_complete = self.update_tasklist()
         if tasks_complete and not self.reporter.failed:
             status_label = self.manager.label.status_label(IssueStatus.TESTING)
             label_groups = self.manager.label.resolve_labels(self.pull.label_names)
@@ -495,10 +510,6 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     def _update_changelogs(
         self, ver_dist: str, commit_type: str, commit_title: str, hash_base: str, prerelease: bool = False
     ):
-        entry = {
-
-        }
-
 
 
         parser = conventional_commits.create_parser(
@@ -535,7 +546,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         changelog_manager.write_all_changelogs()
         return changelog_manager
 
-    def _update_implementation_tasklist(self) -> bool:
+    def update_tasklist(self) -> bool:
 
         def extract_commit_body(commit_body: str, level: int = 0) -> list[dict[str, bool | str | list]]:
             pattern = rf'{" " * level * 2}- (.+?)(?=\n{" " * level * 2}- |\Z)'
@@ -568,41 +579,36 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 )
             return entries
 
-        def apply(commit_body: list[dict], subtasks: list[dict], level: int = 0):
-            for task in subtasks:
-                if task['complete']:
+        def apply(commit_body: list[dict], subtasks: tuple[SubTasklistEntry, ...], level: int = 0):
+            for subtask in subtasks:
+                if subtask.complete:
                     continue
                 for commit_entry in commit_body:
-                    if commit_entry["description"].casefold() != task["description"].casefold():
+                    if commit_entry["description"].casefold() != subtask.description.casefold():
                         continue
-                    if not (task["subtasks"] and commit_entry["subtasks"]):
-                        task["complete"] = True
+                    if not (subtask.subtasks and commit_entry["subtasks"]):
+                        subtask.mark_as_complete()
                         continue
-                    apply(commit_entry["subtasks"], task["subtasks"])
+                    apply(commit_entry["subtasks"], subtask.subtasks)
             return
-
-        def update_complete(tasklist_entries):
-            for entry in tasklist_entries:
-                if entry['subtasks']:
-                    entry['complete'] = entry['complete'] or update_complete(entry['subtasks'])
-            return all([entry['complete'] for entry in tasklist_entries])
 
         commits = self.manager.commit.from_git(git=self._git_head)
         tasklist = self.manager.protocol.get_tasklist()
         if not tasklist:
             return False
         for commit in commits:
-            for entry in tasklist:
-                if entry['complete'] or entry["commit"].summary.casefold() != commit.summary.casefold():
+            if not commit.dev_id:
+                continue
+            for task in tasklist.tasks:
+                if task.complete or task.summary.casefold() != commit.summary.casefold():
                     continue
-                if not (entry["subtasks"] and commit.body):
-                    entry["complete"] = True
+                if not (task.subtasks and commit.body):
+                    task.complete = True
                 else:
-                    apply(extract_commit_body(commit.body), entry["subtasks"])
+                    apply(extract_commit_body(commit.body), task.subtasks)
                 break
-        complete = update_complete(tasklist)
-        self.manager.protocol.update_tasklist(tasklist)
-        return complete
+        self.manager.protocol.write_tasklist(tasklist)
+        return tasklist.complete
 
     def _write_pre_protocol(self, ver: str):
         filepath = self._path_head / self._data_main["issue"]["protocol"]["prerelease_temp_path"]

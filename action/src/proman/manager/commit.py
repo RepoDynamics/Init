@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING as _TYPE_CHECKING
 from functools import partial
 
 import conventional_commits
+from conventional_commits import ConventionalCommitMessage
 from loggerman import logger as _logger
 
 from proman.dtype import ReleaseAction
@@ -44,6 +45,17 @@ class CommitManager:
         return
 
     def create_from_msg(self, message: str) -> Commit:
+
+        def get_dev_id(conv_msg: ConventionalCommitMessage):
+            def get_scope(data):
+                scope = data.get("scope", tuple())
+                return {scope} if isinstance(scope, str) else set(scope)
+
+            for commit_id, commit_data in self._manager.data["commit.dev"].items():
+                if commit_data["type"] == msg.type and get_scope(commit_data) == set(msg.scope):
+                    return commit_id
+            return
+
         try:
             msg = self._msg_parser.parse(message)
             _logger.info(
@@ -60,6 +72,7 @@ class CommitManager:
                 description=msg.description,
                 body=msg.body,
                 footer=msg.footer,
+                dev_id=get_dev_id(msg)
             )
         except Exception as e:
             _logger.warning(
@@ -115,3 +128,7 @@ class CommitManager:
             revision_range or f"{self._manager.gh_context.hash_before}..{self._manager.gh_context.hash_after}"
         )
         return [self.create_from_msg(commit["msg"]) for commit in commits]
+
+    def from_pull_request(self, pull_nr: int | str):
+        commits = self._manager.gh_api_actions.pull_commits(number=pull_nr)
+

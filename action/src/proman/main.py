@@ -205,6 +205,7 @@ class EventHandler:
             github_api_admin=self._gh_api_admin,
             reporter=self.reporter,
             commit_hash=commit_hash,
+            github_link=self._gh_link,
         )
 
     def manager_from_loaded_data(
@@ -219,6 +220,7 @@ class EventHandler:
             github_context=self.gh_context,
             github_api_actions=self._gh_api,
             github_api_admin=self._gh_api_admin,
+            github_link=self._gh_link,
         )
 
     def run_sync_fix(
@@ -486,7 +488,3 @@ class EventHandler:
     @property
     def current_proman_version(self) -> str:
         return pkgdata.get_version_from_caller()
-
-    @staticmethod
-    def normalize_github_date(date: str) -> str:
-        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d")

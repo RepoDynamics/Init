@@ -11,7 +11,9 @@ import pyserials as ps
 import mdit
 
 if _TYPE_CHECKING:
-    from proman.manager import Manager
+    from github_contexts.github.payload.object.issue import Issue
+    from proman.manager import Manager, ProtocolManager
+    from proman.dstruct import IssueForm, User, Tasklist, Version
 
 
 class ChangelogManager:
@@ -23,14 +25,17 @@ class ChangelogManager:
         return
 
     @property
-    def changelog(self) -> dict:
+    def full(self) -> dict:
         return self._changelog
 
+    @property
+    def current(self) -> dict:
+        return self._changelog.setdefault("current", {})
+
     def update_current(self, data: dict):
-        current = self._changelog.setdefault("current", {})
         ps.update.dict_from_addon(
             data=data,
-            addon=current,
+            addon=self.current,
         )
         self._changelog["current"] = data
         logger.info(
@@ -47,6 +52,105 @@ class ChangelogManager:
         with open(path or self._path, "w") as changelog_file:
             changelog_file.write(out)
         return
+
+    def create_current_from_issue(
+        self,
+        issue_form: IssueForm,
+        issue: Issue,
+        pull: dict,
+        protocol: ProtocolManager,
+        base_version: Version,
+    ):
+        self.update_type_id(issue_form.id)
+        self.update_issue(issue=issue)
+        self.update_milestone(issue=issue)
+        self.update_protocol(protocol=protocol)
+        self.current["pull_request"] = {
+            "number": pull["number"],
+            "id": pull["id"],
+            "node_id": pull["node_id"],
+            "url": pull["html_url"],
+            "created_at": self._manager.normalize_github_date(pull["created_at"]),
+            "creator": pull["user"].changelog_entry,
+            "assignees": sorted(
+                [assignee.changelog_entry for assignee in issue_form.pull_assignees],
+                key=lambda changelog_entry: changelog_entry["id"]
+            ),
+            "contributors": [],
+            "title": pull["title"],
+            "internal": True,
+            "base": {
+                "ref": pull["base"].name,
+                "sha": pull["base"].sha,
+                "version": str(base_version),
+            },
+            "head": {
+                "ref": pull["head"].name,
+                "sha": pull["head"].sha,
+            },
+        }
+        return
+
+    def update_protocol(self, protocol: ProtocolManager):
+        self.update_protocol_tasklist(protocol.get_tasklist())
+        self.update_protocol_data(protocol.get_all_data())
+        return
+
+    def update_protocol_data(self, data: dict):
+        self.current.setdefault("protocol", {})["data"] = data
+        return
+
+    def update_protocol_tasklist(self, tasklist: Tasklist):
+        self.current.setdefault("protocol", {})["tasks"] = tasklist.as_list
+        return
+
+    def update_type_id(self, type_id: str):
+        self.current["type_id"] = type_id
+        return
+
+    def update_milestone(self, issue: Issue):
+        if issue.milestone:
+            self.current["milestone"] = {
+                "number": issue.milestone.number,
+                "id": issue.milestone.id,
+                "node_id": issue.milestone.node_id,
+                "url": issue.milestone.html_url,
+                "title": issue.milestone.title,
+                "description": issue.milestone.description,
+                "due_on": self._manager.normalize_github_date(issue.milestone.due_on),
+                "created_at": self._manager.normalize_github_date(issue.milestone.created_at),
+            }
+        return
+
+    def update_issue(self, issue: Issue):
+        assignee_gh_ids = []
+        if issue.assignee:
+            assignee_gh_ids.append(issue.assignee.id)
+        if issue.assignees:
+            for assignee in issue.assignees:
+                if assignee:
+                    assignee_gh_ids.append(assignee.id)
+        self.current["issue"] = {
+            "number": issue.number,
+            "id": issue.id,
+            "node_id": issue.node_id,
+            "url": issue.html_url,
+            "created_at": self._manager.normalize_github_date(issue.created_at),
+            "assignees": [
+                self._manager.user.get_from_github_rest_id(assignee_gh_id, add_to_contributors=True).changelog_entry
+                for assignee_gh_id in set(assignee_gh_ids)
+            ],
+            "creator": self._manager.user.from_issue_author(issue, add_to_contributors=True).changelog_entry,
+            "title": issue.title,
+        }
+        return
+
+
+
+
+
+
+
 
 
 

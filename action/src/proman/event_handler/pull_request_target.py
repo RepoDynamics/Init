@@ -24,7 +24,6 @@ class PullRequestTargetEventHandler(EventHandler):
         self.pull_author = pull_internalized["user"]
         self.branch_base: Branch = pull_internalized["base"]
         self.branch_head: Branch = pull_internalized["head"]
-        self.manager.protocol.load_from_pull(self.pull)
         logger.info("Base Branch Resolution", str(self.branch_base))
         logger.info("Head Branch Resolution", str(self.branch_head))
         return

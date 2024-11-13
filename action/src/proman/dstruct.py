@@ -2,7 +2,7 @@ from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING, NamedTuple as _NamedTuple
 import datetime
-from dataclasses import dataclass as _dataclass
+from dataclasses import dataclass as _dataclass, asdict
 
 import jinja2
 
@@ -165,6 +165,7 @@ class Commit:
         author: User | None = None,
         committer: User | None = None,
         jinja_env_vars: dict | None = None,
+        dev_id: str | None = None,
     ):
         self._writer = writer
         self.type = type
@@ -178,6 +179,7 @@ class Commit:
         self.author = author
         self.committer = committer
         self.jinja_env_vars = jinja_env_vars or {}
+        self.dev_id = dev_id
         return
 
     def __str__(self):
@@ -375,3 +377,105 @@ class User(PropertyDict):
         if url:
             return f"[{name}]({url})"
         return name
+
+
+
+class Tasklist:
+
+    def __init__(self, tasks: list[MainTasklistEntry]):
+        self.tasks = tasks
+        return
+
+    @property
+    def complete(self) -> bool:
+        return all(task.complete for task in self.tasks)
+
+    @property
+    def as_list(self) -> list[dict]:
+        return [task.as_dict for task in self.tasks]
+
+
+class TasklistEntry:
+
+    def __init__(
+        self,
+        body: str,
+        complete: bool,
+        subtasks: tuple[SubTasklistEntry, ...],
+    ):
+        self.body = body
+        self._complete = complete
+        self.subtasks = subtasks
+        return
+
+    def mark_as_complete(self):
+        self._complete = True
+        for subtask in self.subtasks:
+            subtask.mark_as_complete()
+        return
+
+    @property
+    def complete(self) -> bool:
+        if self._complete:
+            return True
+        self._complete = all(subtask.complete for subtask in self.subtasks)
+        return self._complete
+
+    @property
+    def as_dict(self) -> dict:
+        return {
+            "body": self.body,
+            "complete": self.complete,
+            "subtasks": [subtask.as_dict for subtask in self.subtasks]
+        }
+
+
+class MainTasklistEntry(TasklistEntry):
+
+    def __init__(
+        self,
+        commit: Commit,
+        body: str,
+        complete: bool,
+        subtasks: tuple[SubTasklistEntry, ...],
+    ):
+        self._commit = commit
+        super().__init__(body=body, complete=complete, subtasks=subtasks)
+        return
+
+    @property
+    def summary(self) -> str:
+        return self._commit.summary
+
+    @property
+    def commit_id(self) -> str:
+        return self._commit.dev_id
+
+    @property
+    def as_dict(self) -> dict:
+        return super().as_dict | {
+            "description": self._commit.description,
+            "type_id": self.commit_id,
+        }
+
+
+class SubTasklistEntry(TasklistEntry):
+
+    def __init__(
+        self,
+        description: str,
+        body: str,
+        complete: bool,
+        subtasks: tuple[SubTasklistEntry, ...],
+    ):
+        self.description = description
+        super().__init__(body=body, complete=complete, subtasks=subtasks)
+        return
+
+    @property
+    def summary(self) -> str:
+        return self.description
+
+    @property
+    def as_dict(self) -> dict:
+        return super().as_dict | {"description": self.description}

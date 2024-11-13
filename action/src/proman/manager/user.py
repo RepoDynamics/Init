@@ -61,7 +61,7 @@ class UserManager:
     def get_from_github_rest_id(
         self,
         github_id: int,
-        add_to_contributors: bool = True,
+        add_to_contributors: bool = False,
         update_file: bool = False,
     ) -> User:
         for member_id, member_data in self._manager.data["team"].items():
@@ -82,8 +82,17 @@ class UserManager:
                 self.write_contributors()
         return User(id=github_id, association="user", data=data)
 
-    def from_issue_author(self, issue: Issue | PullRequest | dict) -> User:
-        user = self.get_from_github_rest_id(issue["user"]["id"])
+    def from_issue_author(
+        self,
+        issue: Issue | PullRequest | dict,
+        add_to_contributors: bool = False,
+        update_file: bool = False,
+    ) -> User:
+        user = self.get_from_github_rest_id(
+            issue["user"]["id"],
+            add_to_contributors=add_to_contributors,
+            update_file=update_file,
+        )
         return User(
             id=user.id,
             association=user.association,

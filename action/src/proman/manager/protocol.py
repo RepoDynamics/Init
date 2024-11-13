@@ -9,9 +9,11 @@ import pyserials as ps
 from controlman.file_gen.forms import pre_process_existence
 
 from proman.dtype import IssueStatus
+from proman.dstruct import Tasklist, MainTasklistEntry, SubTasklistEntry
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
+    from typing import Sequence
     from github_contexts.github.payload.object.user import User as GitHubUser
     from github_contexts.github.payload.object.issue import Issue
     from github_contexts.github.payload.object.pull_request import PullRequest
@@ -99,6 +101,12 @@ class ProtocolManager:
         pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
         match = re.search(pattern, self.protocol, flags=re.DOTALL)
         return match.group(1) if match else ""
+
+    def get_all_data(self) -> dict[str, str]:
+        return {
+            data_id: self.get_data(id=data_id, spec=data_config)
+            for data_id, data_config in self._manager.data.get("doc.protocol.data", {}).items()
+        }
 
     def add_data(
         self,
@@ -216,7 +224,7 @@ class ProtocolManager:
             )
         return self.protocol
 
-    def get_tasklist(self) -> list[dict[str, bool | str | list]]:
+    def get_tasklist(self) -> Tasklist | None:
         """
         Extract the implementation tasklist from the pull request body.
 
@@ -237,7 +245,7 @@ class ProtocolManager:
 
         log_title = "Tasklist Extraction"
 
-        def extract(tasklist_string: str, level: int = 0) -> list[dict[str, bool | str | list]]:
+        def extract(tasklist_string: str, level: int = 0) -> list[MainTasklistEntry] | list[SubTasklistEntry]:
             # Regular expression pattern to match each task item
             task_pattern = rf'{" " * level * 2}- \[(X| )\] (.+?)(?=\n{" " * level * 2}- \[|\Z)'
             # Find all matches
@@ -262,39 +270,47 @@ class ProtocolManager:
                     sublist = []
                 body = "\n".join([line.removeprefix(" " * (level + 1) * 2) for line in body.splitlines()])
                 task_is_complete = complete or (
-                    sublist and all([subtask['complete'] for subtask in sublist])
+                    sublist and all(subtask.complete for subtask in sublist)
                 )
                 if level == 0:
                     conv_msg = self._manager.commit.create_from_msg(summary)
-                    tasklist_entries.append({
-                        'complete': task_is_complete,
-                        'commit': conv_msg,
-                        'body': body.rstrip(),
-                        'subtasks': sublist
-                    })
+                    tasklist_entries.append(
+                        MainTasklistEntry(
+                            commit=conv_msg,
+                            body=body.rstrip(),
+                            complete=task_is_complete,
+                            subtasks=tuple(sublist),
+                        )
+                    )
                 else:
-                    tasklist_entries.append({
-                        'complete': task_is_complete,
-                        'description': summary.strip(),
-                        'body': body.rstrip(),
-                        'subtasks': sublist
-                    })
+                    tasklist_entries.append(
+                        SubTasklistEntry(
+                            description=summary.strip(),
+                            body=body.rstrip(),
+                            complete=task_is_complete,
+                            subtasks=tuple(sublist),
+                        )
+                    )
             return tasklist_entries
 
-        tasklist = self.get_data(id="tasklist", spec=self._manager.data["doc.protocol.tasklist"]).strip()
+        tasklist_str = self.get_data(id="tasklist", spec=self._manager.data["doc.protocol.tasklist"]).strip()
         body_md = mdit.element.code_block(self.protocol, language="markdown", caption="Protocol")
-        if not tasklist:
+        if not tasklist_str:
             logger.warning(
                 log_title,
                 "No tasklist found in the protocol.",
                 body_md,
             )
-            return []
-        tasklist = extract(tasklist)
+            return
+        tasklist = Tasklist(extract(tasklist_str))
         logger.success(
             log_title,
             "Extracted tasklist from the document.",
-            mdit.element.code_block(ps.write.to_yaml_string(tasklist), language="yaml", caption="Tasklist"),
+            mdit.element.code_block(
+                ps.write.to_yaml_string(tasklist.as_list),
+                language="yaml",
+                caption="Tasklist"
+            ),
             body_md,
         )
         return tasklist
@@ -308,33 +324,29 @@ class ProtocolManager:
             for pos in ("start", "end")
         )
 
-    def update_tasklist(self, entries: list[dict[str, bool | Commit | list]]) -> str:
+    def write_tasklist(self, tasklist: Tasklist) -> str:
         """Write an implementation tasklist as Markdown string
         and update it in the protocol.
 
         Parameters
         ----------
-        entries
+        tasklist
             A list of dictionaries, each representing a tasklist entry.
             The format of each dictionary is the same as that returned by
             `_extract_tasklist_entries`.
         """
         string = []
 
-        def write(entry_list, level=0):
+        def write(entry_list: Sequence[MainTasklistEntry | SubTasklistEntry], level=0):
             for entry in entry_list:
-                check = 'X' if entry['complete'] else ' '
-                if level == 0:
-                    summary = entry["commit"].summary
-                else:
-                    summary = entry['description']
-                string.append(f"{' ' * level * 2}- [{check}] {summary.strip()}")
-                if entry["body"]:
-                    for line in entry["body"].splitlines():
+                check = 'X' if entry.complete else ' '
+                string.append(f"{' ' * level * 2}- [{check}] {entry.summary.strip()}")
+                if entry.body:
+                    for line in entry.body.splitlines():
                         string.append(f"{' ' * (level + 1) * 2}{line}")
-                write(entry['subtasks'], level + 1)
+                write(entry.subtasks, level + 1)
 
-        write(entries)
+        write(tasklist.tasks)
         tasklist = "\n".join(string).strip()
         return self.add_data(
             id="tasklist",
