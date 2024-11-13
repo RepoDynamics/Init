@@ -14,10 +14,8 @@ from proman.exception import ProManException
 
 if TYPE_CHECKING:
     from typing import Sequence
-    from github_contexts.github.payload.object.user import User as GitHubUser
     from github_contexts.github.payload.object.issue import Issue
     from github_contexts.github.payload.object.pull_request import PullRequest
-    from proman.manager.commit import Commit
     from proman.manager import Manager
     from proman.dstruct import IssueForm
 
