@@ -10,10 +10,13 @@ from loggerman import logger
 import pyserials as ps
 import mdit
 
+from proman.dtype import LabelType
+
 if _TYPE_CHECKING:
-    from github_contexts.github.payload.object.issue import Issue
+    from typing import Literal
+    from github_contexts.github.payload.object import Issue, PullRequest, Milestone
     from proman.manager import Manager, ProtocolManager
-    from proman.dstruct import IssueForm, User, Tasklist, Version
+    from proman.dstruct import IssueForm, User, Tasklist, Version, Label
 
 
 class ChangelogManager:
@@ -53,17 +56,71 @@ class ChangelogManager:
             changelog_file.write(out)
         return
 
+    def update_parent(
+        self,
+        sha: str,
+        local_version: str,
+        public_version: str
+    ):
+        self.current["parent"] = {
+            "local_version": local_version,
+            "public_version": public_version,
+            "sha": sha
+        }
+        return
+
+    def update_pull_request(
+        self,
+        pull: PullRequest,
+        labels: dict[LabelType, list[Label]],
+    ):
+
+        label_list = []
+        for label_type, label_entries in labels.items():
+            if label_type in (LabelType.CUSTOM_SINGLE, LabelType.CUSTOM_GROUP):
+                label_list.extend(label_entries)
+        add = {
+            "additions": pull.additions,
+            "assignees": self._create_assignees_from_issue(pull),
+            "changed_files": pull.changed_files,
+            "commits": pull.commits,
+            "deletions": pull.deletions,
+            "title": pull.title,
+            "labels": self._create_labels(label_list),
+        }
+        self.current["pull_request"].update(add)
+        if pull.milestone:
+            self.update_milestone(pull.milestone)
+        return
+
+    def update_pull_request_reviewers(self, pull: PullRequest):
+        reviewers = [
+            self._manager.user.get_from_github_rest_id(reviewer.id, add_to_contributors=True)
+            for reviewer in pull.requested_reviewers
+        ]
+        self.current["pull_request"].update({"reviewers": self._create_user_list(reviewers)})
+        return
+
+    def add_pull_contributor(self, contributor: User, role: Literal["authors", "committers"]):
+        contributors = self.current["pull_request"][role]
+        contributor_entry = contributor.changelog_entry
+        if contributor_entry not in contributors:
+            contributors.append(contributor_entry)
+        return
+
     def create_current_from_issue(
         self,
         issue_form: IssueForm,
         issue: Issue,
+        labels: list[Label],
         pull: dict,
         protocol: ProtocolManager,
         base_version: Version,
     ):
         self.update_type_id(issue_form.id)
         self.update_issue(issue=issue)
-        self.update_milestone(issue=issue)
+        if issue.milestone:
+            self.update_milestone(milestone=issue.milestone)
         self.update_protocol(protocol=protocol)
         self.current["pull_request"] = {
             "number": pull["number"],
@@ -72,11 +129,11 @@ class ChangelogManager:
             "url": pull["html_url"],
             "created_at": self._manager.normalize_github_date(pull["created_at"]),
             "creator": pull["user"].changelog_entry,
-            "assignees": sorted(
-                [assignee.changelog_entry for assignee in issue_form.pull_assignees],
-                key=lambda changelog_entry: changelog_entry["id"]
-            ),
-            "contributors": [],
+            "assignees": self._create_user_list(issue_form.pull_assignees),
+            "labels": self._create_labels(labels),
+            "authors": [],
+            "commiters": [],
+            "reviewers": self._create_user_list(issue_form.review_assignees),
             "title": pull["title"],
             "internal": True,
             "base": {
@@ -108,21 +165,34 @@ class ChangelogManager:
         self.current["type_id"] = type_id
         return
 
-    def update_milestone(self, issue: Issue):
-        if issue.milestone:
-            self.current["milestone"] = {
-                "number": issue.milestone.number,
-                "id": issue.milestone.id,
-                "node_id": issue.milestone.node_id,
-                "url": issue.milestone.html_url,
-                "title": issue.milestone.title,
-                "description": issue.milestone.description,
-                "due_on": self._manager.normalize_github_date(issue.milestone.due_on),
-                "created_at": self._manager.normalize_github_date(issue.milestone.created_at),
-            }
+    def update_milestone(self, milestone: Milestone):
+        self.current["milestone"] = {
+            "number": milestone.number,
+            "id": milestone.id,
+            "node_id": milestone.node_id,
+            "url": milestone.html_url,
+            "title": milestone.title,
+            "description": milestone.description,
+            "due_on": self._manager.normalize_github_date(milestone.due_on),
+            "created_at": self._manager.normalize_github_date(milestone.created_at),
+        }
         return
 
     def update_issue(self, issue: Issue):
+
+        self.current["issue"] = {
+            "number": issue.number,
+            "id": issue.id,
+            "node_id": issue.node_id,
+            "url": issue.html_url,
+            "created_at": self._manager.normalize_github_date(issue.created_at),
+            "assignees": self._create_assignees_from_issue(issue),
+            "creator": self._manager.user.from_issue_author(issue, add_to_contributors=True).changelog_entry,
+            "title": issue.title,
+        }
+        return
+
+    def _create_assignees_from_issue(self, issue: Issue | PullRequest):
         assignee_gh_ids = []
         if issue.assignee:
             assignee_gh_ids.append(issue.assignee.id)
@@ -130,23 +200,30 @@ class ChangelogManager:
             for assignee in issue.assignees:
                 if assignee:
                     assignee_gh_ids.append(assignee.id)
-        self.current["issue"] = {
-            "number": issue.number,
-            "id": issue.id,
-            "node_id": issue.node_id,
-            "url": issue.html_url,
-            "created_at": self._manager.normalize_github_date(issue.created_at),
-            "assignees": [
-                self._manager.user.get_from_github_rest_id(assignee_gh_id, add_to_contributors=True).changelog_entry
-                for assignee_gh_id in set(assignee_gh_ids)
-            ],
-            "creator": self._manager.user.from_issue_author(issue, add_to_contributors=True).changelog_entry,
-            "title": issue.title,
-        }
-        return
+        return self._create_user_list(
+            [
+                self._manager.user.get_from_github_rest_id(
+                    assignee_gh_id, add_to_contributors=True
+                ) for assignee_gh_id in set(assignee_gh_ids)
+            ]
+        )
 
+    @staticmethod
+    def _create_user_list(users: list[User]) -> list[dict]:
+        return sorted(
+            [user.changelog_entry for user in users],
+            key=lambda changelog_entry: changelog_entry["id"]
+        )
 
-
+    @staticmethod
+    def _create_labels(labels: list[Label]):
+        out = []
+        for label in labels:
+            if label.category is LabelType.CUSTOM_GROUP:
+                out.append({"group": label.group_id, "id": label.id})
+            elif label.category is LabelType.CUSTOM_SINGLE:
+                out.append({"group": "single", "id": label.id})
+        return out
 
 
 
