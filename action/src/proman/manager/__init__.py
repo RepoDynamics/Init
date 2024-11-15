@@ -30,7 +30,7 @@ if _TYPE_CHECKING:
     from pylinks.api.github import Repo as GitHubRepoAPI
     from pylinks.site.github import Repo as GitHubLink
     from proman.report import Reporter
-    from proman.dstruct import User
+    from proman.dstruct import User, Token
 
 
 class Manager:
@@ -44,6 +44,8 @@ class Manager:
         github_api_actions: GitHubRepoAPI,
         github_api_admin: GitHubRepoAPI,
         github_link: GitHubLink,
+        zenodo_token: Token,
+        zenodo_sandbox_token: Token,
     ):
         self._data = data
         self._git = git_api
@@ -52,6 +54,8 @@ class Manager:
         self._gh_api_actions = github_api_actions
         self._gh_api_admin = github_api_admin
         self._gh_link = github_link
+        self._zenodo_token = zenodo_token
+        self._zenodo_sandbox_token = zenodo_sandbox_token
 
         self._cache_manager = CacheManager(
             path_local_cache=self._git.repo_path / data["local.cache.path"],
@@ -136,6 +140,14 @@ class Manager:
     def user(self) -> UserManager:
         return self._user_manager
 
+    @property
+    def zenodo_token(self) -> Token:
+        return self._zenodo_token
+
+    @property
+    def zenodo_sandbox_token(self) -> Token:
+        return self._zenodo_sandbox_token
+
     def add_issue_jinja_env_var(self, issue: Issue):
         issue = copy.deepcopy(issue)
         issue["user"] = self.user.from_issue_author(issue)
@@ -185,6 +197,8 @@ def from_metadata_json(
     github_api_admin: GitHubRepoAPI,
     github_link: GitHubLink,
     reporter: Reporter,
+    zenodo_token: Token,
+    zenodo_sandbox_token: Token,
     commit_hash: str | None = None,
 ) -> Manager:
     branch_name = git_api.current_branch_name()
@@ -211,6 +225,8 @@ def from_metadata_json(
             github_api_actions=github_api_actions,
             github_api_admin=github_api_admin,
             github_link=github_link,
+            zenodo_token=zenodo_token,
+            zenodo_sandbox_token=zenodo_sandbox_token,
         )
     except controlman.exception.load.ControlManInvalidMetadataError as e:
         logger.critical(
