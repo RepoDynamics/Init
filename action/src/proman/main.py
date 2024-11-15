@@ -57,6 +57,7 @@ class EventHandler:
         output_writer: OutputManager,
         admin_token: Token,
         zenodo_token: Token,
+        zenodo_sandbox_token: Token,
         path_repo_base: str,
         path_repo_head: str,
     ):
@@ -143,6 +144,7 @@ class EventHandler:
         self._reporter = reporter
         self._output_manager = output_writer
         self._zenodo_token = zenodo_token
+        self._zenodo_sandbox_token = zenodo_sandbox_token
 
         in_repo_creation_event = (
             self.gh_context.event_name is _ghc_enum.EventType.PUSH
@@ -206,6 +208,8 @@ class EventHandler:
             reporter=self.reporter,
             commit_hash=commit_hash,
             github_link=self._gh_link,
+            zenodo_token=self._zenodo_token,
+            zenodo_sandbox_token=self._zenodo_sandbox_token,
         )
 
     def manager_from_loaded_data(
@@ -221,6 +225,8 @@ class EventHandler:
             github_api_actions=self._gh_api,
             github_api_admin=self._gh_api_admin,
             github_link=self._gh_link,
+            zenodo_token=self._zenodo_token,
+            zenodo_sandbox_token=self._zenodo_sandbox_token,
         )
 
     def run_sync_fix(
