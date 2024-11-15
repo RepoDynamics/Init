@@ -31,6 +31,7 @@ def run():
         _actionman.env_var.read(name="RD_PROMAN__ADMIN_TOKEN", typ=str), name="GitHub Admin"
     )
     zenodo_token = Token(_actionman.env_var.read(name="RD_PROMAN__ZENODO_TOKEN", typ=str), name="Zenodo")
+    zenodo_sandbox_token = Token(_actionman.env_var.read(name="RD_PROMAN__ZENODO_SANDBOX_TOKEN", typ=str), name="Zenodo Sandbox")
     github_context = _github_contexts.github.create(
         context=_actionman.env_var.read(name="RD_PROMAN__GITHUB_CONTEXT", typ=dict)
     )
@@ -46,6 +47,7 @@ def run():
                 output_writer=output_writer,
                 admin_token=admin_token,
                 zenodo_token=zenodo_token,
+                zenodo_sandbox_token=zenodo_sandbox_token,
                 path_repo_base=path_repo_base,
                 path_repo_head=path_repo_head,
             ).run()
