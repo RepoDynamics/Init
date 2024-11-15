@@ -298,6 +298,7 @@ class IssueForm(_NamedTuple):
     pull_assignees: list[User]
     review_assignees: list[User]
     labels: list[Label]
+    role: dict[str, dict[str, int] | None]
     pre_process: dict
     post_process: dict
     name: str
@@ -350,16 +351,14 @@ class User(PropertyDict):
         association: Literal["member", "user", "external"],
         data: dict,
         github_association: AuthorAssociation | None = None,
+        current_role: dict[str, int] | None = None
     ):
-        data["id"] = id
-        data["association"] = association
-        data["github_association"] = github_association.value.lower() if github_association else None
+        self.id = id
+        self.association = association
+        self.github_association = github_association.value.lower() if github_association else None
+        self.current_role = current_role
         super().__init__(data)
         return
-
-    @property
-    def changelog_entry(self) -> dict[str, str]:
-        return {"id": self.id, "association": self.association}
 
     @property
     def md_name(self) -> str:
@@ -378,6 +377,8 @@ class User(PropertyDict):
             return f"[{name}]({url})"
         return name
 
+    def __eq__(self, other):
+        return isinstance(other, User) and self.id == other.id and self.association == other.association
 
 
 class Tasklist:
