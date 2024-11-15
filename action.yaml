@@ -14,6 +14,10 @@ inputs:
     description: A Zenodo API token.
     required: false
     default: ""
+  zenodo-sandbox-token:
+    description: A Zenodo Sandbox API token.
+    required: false
+    default: ""
 #  package-build:
 #    required: false
 #    default: 'false'
@@ -206,6 +210,7 @@ runs:
       env:
         RD_PROMAN__ADMIN_TOKEN: ${{ inputs.admin-token }}
         RD_PROMAN__ZENODO_TOKEN: ${{ inputs.zenodo-token }}
+        RD_PROMAN__ZENODO_SANDBOX_TOKEN: ${{ inputs.zenodo-sandbox-token }}
         RD_PROMAN__GITHUB_CONTEXT: ${{ toJSON(github) }}
         RD_PROMAN__PATH_REPO_BASE: repo_base
         RD_PROMAN__PATH_REPO_HEAD: repo_head
