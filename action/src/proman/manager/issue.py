@@ -69,6 +69,14 @@ class IssueManager:
                 self._manager.label.from_id(group_id, label_id)
                 for group_id, label_id in issue_form.get("labels", [])
             ],
+            role={
+                "submitter": None,
+                "issue_assignee": None,
+                "pull_assignee": None,
+                "review_assignee": None,
+                "commit_author": None,
+                "commit_committer": None,
+            } | self._manager.data.get("issue.form_default.role", {}) | issue_form.get("role", {}),
             pre_process=issue_form.get("pre_process", {}),
             post_process=issue_form.get("post_process", {}),
             name=issue_form["name"],
