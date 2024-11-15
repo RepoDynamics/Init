@@ -47,12 +47,12 @@ class CommitManager:
     def create_from_msg(self, message: str) -> Commit:
 
         def get_dev_id(conv_msg: ConventionalCommitMessage):
-            def get_scope(data):
+            def get_scope(data: dict):
                 scope = data.get("scope", tuple())
                 return {scope} if isinstance(scope, str) else set(scope)
 
             for commit_id, commit_data in self._manager.data["commit.dev"].items():
-                if commit_data["type"] == msg.type and get_scope(commit_data) == set(msg.scope):
+                if commit_data["type"] == conv_msg.type and get_scope(commit_data) == set(msg.scope):
                     return commit_id
             return
 
