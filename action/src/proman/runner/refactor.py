@@ -112,11 +112,13 @@ class PreCommitHooks:
         self._commit_hash: str = ""
         return
 
-    def _process_config(self, config: dict | str | Path) -> Path:
+    def _process_config(self, config: dict) -> Path:
+        if not config.get("exclude"):
+            config["exclude"] = r"^\.github/workflows/[^/]+\.(?i:ya?ml)$"
+        config_str = pyserials.write.to_yaml_string(data=config)
         path = self._path_root.parent / ".__temporary_pre_commit_config__.yaml"
-        config = pyserials.write.to_yaml_string(data=config)
         with open(path, "w") as f:
-            f.write(config)
+            f.write(config_str)
         return path
 
     def remove_temp_config_file(self):
