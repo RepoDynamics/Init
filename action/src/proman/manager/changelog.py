@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import copy
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 from pathlib import Path
@@ -9,31 +10,85 @@ import datetime
 from loggerman import logger
 import pyserials as ps
 import mdit
+import controlman
 
 from proman.dtype import LabelType
 
 if _TYPE_CHECKING:
     from typing import Literal
+    from pathlib import Path
     from github_contexts.github.payload.object import Issue, PullRequest, Milestone
     from proman.manager import Manager, ProtocolManager
     from proman.dstruct import IssueForm, User, Tasklist, Version, Label
 
 
-class ChangelogManager:
+class BareChangelogManager:
 
-    def __init__(self, manager: Manager):
-        self._manager = manager
-        self._path = self._manager.git.repo_path / self._manager.data["doc.changelog.path"]
-        self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else {}
+    def __init__(self, repo_path: Path):
+        self._path = repo_path / controlman.const.FILEPATH_CHANGELOG
+        self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else []
+        if not self._changelog or not self._changelog[0].get("ongoing"):
+            self._current = {"ongoing": True}
+            self._changelog.insert(0, self._current)
+        else:
+            self._current = self._changelog[0]
+        self._read_current = copy.deepcopy(self._current)
         return
 
     @property
-    def full(self) -> dict:
-        return self._changelog
+    def current(self) -> dict:
+        return self._current
 
     @property
-    def current(self) -> dict:
-        return self._changelog.setdefault("current", {})
+    def full(self) -> list:
+        return self._changelog
+
+    def get_release(self, platform: Literal["zenodo", "zenodo_sandbox", "github"]) -> dict | None:
+        return self.current.get("release", {}).get(platform)
+
+    def update_date(self):
+        self.current["date"] = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
+        return
+
+    def update_release_github(self, id: int, node_id: str):
+        release = self.current.setdefault("release", {})
+        release["github"] = {"id": id, "node_id": node_id}
+        return
+
+    def update_release_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
+        release = self.current.setdefault("release", {})
+        release["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
+        return
+
+    def update_version(self, version: str):
+        self.current["version"] = version
+
+    def finalize(self):
+        self.current.pop("ongoing")
+        return self.current
+
+    def write_file(self):
+        if self._current == self._read_current:
+            return False
+        self._path.write_text(
+            ps.write.to_json_string(self._changelog, sort_keys=True, indent=4).strip() + "\n",
+            newline="\n"
+        )
+        return
+
+
+class ChangelogManager(BareChangelogManager):
+
+    def __init__(self, manager: Manager):
+        self._manager = manager
+        super().__init__(repo_path=self._manager.git.repo_path)
+        return
+
+    def finalize_current(self, version: Version):
+        new_changelog = self._changelog.pop("current")
+        self._changelog[str(version)] = new_changelog
+        self.write()
+        return new_changelog
 
     def update_current(self, data: dict):
         ps.update.dict_from_addon(
@@ -49,13 +104,6 @@ class ChangelogManager:
             )
         )
         return
-
-    def write(self, path: Path | None = None):
-        out = ps.write.to_json_string(self._changelog, sort_keys=True, indent=4)
-        with open(path or self._path, "w") as changelog_file:
-            changelog_file.write(out)
-        return
-
 
     def update_pull_request(
         self,
@@ -77,7 +125,7 @@ class ChangelogManager:
                 label_list.extend(label_entries)
         add = {
             "additions": pull.additions,
-            "assignees": self._update_contributors_with_assignees(pull),
+            "assignees": self._update_contributors_with_assignees(pull, issue_form=issue_form),
             "changed_files": pull.changed_files,
             "commits": pull.commits,
             "deletions": pull.deletions,
@@ -249,9 +297,10 @@ class ChangelogManager:
         id: str,
         roles: dict[str, int],
     ):
+        category = "member" if association == "member" else "external"
         contributor_roles = self.current.setdefault(
             "contributor", {}
-        ).setdefault(association, {}).setdefault(id, {}).setdefault("role", {})
+        ).setdefault(category).setdefault(id, {}).setdefault("role", {})
         for role_id, role_priority in roles.items():
             if role_id not in contributor_roles:
                 contributor_roles[role_id] = role_priority
