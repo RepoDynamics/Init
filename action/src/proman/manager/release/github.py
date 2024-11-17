@@ -39,6 +39,11 @@ class GitHubReleaseManager:
             discussion_category_name=discussion_category_name,
             make_latest=make_latest,
         )
+        logger.success(
+            "GitHub Release Draft",
+            "Created new release draft:",
+            str(response)
+        )
         out = {k: v for k, v in response.items() if k in ("id", "node_id")}
         self._manager.changelog.update_release_github(**out)
         return out, True
