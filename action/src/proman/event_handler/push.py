@@ -186,12 +186,12 @@ class PushEventHandler(EventHandler):
         vars_is_updated = self.manager.variable.write_file()
         if vars_is_updated:
             hash_after = self.manager.git.commit(
-                message=self.manager.commit.create_auto("vars_sync")
+                message=str(self.manager.commit.create_auto("vars_sync"))
             )
         changelog_is_updated = self.manager.changelog.write_file()
         if changelog_is_updated:
             hash_after = self.manager.git.commit(
-                message=self.manager.commit.create_auto("changelog_sync")
+                message=str(self.manager.commit.create_auto("changelog_sync"))
             )
         new_manager, commit_hash_cca = self.run_cca(
             branch_manager=self.manager,
