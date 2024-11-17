@@ -85,7 +85,7 @@ class GitHubReleaseManager:
         output = self._make_output(
             release_id=draft_data["id"],
             publish=publish and not config["draft"],
-            asset_config=config["asset"],
+            asset_config=self._manager.fill_jinja_templates(config["asset"], env_vars={"version": tag.version}),
         )
         return output, changelog_updated
 
