@@ -21,6 +21,7 @@ from proman.manager.protocol import ProtocolManager
 from proman.manager.release import ReleaseManager
 from proman.manager.repo import RepoManager
 from proman.manager.user import UserManager
+from proman.manager.variable import VariableManager
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
@@ -70,6 +71,7 @@ class Manager:
         self._user_manager = UserManager(self)
         self._repo_manager = RepoManager(self)
         self._release_manager = ReleaseManager(self)
+        self._variable_manager = VariableManager(self)
         return
 
     @property
@@ -139,6 +141,10 @@ class Manager:
     @property
     def user(self) -> UserManager:
         return self._user_manager
+
+    @property
+    def variable(self) -> VariableManager:
+        return self._variable_manager
 
     @property
     def zenodo_token(self) -> Token:
