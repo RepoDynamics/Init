@@ -159,6 +159,11 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.AMEND,
             future_versions={self.gh_context.event.repository.default_branch: "0.0.0"},
         )
+        self.run_refactor(
+            branch_manager=main_manager,
+            action=InitCheckAction.AMEND,
+            ref_range=None,
+        )
         with logger.sectioning("Repository Update"):
             main_manager.git.push(force_with_lease=True)
         main_manager.repo.reset_labels()
@@ -188,7 +193,6 @@ class PushEventHandler(EventHandler):
             hash_after = self.manager.git.commit(
                 message=self.manager.commit.create_auto("changelog_sync")
             )
-        self.run_change_detection(branch_manager=self.manager)
         new_manager, commit_hash_cca = self.run_cca(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
