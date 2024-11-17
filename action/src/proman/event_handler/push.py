@@ -1,6 +1,6 @@
 """Push event handler."""
 from __future__ import annotations as _annotations
-
+from typing import TYPE_CHECKING
 import shutil
 
 from github_contexts import github as _gh_context
@@ -11,6 +11,9 @@ import fileex as _fileex
 from proman.dstruct import Version
 from proman.dtype import InitCheckAction
 from proman.main import EventHandler
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class PushEventHandler(EventHandler):
@@ -107,6 +110,35 @@ class PushEventHandler(EventHandler):
         return self._run_branch_edited_main_normal()
 
     def _run_repository_creation(self):
+
+        def move_and_merge_directories(src: Path, dest: Path):
+            """
+            Moves the source directory into the destination directory.
+            All files and subdirectories from src will be moved to dest.
+            Existing files in dest will be overwritten.
+
+            Parameters:
+                src (str): Path to the source directory.
+                dest (str): Path to the destination directory.
+            """
+            for item in src.iterdir():
+                dest_item = dest / item.name
+                if item.is_dir():
+                    if dest_item.exists():
+                        # Merge the subdirectory
+                        move_and_merge_directories(item, dest_item)
+                        item.rmdir()  # Remove the now-empty source directory
+                    else:
+                        shutil.move(str(item), str(dest_item))  # Move the whole directory
+                else:
+                    # Move or overwrite the file
+                    if dest_item.exists():
+                        dest_item.unlink()  # Remove the existing file
+                    shutil.move(str(item), str(dest_item))
+            # Remove the source directory if it's empty
+            src.rmdir()
+            return
+
         with logger.sectioning("Repository Preparation"):
             _fileex.directory.delete_contents(
                 path=self._path_head,
@@ -116,10 +148,7 @@ class PushEventHandler(EventHandler):
                 path=self._path_head / ".github",
                 exclude=["workflows"],
             )
-            template_dir = self._path_head / "template"
-            for item in template_dir.iterdir():
-                shutil.move(item, self._path_head)
-            shutil.rmtree(template_dir)
+            move_and_merge_directories(self._path_head / "template", self._path_head)
             self._git_head.commit(
                 message=f"init: Create repository from RepoDynamics template v{self.current_proman_version}.",
                 amend=True,
@@ -141,7 +170,11 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
-        version = "0.0.0"
+        version = self.head_commit_msg.footer.version or "0.0.0"
+        self.manager.changelog.update_version(str(version))
+        self.manager.changelog.update_date()
+
+
         new_manager, job_runs, latest_hash = self.run_sync_fix(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
