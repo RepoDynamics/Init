@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from heapq import merge
 from typing import TYPE_CHECKING
 import time
 import re
@@ -253,53 +254,58 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             f"Merge development branch '{self.branch_head.name}' "
             f"to release branch '{self.branch_base.name}'"
         )
+        head_manager = self.manager_from_metadata_file(repo="head")
+        self._update_changelogs(manager=head_manager, issue_form=self.issue_form)
         next_ver = self.manager.release.calculate_next_version(
             issue_num=self.branch_head.issue,
             deploy_type=IssueStatus.DEPLOY_FINAL,
             action=self.issue_form.commit.action,
         )
-        head_manager = self.manager_from_metadata_file(repo="head")
-        issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
-
-        if self.issue_form.commit.action:
-
-
-        hash_base = self._git_base.commit_hash_normal()
-        logger.info(
-            "Version Resolution",
-            str(primary_commit),
-            f"Base Version: {ver_base}",
-            f"Next Version: {next_ver}",
-            f"Full Version: {ver_dist}",
-            f"Base Hash: {hash_base}",
-        )
-
-        commits = self._gh_api.pull_commits(number=self.pull.number)
-
-        changelog_manager = self._update_changelogs(
-            ver_dist=ver_dist,
-            commit_type=primary_commit.conv_type,
-            commit_title=self.pull.title,
-            hash_base=hash_base,
-            prerelease=False,
-        )
-        self._git_head.commit(
-            message=f'{self._data_main["commit.auto.sync.type"]}: Update changelogs',
-            stage="all"
-        )
-        if (  # If a new major release is being made
+        if not self.issue_form.commit.action:
+            changelog = head_manager.changelog.finalize_current(next_ver)
+            commit_hash_changelog = head_manager.git.commit(
+                message=self.manager.commit.create_auto("changelog_sync")
+            )
+            head_manager.git.push()
+            self.issue_form.commit.jinja_env_vars = self.jinja_env_vars | {
+                "changelog": changelog,
+                "version": next_ver,
+            }
+            commit_msg = self.issue_form.commit.conv_msg
+            merge_response = self._gh_api_admin.pull_merge(
+                number=self.pull.number,
+                commit_title=commit_msg.summary,
+                commit_message=commit_msg.body,
+                sha=commit_hash_changelog,
+                merge_method="squash",
+            )
+            self._output_manager.set(
+                main_manager=self.manager,
+                branch_manager=head_manager,
+                version=next_ver,
+                ref=merge_response["sha"],
+                ref_before=self.branch_base.sha,
+                website_build=True,
+                website_deploy=self.branch_base.type is BranchType.MAIN,
+                package_lint=True,
+                test_lint=True,
+                package_test=True,
+                package_build=True,
+            )
+            return
+        # If a new major release is being made,
+        # make a new release branch from the base branch for the previous major version
+        if (
             self.branch_base.type is BranchType.MAIN
-            and ver_base.major > 0
-            and primary_commit.group is CommitGroup.PRIMARY_ACTION
-            and primary_commit.action is ReleaseAction.MAJOR
+            and self.issue_form.commit.action is ReleaseAction.MAJOR
+            and next_ver.public.major > 0
         ):
-            # Make a new release branch from the base branch for the previous major version
             self._git_base.checkout(
-                branch=self._data_main.new_release(major_version=ver_base.major), create=True
+                branch=self.manager.branch.new_release(major_version=next_ver.public.major - 1),
+                create=True,
             )
             self._git_base.push(target="origin", set_upstream=True)
             self._git_base.checkout(branch=self.branch_base.name)
-
         # Update the metadata in main branch to reflect the new release
         if next_ver:
             if self.branch_base.type is BranchType.MAIN:
