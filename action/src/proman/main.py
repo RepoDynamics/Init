@@ -157,14 +157,14 @@ class EventHandler:
         self._git_base, self._git_head = init_git_api()
         self._path_base = self._git_base.repo_path
         self._path_head = self._git_head.repo_path
+        self._jinja_env_vars = {
+            "event": self.gh_context.event_name.value,
+            "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
+            "context": self.gh_context,
+            "payload": self.gh_context.event,
+        }
         self.manager: Manager = None
         if not in_repo_creation_event:
-            self._jinja_env_vars = {
-                "event": self.gh_context.event_name.value,
-                "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
-                "context": self.gh_context,
-                "payload": self.gh_context.event,
-            }
             self.manager = self.manager_from_metadata_file(repo="base")
             self._jinja_env_vars.update({"ccc": self.manager.data, "sender": self.payload_sender})
         return
