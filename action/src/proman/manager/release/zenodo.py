@@ -206,7 +206,7 @@ class ZenodoManager(BareZenodoManager):
                 outputs.append(
                     self._make_output(
                         deposition_id=draft_data["id"],
-                        asset_config=self._manager.data["release.zenodo.asset"],
+                        asset_config=self._manager.fill_jinja_templates(self._manager.data["release.zenodo.asset"], env_vars={"version": version}),
                         publish=publish
                     )
                 )
