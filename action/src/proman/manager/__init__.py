@@ -71,7 +71,7 @@ class Manager:
         self._user_manager = UserManager(self)
         self._repo_manager = RepoManager(self)
         self._variable_manager = VariableManager(self)
-        self._release_manager = ReleaseManager(self) # must be after self._variable_manager as ZenodoManager needs it during init
+        self._release_manager = ReleaseManager(self) # must be after self._variable_manager as ZenodoManager needs it at init
         return
 
     @property
