@@ -52,12 +52,15 @@ class GitHubReleaseManager:
         draft_data, changelog_updated = self.get_or_make_draft(tag=tag)
         config = self._manager.data["release.github"]
         is_prerelease = bool(tag.version.pre)
-        if is_prerelease:
-            make_latest = "false"
-        elif config["order"] == "date":
-            make_latest = "true"
+        if publish:
+            if is_prerelease:
+                make_latest = "false"
+            elif config["order"] == "date":
+                make_latest = "true"
+            else:
+                make_latest = "true" if on_main else "false"
         else:
-            make_latest = "true" if on_main else "false"
+            make_latest = None
         update_response = self._manager.gh_api_actions.release_update(
             release_id=draft_data["id"],
             tag_name=str(tag),
