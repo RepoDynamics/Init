@@ -1,0 +1,274 @@
+from __future__ import annotations as _annotations
+
+from typing import TYPE_CHECKING as _TYPE_CHECKING
+
+from loggerman import logger
+import pylinks as pl
+
+from proman.manager.release.asset import create_releaseman_intput
+
+if _TYPE_CHECKING:
+    from typing import Literal
+    from versionman.pep440_semver import PEP440SemVer
+    from proman.manager.user import User
+    from proman.manager import Manager
+    from proman.dstruct import Token
+    from proman.manager.variable import BareVariableManager
+    from proman.manager.changelog import BareChangelogManager
+
+
+class BareZenodoManager:
+
+    _ROLE_TYPES = [
+        "ContactPerson",
+        "DataCollector",
+        "DataCurator",
+        "DataManager",
+        "Distributor",
+        "Editor",
+        "HostingInstitution",
+        "Producer",
+        "ProjectLeader",
+        "ProjectManager",
+        "ProjectMember",
+        "RegistrationAgency",
+        "RegistrationAuthority",
+        "RelatedPerson",
+        "Researcher",
+        "ResearchGroup",
+        "RightsHolder",
+        "Supervisor",
+        "Sponsor",
+        "WorkPackageLeader",
+        "Other",
+    ]
+
+    def __init__(
+        self,
+        token: Token,
+        token_sandbox: Token,
+        variable_manager: BareVariableManager,
+        changelog_manager: BareChangelogManager,
+    ):
+        self._api = {
+            True: pl.api.zenodo(token=token_sandbox.get(), sandbox=True),
+            False: pl.api.zenodo(token=token.get(), sandbox=False),
+        }
+        self._has_token = {
+            True: bool(token_sandbox),
+            False: bool(token),
+        }
+        self._varman = variable_manager
+        self._changelog = changelog_manager
+        return
+
+    def get_or_make_drafts(self) -> tuple[dict | None, dict | None, bool, bool]:
+        """Get current draft depositions in both Zenodo and Zenodo Sandbox,
+        or create new ones if any of them doesn't exist.
+
+        Returns
+        -------
+        main_draft_data, sandbox_draft_data, vars_updated, changelog_updated
+        """
+        main_draft_data, main_vars_updated, main_changelog_updated = self.get_or_make_draft(sandbox=False)
+        sandbox_draft_data, sandbox_vars_updated, sandbox_changelog_updated = self.get_or_make_draft(sandbox=True)
+        return (
+            main_draft_data,
+            sandbox_draft_data,
+            main_vars_updated or sandbox_vars_updated,
+            main_changelog_updated or sandbox_changelog_updated,
+        )
+
+    def get_or_make_draft(self, sandbox: bool) -> tuple[dict | None, bool, bool]:
+        """Get the current draft deposition, or create a new one if a draft does not exist.
+
+        This also creates the project concept, if no concept ID is defined already.
+
+        Parameters
+        ----------
+        sandbox
+            Whether the deposition is for Zenodo Sandbox versus the main Zenodo repository.
+
+        Returns
+        -------
+        draft_data, vars_updated, changelog_updated
+        """
+        if not self._has_token[sandbox]:
+            return None, False, False
+        record = self._changelog.get_release(self._var_key(sandbox))
+        if record and record["draft"]:
+            return record, False, False
+        api = self._api[sandbox]
+        concept_record = self._varman.setdefault(self._var_key(sandbox), {}).setdefault("concept", {})
+        if concept_record:
+            deposition = api.deposition_new_version(deposition_id=int(concept_record["id"]) + 1)
+            draft = {
+                "id": deposition["id"],
+                "doi": self._doi(deposition["id"], sandbox=sandbox),
+            }
+            self._changelog.update_release_zenodo(draft=True, sandbox=sandbox, **draft)
+            return draft, False, True
+        deposition = api.deposition_create()
+        concept, draft = [
+            {
+                "id": _id,
+                "doi": self._doi(_id, sandbox=sandbox)
+            } for _id in (deposition["conceptrecid"], deposition["id"])
+        ]
+        concept_record.update(concept)
+        self._changelog.update_release_zenodo(draft=True, sandbox=sandbox, **draft)
+        return draft, True, True
+
+    def _upload_metadata(self, deposition_id: str | int, metadata: dict, sandbox: bool):
+        return self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
+
+    @staticmethod
+    def _make_output(deposition_id: str | int, asset_config: dict, publish: bool):
+        return {
+            "deposition_id": deposition_id,
+            "delete_assets": "all",
+            "assets": create_releaseman_intput(asset_config=asset_config, target="zenodo"),
+            "publish": publish,
+        }
+
+    @staticmethod
+    def _doi(deposition_id: str | int, sandbox: bool):
+        doi_prefix = "10.5072" if sandbox else "10.5281"  # https://developers.zenodo.org/#testing
+        return f"{doi_prefix}/zenodo.{deposition_id}"
+
+    @staticmethod
+    def _var_key(sandbox: bool) -> Literal["zenodo", "zenodo_sandbox"]:
+        return "zenodo_sandbox" if sandbox else "zenodo"
+
+
+class ZenodoManager(BareZenodoManager):
+    
+    def __init__(self, manager: Manager):
+        self._manager = manager
+        super().__init__(
+            token=self._manager.zenodo_token,
+            token_sandbox=self._manager.zenodo_sandbox_token,
+            variable_manager=self._manager.variable,
+            changelog_manager=self._manager.changelog,
+        )
+        return
+
+    def update_drafts(
+        self,
+        version: PEP440SemVer | str,
+        publish_main: bool = False,
+        publish_sandbox: bool = False,
+    ):
+        main_draft_data, sandbox_draft_data, vars_updated, changelog_updated = self.get_or_make_drafts()
+        outputs = []
+        for draft_data, publish, sandbox in (
+            (main_draft_data, publish_main, False),
+            (sandbox_draft_data, publish_sandbox, True),
+        ):
+            if draft_data:
+                self._update_metadata(
+                    deposition_id=draft_data["id"],
+                    sandbox=sandbox,
+                    version=version,
+                )
+                outputs.append(
+                    self._make_output(
+                        deposition_id=draft_data["id"],
+                        asset_config=self._manager.data["release.zenodo.asset"],
+                        publish=publish
+                    )
+                )
+            else:
+                outputs.append(None)
+        return outputs[0], outputs[1], vars_updated, changelog_updated
+
+    def _update_metadata(self, deposition_id: str | int, sandbox: bool, version: PEP440SemVer | str):
+        metadata = self._create_metadata(version=version)
+        return self._upload_metadata(deposition_id=deposition_id, metadata=metadata, sandbox=sandbox)
+
+    def _create_metadata(self, version: PEP440SemVer | str) -> dict:
+        # https://developers.zenodo.org/#deposit-metadata
+        def create_person(user: User) -> dict:
+            out = {"name": user["name"]["full_inverted"]}
+            if "affiliation" in user:
+                out["affiliation"] = user["affiliation"]
+            if "orcid" in user:
+                out["orcid"] = user["orcid"]["id"]
+            if "gnd" in user:
+                out["gnd"] = user["gnd"]["id"]
+            return out
+
+        def create_contributor(entry: str | dict):
+
+            def add_from_role_types(role_types: list[str]):
+                output_contributors = []
+                for role_type in role_types:
+                    if role_type not in self._ROLE_TYPES:
+                        logger.error(
+                            "Zenodo Contributors Metadata",
+                            f"The role type '{role_type}' defined for contributor '{entry}' is invalid. "
+                            "The entry will not be included in metadata."
+                        )
+                    contributor_entry = person | {"type": role_type}
+                    if contributor_entry not in output_contributors:
+                        output_contributors.append(contributor_entry)
+                return output_contributors
+
+            def add_from_role_ids(person_role_ids: list[str]):
+                role_types = [
+                    self._manager.data["role"][person_role_id]["type"] for person_role_id in person_role_ids
+                ]
+                return add_from_role_types(role_types)
+
+            user = self._manager.user.from_id(entry)
+            person = create_person(user=user)
+            if isinstance(entry, str) or not any(key in entry for key in ("role_ids", "role_types")):
+                role_ids = user.get("role", {}).keys()
+                if not role_ids:
+                    logger.error(
+                        "Zenodo Contributors Metadata",
+                        f"Contributor '{entry}' has no defined roles and will not be included in metadata."
+                    )
+                    return []
+                return add_from_role_ids(role_ids)
+            outputs = []
+            if "role_types" in entry:
+                input_types = entry["role_types"]
+                if isinstance(input_types, str):
+                    input_types = [input_types]
+                outputs.extend(add_from_role_types(input_types))
+            if "role_ids" in entry:
+                input_ids = entry["role_ids"]
+                if isinstance(input_ids, str):
+                    input_ids = [input_ids]
+                more_outputs = add_from_role_ids(input_ids)
+                for output in more_outputs:
+                    if output not in outputs:
+                        outputs.append(output)
+            return outputs
+
+        metadata = {
+            k: v for k, v in self._manager.data["release.zenodo"].items()
+            if k not in ("asset", "concept_id", "sandbox_concept_id", "contributors") and v
+        }
+        metadata["creators"] = [
+            create_person(user=self._manager.user.from_id(entity_id))
+            for entity_id in metadata["creators"]
+        ]
+        contributors_data = self._manager.data["release.zenodo.contributors"]
+        if contributors_data:
+            contributors_entry = []
+            for contributor_data in contributors_data:
+                contributors_entry.extend(create_contributor(entry=contributor_data))
+            metadata["contributors"] = contributors_entry
+        if "notes" in metadata:
+            metadata["notes"] = self._manager.fill_jinja_template(metadata["notes"])
+        if "communities" in metadata:
+            metadata["communities"] = [{"identifier": identifier} for identifier in metadata["communities"]]
+        if "grants" in metadata:
+            metadata["grants"] = [{"id": grant["id"]} for grant in metadata["grants"]]
+        metadata |= {
+            "version": str(version),
+            "preserve_doi": True,
+        }
+        return metadata
