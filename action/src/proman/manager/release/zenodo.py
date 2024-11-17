@@ -93,15 +93,32 @@ class BareZenodoManager:
         -------
         draft_data, vars_updated, changelog_updated
         """
+        title = f"{self._platform_name(sandbox)} Draft"
         if not self._has_token[sandbox]:
             return None, False, False
         record = self._changelog.get_release(self._var_key(sandbox))
         if record and record["draft"]:
+            logger.success(
+                f"{title} Retrieval",
+                "Retrieved current draft from changelog:",
+                logger.data_block(record)
+            )
             return record, False, False
+        else:
+            logger.info(
+                f"{title} Retrieval",
+                "No draft found in the current changelog:",
+                logger.data_block(self._changelog.current)
+            )
         api = self._api[sandbox]
         concept_record = self._varman.setdefault(self._var_key(sandbox), {}).setdefault("concept", {})
         if concept_record.get("id"):
             deposition = api.deposition_new_version(deposition_id=int(concept_record["id"]) + 1)
+            logger.success(
+                f"{title} Creation",
+                "Created new version draft:",
+                logger.data_block(deposition)
+            )
             draft = {
                 "id": deposition["id"],
                 "doi": self._doi(deposition["id"], sandbox=sandbox),
@@ -109,6 +126,11 @@ class BareZenodoManager:
             self._changelog.update_release_zenodo(draft=True, sandbox=sandbox, **draft)
             return draft, False, True
         deposition = api.deposition_create()
+        logger.success(
+            f"{title} Concept Creation",
+            "Created new concept draft:",
+            logger.data_block(deposition)
+        )
         concept, draft = [
             {
                 "id": _id,
@@ -120,7 +142,13 @@ class BareZenodoManager:
         return draft, True, True
 
     def _upload_metadata(self, deposition_id: str | int, metadata: dict, sandbox: bool):
-        return self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
+        response = self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
+        logger.success(
+            f"{self._platform_name(sandbox)} Draft Metadata Update",
+            "Updated metadata for deposition:",
+            logger.data_block(response)
+        )
+        return
 
     @staticmethod
     def _make_output(deposition_id: str | int, asset_config: dict, publish: bool):
@@ -139,6 +167,10 @@ class BareZenodoManager:
     @staticmethod
     def _var_key(sandbox: bool) -> Literal["zenodo", "zenodo_sandbox"]:
         return "zenodo_sandbox" if sandbox else "zenodo"
+
+    @staticmethod
+    def _platform_name(sandbox: bool) -> str:
+        return "Zenodo Sandbox" if sandbox else "Zenodo"
 
 
 class ZenodoManager(BareZenodoManager):
