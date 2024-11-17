@@ -16,11 +16,13 @@ from proman.exception import ProManException
 if TYPE_CHECKING:
     from typing import Literal
     from gittidy import Git
+    from proman.report import Reporter
 
 
 def run(
     git: Git,
     config: dict,
+    reporter: Reporter,
     ref_range: tuple[str, str] = None,
     action: Literal["report", "amend", "commit"] = "amend",
     commit_message: str = "",
@@ -58,6 +60,7 @@ def run(
         action=action,
         commit_message=commit_message,
         ref_range=ref_range,
+        reporter=reporter,
     )
     try:
         output = hook_runner.run()
@@ -73,6 +76,7 @@ class PreCommitHooks:
         self,
         git: Git,
         config: dict,
+        reporter: Reporter,
         action: Literal["report", "amend", "commit"] = "report",
         commit_message: str = "",
         ref_range: tuple[str, str] = None,
@@ -82,6 +86,7 @@ class PreCommitHooks:
         self._commit_message = commit_message
         self._path_root = git.repo_path
         self._config_filepath = self._process_config(config)
+        self._reporter = reporter
         if ref_range:
             self._from_ref, self._to_ref = ref_range
             scope = ["--from-ref", self._from_ref, "--to-ref", self._to_ref]
@@ -162,23 +167,30 @@ class PreCommitHooks:
         return output
 
     def _run_hooks(self, validation_run: bool) -> dict:
+
+        def raise_error(error: str):
+            self.remove_temp_config_file()
+            logger.critical("Unexpected Pre-Commit Error", error)
+            self._reporter.add(
+                name="hooks",
+                status="fail",
+                summary="An unexpected error occurred.",
+                body=error,
+            )
+            raise _exception.ProManException()
+
         result = self._shell_runner.run(
             command=[],
             log_title=f"{"Validation" if validation_run else "Fix"} Run",
             log_level_exit_code="error" if validation_run else "notice",
         )
-        error_intro = "Unexpected Pre-Commit Error"
         if result.err:
-            self.remove_temp_config_file()
-            logger.critical(error_intro, result.err)
-            raise _exception.ProManException(error_intro, sgr.remove_sequence(result.err))
+            raise_error(sgr.remove_sequence(result.err))
         out_plain = sgr.remove_sequence(result.out)
         for line in out_plain.splitlines():
             for prefix in ("An error has occurred", "An unexpected error has occurred", "[ERROR]"):
                 if line.startswith(prefix):
-                    self.remove_temp_config_file()
-                    logger.critical(error_intro, out_plain)
-                    raise _exception.ProManException(error_intro, out_plain)
+                    raise_error(out_plain)
         if validation_run:
             self.remove_temp_config_file()
         results = _process_shell_output(out_plain)
