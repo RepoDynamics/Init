@@ -128,7 +128,6 @@ class PushEventHandler(EventHandler):
                     if dest_item.exists():
                         # Merge the subdirectory
                         move_and_merge_directories(item, dest_item)
-                        item.rmdir()  # Remove the now-empty source directory
                     else:
                         shutil.move(str(item), str(dest_item))  # Move the whole directory
                 else:
