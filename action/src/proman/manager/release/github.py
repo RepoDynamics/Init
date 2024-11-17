@@ -70,7 +70,7 @@ class GitHubReleaseManager:
             discussion_category_name=self._manager.fill_jinja_template(config["discussion_category_name"]),
             make_latest=make_latest,
         )
-        logger.succes(
+        logger.success(
             "GitHub Release Update",
             str(update_response)
         )
