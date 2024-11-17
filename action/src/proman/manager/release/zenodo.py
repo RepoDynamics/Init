@@ -100,7 +100,7 @@ class BareZenodoManager:
             return record, False, False
         api = self._api[sandbox]
         concept_record = self._varman.setdefault(self._var_key(sandbox), {}).setdefault("concept", {})
-        if concept_record:
+        if concept_record.get("id"):
             deposition = api.deposition_new_version(deposition_id=int(concept_record["id"]) + 1)
             draft = {
                 "id": deposition["id"],
