@@ -448,6 +448,7 @@ class EventHandler:
             action=input_action.value,
             commit_message=str(commit_msg),
             config=config,
+            reporter=self.reporter,
         )
         passed = hooks_output["passed"]
         modified = hooks_output["modified"]
