@@ -11,6 +11,7 @@ import fileex as _fileex
 from proman.dstruct import Version
 from proman.dtype import InitCheckAction
 from proman.main import EventHandler
+from versionman.pep440_semver import PEP440SemVer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -170,27 +171,51 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init_phase(self):
-        version = self.head_commit_msg.footer.version or "0.0.0"
+        version = self.head_commit_msg.footer.version or PEP440SemVer("0.0.0")
+        version_tag = self.manager.release.create_version_tag(version)
+        self.manager.release.github.get_or_make_draft(tag=version_tag)
+        self.manager.release.zenodo.get_or_make_drafts()
         self.manager.changelog.update_version(str(version))
         self.manager.changelog.update_date()
 
-
-        new_manager, job_runs, latest_hash = self.run_sync_fix(
+        hash_after = self.gh_context.hash_after
+        vars_is_updated = self.manager.variable.write_file()
+        if vars_is_updated:
+            hash_after = self.manager.git.commit(
+                message=self.manager.commit.create_auto("vars_sync")
+            )
+        changelog_is_updated = self.manager.changelog.write_file()
+        if changelog_is_updated:
+            hash_after = self.manager.git.commit(
+                message=self.manager.commit.create_auto("changelog_sync")
+            )
+        self.run_change_detection(branch_manager=self.manager)
+        new_manager, commit_hash_cca = self.run_cca(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
             future_versions={self.gh_context.ref_name: version},
         )
+        commit_hash_refactor = self.run_refactor(
+            branch_manager=new_manager,
+            action=InitCheckAction.COMMIT,
+            ref_range=(self.gh_context.hash_before, hash_after),
+        ) if new_manager.data["tool.pre-commit.config.file.content"] else None
         new_manager.repo.update_all(manager_before=self.manager, update_rulesets=False)
+        gh_release_output, _ = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
+        zenodo_output, zenodo_sandbox_output, _, _ = new_manager.release.zenodo.update_drafts(version=version)
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
-            version=Version(version),
-            ref=latest_hash,
+            version=version_tag,
+            ref=commit_hash_refactor or commit_hash_cca or hash_after,
             website_deploy=True,
             package_lint=True,
             test_lint=True,
             package_test=True,
             package_build=True,
+            github_release_config=gh_release_output,
+            zenodo_config=zenodo_output,
+            zenodo_sandbox_config=zenodo_sandbox_output,
         )
         return
 

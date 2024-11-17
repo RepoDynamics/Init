@@ -9,6 +9,7 @@ import mdit
 import versioningit
 
 from proman.dstruct import VersionTag, Version
+from proman import const
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -54,7 +55,9 @@ class OutputManager:
         package_build: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
-        package_release: bool = False,
+        github_release_config: dict | None = None,
+        zenodo_config: dict | None = None,
+        zenodo_sandbox_config: dict | None = None,
     ):
         logger.info(
             "Output Set",
@@ -85,15 +88,11 @@ class OutputManager:
                 publish_testpypi=package_publish_testpypi,
                 publish_pypi=package_publish_pypi,
             )
-        if package_release:
+        if github_release_config or zenodo_config or zenodo_sandbox_config:
             self.set_release(
-                name=release_name,
-                tag=release_tag,
-                body=release_body,
-                prerelease=release_prerelease,
-                make_latest=release_make_latest,
-                discussion_category_name=release_discussion_category_name,
-                package_artifact_name=package_artifact_name,
+                config_github=github_release_config,
+                config_zenodo=zenodo_config,
+                config_zenodo_sandbox=zenodo_sandbox_config,
             )
         return
 
@@ -273,29 +272,20 @@ class OutputManager:
             setattr(self, f"_out_publish_{target}", publish_out)
         return
 
-    def set_release(self):
-        gh_data = self._branch_manager.data["release.github"]
-        github_config = {
-            "tag_name": self._version.name,
-            "name": self._fill_jinja(gh_data["name"]),
-            "body": self._fill_jinja(gh_data["body"]),
-            "draft": gh_data["draft"],
-            "prerelease": gh_data["prerelease"],
-            "discussion_category_name": self._fill_jinja(gh_data["discussion_category_name"]),
-
-        }
-
-
-
-        self._out_release["github"] = {
-            "name": name,
-            "tag-name": tag,
-            "body": body,
-            "prerelease": prerelease,
-            "make-latest": make_latest,
-            "discussion_category_name": discussion_category_name,
-            "website-artifact-name": website_artifact_name,
-            "package-artifact-name": package_artifact_name
+    def set_release(
+        self,
+        config_github: dict | None = None,
+        config_zenodo: dict | None = None,
+        config_zenodo_sandbox: dict | None = None,
+    ):
+        self._out_release = {
+            "name": self._branch_manager.data["workflow.job.release.name"],
+            "ref": self._ref,
+            "repo-path": const.OUTPUT_RELEASE_REPO_PATH,
+            "artifact-path": const.OUTPUT_RELEASE_ARTIFACT_PATH,
+            "github": config_github or {},
+            "zenodo": config_zenodo or {},
+            "zenodo-sandbox": config_zenodo_sandbox or {},
         }
         return
 

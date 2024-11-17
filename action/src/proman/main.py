@@ -347,11 +347,13 @@ class EventHandler:
                 commit_msg = self.manager.commit.create_auto(id="config_sync") if action in [
                     InitCheckAction.COMMIT, InitCheckAction.PULL
                 ] else ""
-                commit_hash_before = new_branch_manager.git.commit_hash_normal()
                 commit_hash_after = new_branch_manager.git.commit(
                     message=str(commit_msg) if action is not InitCheckAction.AMEND else "",
                     stage="all",
                     amend=(action is InitCheckAction.AMEND),
+                )
+                commit_hash_before = new_branch_manager.git.commit_hash_normal(
+                    parent=2 if action is InitCheckAction.AMEND else 1
                 )
                 commit_hash = self.run_refactor(
                     branch_manager=new_branch_manager,

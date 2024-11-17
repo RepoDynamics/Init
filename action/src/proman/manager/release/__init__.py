@@ -187,16 +187,17 @@ class ReleaseManager:
         env_vars: dict | None = None,
         git: Git | None = None,
     ) -> VersionTag:
-        tag_data = self._manager.data["tag.version"]
-        prefix = tag_data["prefix"]
-        tag = f"{prefix}{ver}"
+        version_tag = self.create_version_tag(version=ver)
         msg = self._manager.fill_jinja_template(
-            tag_data["message"],
+            self._manager.data["tag.version.message"],
             {"version": ver} | (env_vars or {}),
         )
         git = git or self._manager.git
-        git.create_tag(tag=tag, message=msg)
-        return VersionTag(tag_prefix=prefix, version=ver)
+        git.create_tag(tag=str(version_tag), message=msg)
+        return version_tag
+
+    def create_version_tag(self, version: PEP440SemVer | str) -> VersionTag:
+        return VersionTag(tag_prefix=self._manager.data["tag.version.prefix"], version=version)
 
     def _prepare_citation_for_release(
         self,
