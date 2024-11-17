@@ -15,6 +15,7 @@ if _TYPE_CHECKING:
     from github_contexts.github.payload.object.issue import Issue
     from github_contexts.github.payload.object.pull_request import PullRequest
     from proman.manager import Manager
+    from proman.dstruct import IssueForm
 
 
 class UserManager:
@@ -28,6 +29,26 @@ class UserManager:
         ) if self._contributors_path.is_file() else {}
         return
 
+    def from_id(self, entity_id: str | dict):
+        """Get a user (member or contributor) from their ID.
+
+        The ID can either be a string, or a dictionary with keys 'id' and 'member'.
+        If it's a string, both member IDs and contributor IDs are searched,
+        otherwise, the boolean value 'member' defines the search group.
+        """
+        if isinstance(entity_id, str):
+            entity = self._manager.data["team"].get(entity_id) or self._contributors.get(entity_id)
+            if not entity:
+                raise ValueError(f"Person '{entity_id}' not found in team or contributor data.")
+            return User(
+                id=entity_id,
+                association="member" if bool(self._manager.data["team"].get(entity_id)) else "external",
+                data=entity,
+            )
+        elif entity_id["member"]:
+            return self.from_member_id(entity_id["id"])
+        return self.from_contributor_id(entity_id["id"])
+
     def from_member_id(self, member_id: str) -> User:
         member = self._manager.data["team"].get(member_id)
         if not member:
@@ -38,6 +59,17 @@ class UserManager:
             data=member,
         )
 
+    def from_contributor_id(self, contributor_id: str) -> User:
+        contributor = self._contributors.get(contributor_id)
+        if not contributor:
+            raise ValueError(
+                f"No member data found in the data branch or main data for contributor ID {contributor_id}.")
+        return User(
+            id=contributor_id,
+            association="external",
+            data=contributor,
+        )
+
     def from_issue_form_id(
         self,
         issue_form_id: str,
@@ -45,17 +77,20 @@ class UserManager:
     ) -> list[User]:
         out = []
         for member_id, member in self._manager.data["team"].items():
-            for member_role_id in member.get("role", {}).keys():
+            member_roles = {}
+            for member_role_id, member_role_priority in member.get("role", {}).items():
                 role = self._manager.data["role"][member_role_id]
                 issue_id_regex = role.get("assignment", {}).get(assignment)
                 if issue_id_regex and re.match(issue_id_regex, issue_form_id):
-                    user = User(
-                        id=member_id,
-                        association="member",
-                        data=member,
-                    )
-                    out.append(user)
-                    break
+                    member_roles[member_role_id] = member_role_priority
+            if member_roles:
+                user = User(
+                    id=member_id,
+                    association="member",
+                    data=member,
+                    current_role=member_roles,
+                )
+                out.append(user)
         return out
 
     def get_from_github_rest_id(
@@ -67,9 +102,9 @@ class UserManager:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
                 return User(id=member_id, association="member", data=member_data)
-        for github_user_id, github_user in self._contributors["github"].items():
-            if github_user_id == github_id:
-                return User(id=github_id, association="user", data=github_user)
+        for contributor_id, contributor_data in self._contributors.items():
+            if contributor_id == github_id:
+                return User(id=github_id, association="user", data=contributor_data)
         data = data_helper.fill_entity(
             entity={"github": {"rest_id": github_id}},
             github_api=self._gh_api,
@@ -155,6 +190,12 @@ class UserManager:
         if write:
             self.write_contributors()
         return
+
+    def from_user_contributor_id(self, id: str) -> User:
+        return User(id=id, association="user", data=self._contributors["github"][id])
+
+    def from_external_contributor_id(self, id: str) -> User:
+        return User(id=id, association="external", data=self._contributors["external"][id])
 
     def write_contributors(self):
         with open(self._contributors_path, "w") as contributors_file:
