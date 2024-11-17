@@ -66,13 +66,16 @@ class GitHubReleaseManager:
                 make_latest = "true" if on_main else "false"
         else:
             make_latest = None
+        jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
         update_response = self._manager.gh_api_actions.release_update(
             release_id=draft_data["id"],
             tag_name=str(tag),
-            name=self._manager.fill_jinja_template(config["name"]),
-            body=self._manager.fill_jinja_template(config["body"]),
+            name=self._manager.fill_jinja_template(config["name"], env_vars=jinja_env_vars),
+            body=self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
             prerelease=is_prerelease,
-            discussion_category_name=self._manager.fill_jinja_template(config["discussion_category_name"]),
+            discussion_category_name=self._manager.fill_jinja_template(
+                config["discussion_category_name"], env_vars=jinja_env_vars
+            ),
             make_latest=make_latest,
         )
         logger.success(
