@@ -214,7 +214,7 @@ class ChangelogManager(BareChangelogManager):
         category = "member" if member else "collaborator"
         contributor_roles = self.current.setdefault(
             "contributor", {}
-        ).setdefault(category).setdefault(id, {}).setdefault("role", {})
+        ).setdefault(category, {}).setdefault(id, {}).setdefault("role", {})
         for role_id, role_priority in roles.items():
             if role_id not in contributor_roles:
                 contributor_roles[role_id] = role_priority
