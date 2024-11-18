@@ -366,12 +366,12 @@ class User(PropertyDict):
         id: str | int,
         association: Literal["member", "user", "external"],
         data: dict,
-        github_association: AuthorAssociation | None = None,
+        github_association: str | None = None,
         current_role: dict[str, int] | None = None
     ):
         self.id = id
         self.association = association
-        self.github_association = github_association.value.lower() if github_association else None
+        self.github_association = github_association
         self.current_role = current_role
         super().__init__(data)
         return
