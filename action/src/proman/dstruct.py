@@ -19,7 +19,7 @@ if _TYPE_CHECKING:
 
     from conventional_commits import ConventionalCommitMessage
     from github_contexts.github.enum import AuthorAssociation
-    from pylinks.site.github import Branch as BranchLink
+    from pylinks.site.github import Repo as GitHubRepoLinker, Branch as GitHubBranchLinker
     from pylinks.url import URL
     from proman.dtype import ReleaseAction
 
@@ -114,7 +114,7 @@ class Branch(_NamedTuple):
 
     type: BranchType
     prefix: str
-    url: BranchLink
+    linker: GitHubRepoLinker
     version: int | None = None
     issue: int | None = None
     target: Branch | None = None
@@ -136,6 +136,10 @@ class Branch(_NamedTuple):
             return f"{self.prefix}{self.issue}{self.separator}{self.target.name}"
         # BranchType.AUTO
         return f"{self.prefix}{self.auto_type}{self.separator}{self.target.name}"
+
+    @property
+    def url(self) -> GitHubBranchLinker:
+        return self.linker.branch(self.name)
 
     @property
     def sha_url(self) -> URL | None:
