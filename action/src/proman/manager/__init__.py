@@ -156,6 +156,10 @@ class Manager:
 
     def add_issue_jinja_env_var(self, issue: Issue):
         issue = copy.deepcopy(issue)
+        logger.info(
+            "Issue copied",
+            logger.inspect(issue)
+        )
         issue["user"] = self.user.from_issue_author(issue)
         self.jinja_env_vars["issue"] = issue
         return issue
