@@ -26,10 +26,10 @@ class GitHubReleaseManager:
         prerelease: bool = False,
         discussion_category_name: str | None = None,
         make_latest: Literal['true', 'false', 'legacy'] = 'true'
-    ) -> tuple[dict[str, str | int], bool]:
+    ) -> dict[str, str | int]:
         release = self._manager.changelog.get_release("github")
         if release:
-            return release, False
+            return release
         response = self._manager.gh_api_actions.release_create(
             tag_name=str(tag),
             name=name,
@@ -46,15 +46,18 @@ class GitHubReleaseManager:
         )
         out = {k: v for k, v in response.items() if k in ("id", "node_id")}
         self._manager.changelog.update_release_github(**out)
-        return out, True
+        return out
 
     def update_draft(
         self,
         tag: VersionTag,
         on_main: bool,
         publish: bool = False,
-    ) -> tuple[dict[str, str | int], bool]:
-        draft_data, changelog_updated = self.get_or_make_draft(tag=tag)
+        release_id: int | None = None
+    ) -> dict[str, str | int]:
+        if not release_id:
+            draft = self._manager.changelog.get_release("github")
+            release_id = draft["id"]
         config = self._manager.data["release.github"]
         is_prerelease = bool(tag.version.pre)
         if publish:
@@ -68,7 +71,7 @@ class GitHubReleaseManager:
             make_latest = None
         jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
         update_response = self._manager.gh_api_actions.release_update(
-            release_id=draft_data["id"],
+            release_id=release_id,
             tag_name=str(tag),
             name=self._manager.fill_jinja_template(config["name"], env_vars=jinja_env_vars),
             body=self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
@@ -83,11 +86,22 @@ class GitHubReleaseManager:
             str(update_response)
         )
         output = self._make_output(
-            release_id=draft_data["id"],
+            release_id=release_id,
             publish=publish and not config["draft"],
             asset_config=self._manager.fill_jinja_templates(config["asset"], env_vars={"version": tag.version}),
         )
-        return output, changelog_updated
+        return output
+
+    def delete_draft(self, release_id: int | None = None):
+        if not release_id:
+            draft = self._manager.changelog.get_release("github")
+            release_id = draft["id"]
+        self._manager.gh_api_actions.release_delete(release_id=release_id)
+        logger.success(
+            "GitHub Release Draft Deletion",
+            f"Deleted draft for release ID {release_id}"
+        )
+        return
 
     @staticmethod
     def _make_output(release_id: int, publish: bool, asset_config: dict):

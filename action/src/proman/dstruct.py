@@ -249,8 +249,24 @@ class CommitFooter:
         return self._data.get("squash")
 
     @property
-    def publish(self) -> bool | None:
-        return self._data.get("publish")
+    def publish_github(self) -> bool | None:
+        return self._data.get("publish-github")
+
+    @property
+    def publish_zenodo(self) -> bool | None:
+        return self._data.get("publish-zenodo")
+
+    @property
+    def publish_zenodo_sandbox(self) -> bool | None:
+        return self._data.get("publish-zenodo-sandbox")
+
+    @property
+    def publish_pypi(self,) -> bool | None:
+        return self._data.get("publish-pypi")
+
+    @property
+    def publish_testpypi(self) -> bool | None:
+        return self._data.get("publish-testpypi")
 
     @property
     def version(self) -> PEP440SemVer | None:

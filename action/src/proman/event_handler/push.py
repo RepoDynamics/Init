@@ -5,10 +5,8 @@ import shutil
 
 from github_contexts import github as _gh_context
 from loggerman import logger
-import controlman
 import fileex as _fileex
 
-from proman.dstruct import Version
 from proman.dtype import InitCheckAction
 from proman.main import EventHandler
 from versionman.pep440_semver import PEP440SemVer
@@ -102,12 +100,7 @@ class PushEventHandler(EventHandler):
         # Main branch edited
         if not has_tags:
             # The repository is in the initialization phase
-            if self.head_commit_msg.footer.initialize_project:
-                # User is signaling the end of initialization phase
-                return self._run_first_release()
-            # User is still setting up the repository (still in initialization phase)
-            self.reporter.event("Repository initialization phase")
-            return self._run_init_phase()
+            return self._run_init()
         return self._run_branch_edited_main_normal()
 
     def _run_repository_creation(self):
@@ -174,13 +167,25 @@ class PushEventHandler(EventHandler):
         )
         return
 
-    def _run_init_phase(self):
+    def _run_init(self):
+        init = self.head_commit_msg.footer.initialize_project
+        self.reporter.event(
+            "Project initialization" if init else "Repository initialization phase"
+        )
         version = self.head_commit_msg.footer.version or PEP440SemVer("0.0.0")
         version_tag = self.manager.release.create_version_tag(version)
-        self.manager.release.github.get_or_make_draft(tag=version_tag)
-        self.manager.release.zenodo.get_or_make_drafts()
         self.manager.changelog.update_version(str(version))
         self.manager.changelog.update_date()
+        gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag)
+        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
+        if init:
+            if self.head_commit_msg.footer.publish_github is False:
+                self.manager.changelog.current["release"].pop("github")
+            if self.head_commit_msg.footer.publish_zenodo is False:
+                self.manager.changelog.current["release"].pop("zenodo", None)
+            if self.head_commit_msg.footer.publish_zenodo_sandbox is False:
+                self.manager.changelog.current["release"].pop("zenodo_sandbox", None)
+            self.manager.changelog.finalize()
 
         hash_after = self.gh_context.hash_after
         vars_is_updated = self.manager.variable.write_file()
@@ -193,72 +198,70 @@ class PushEventHandler(EventHandler):
             hash_after = self.manager.git.commit(
                 message=str(self.manager.commit.create_auto("changelog_sync"))
             )
-        new_manager, commit_hash_cca = self.run_cca(
+        new_manager, _ = self.run_cca(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
             future_versions={self.gh_context.ref_name: version},
         )
-        commit_hash_refactor = self.run_refactor(
+        self.jinja_env_vars["ccc"] = new_manager
+        self.run_refactor(
             branch_manager=new_manager,
             action=InitCheckAction.COMMIT,
             ref_range=(self.gh_context.hash_before, hash_after),
         ) if new_manager.data["tool.pre-commit.config.file.content"] else None
-        new_manager.repo.update_all(manager_before=self.manager, update_rulesets=False)
-        gh_release_output, _ = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
-        zenodo_output, zenodo_sandbox_output, _, _ = new_manager.release.zenodo.update_drafts(version=version)
-        new_manager.git.push()
+
+        if init:
+            if self.head_commit_msg.footer.publish_github is False:
+                new_manager.release.github.delete_draft(release_id=gh_draft["id"])
+                gh_release_output = None
+            else:
+                gh_release_output = new_manager.release.github.update_draft(
+                    tag=version, on_main=True, publish=True, release_id=gh_draft["id"]
+                )
+            zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
+                version=version,
+                publish_main=self.head_commit_msg.footer.publish_zenodo is not False,
+                publish_sandbox=self.head_commit_msg.footer.publish_zenodo_sandbox is not False,
+                id_main=zenodo_draft["id"] if zenodo_draft else None,
+                id_sandbox=zenodo_sandbox_draft["id"] if zenodo_sandbox_draft else None
+            )
+            if self.head_commit_msg.footer.squash is not False:
+                self._squash()
+            else:
+                new_manager.git.push()
+            new_manager.release.tag_version(ver=version)
+        else:
+            gh_release_output = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
+            zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(version=version)
+            new_manager.git.push()
+
+        new_manager.repo.update_all(manager_before=self.manager, update_rulesets=init)
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
             version=version_tag,
-            ref=commit_hash_refactor or commit_hash_cca or hash_after,
             website_deploy=True,
             package_lint=True,
             test_lint=True,
             package_test=True,
             package_build=True,
+            package_publish_testpypi= init and self.head_commit_msg.footer.publish_testpypi is not False,
+            package_publish_pypi=init and self.head_commit_msg.footer.publish_pypi is not False,
             github_release_config=gh_release_output,
             zenodo_config=zenodo_output,
             zenodo_sandbox_config=zenodo_sandbox_output,
         )
         return
 
-    def _run_first_release(self):
-        self.reporter.event("Project initialization")
-        version = self.head_commit_msg.footer.version or "0.0.0"
-        new_manager, job_runs, latest_hash = self.run_sync_fix(
-            branch_manager=self.manager,
-            action=InitCheckAction.COMMIT,
-            future_versions={self.gh_context.ref_name: version},
-        )
-        # By default, squash all commits into a single commit
-        if self.head_commit_msg.footer.squash is not False:
-            # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
-            #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
-            new_manager.git.checkout("temp", orphan=True)
-            new_manager.git.commit(message=str(self.head_commit_msg))
-            new_manager.git.branch_delete(self.gh_context.ref_name, force=True)
-            new_manager.git.branch_rename(self.gh_context.ref_name, force=True)
-            new_manager.git.push(
-                target="origin", ref=self.gh_context.ref_name, force_with_lease=True
-            )
-            latest_hash = new_manager.git.commit_hash_normal()
-        version_tag = new_manager.release.tag_version(
-            ver=version,
-            env_vars={"ccc": new_manager},
-        )
-        new_manager.repo.update_all(manager_before=self.manager)
-        self._output_manager.set(
-            main_manager=new_manager,
-            branch_manager=new_manager,
-            version=version_tag,
-            ref=latest_hash,
-            website_deploy=True,
-            package_lint=True,
-            test_lint=True,
-            package_test=True,
-            package_publish_testpypi=True,
-            package_publish_pypi=True,
+    def _squash(self):
+        # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
+        #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
+        self._git_base.checkout("temp", orphan=True)
+        self._git_base.commit(message=self.head_commit_msg.conv_msg.footerless)
+        self._git_base.branch_delete(self.gh_context.ref_name, force=True)
+        self._git_base.branch_rename(self.gh_context.ref_name, force=True)
+        self._git_base.push(
+            target="origin", ref=self.gh_context.ref_name, force_with_lease=True
         )
         return
 

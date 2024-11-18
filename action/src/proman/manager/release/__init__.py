@@ -183,11 +183,11 @@ class ReleaseManager:
 
     def tag_version(
         self,
-        ver: str | PEP440SemVer,
+        ver: VersionTag | PEP440SemVer,
         env_vars: dict | None = None,
         git: Git | None = None,
     ) -> VersionTag:
-        version_tag = self.create_version_tag(version=ver)
+        version_tag = self.create_version_tag(version=ver) if not isinstance(ver, VersionTag) else ver
         msg = self._manager.fill_jinja_template(
             self._manager.data["tag.version.message"],
             {"version": ver} | (env_vars or {}),
@@ -196,7 +196,7 @@ class ReleaseManager:
         git.create_tag(tag=str(version_tag), message=msg)
         return version_tag
 
-    def create_version_tag(self, version: PEP440SemVer | str) -> VersionTag:
+    def create_version_tag(self, version: PEP440SemVer) -> VersionTag:
         return VersionTag(tag_prefix=self._manager.data["tag.version.prefix"], version=version)
 
     def _prepare_citation_for_release(

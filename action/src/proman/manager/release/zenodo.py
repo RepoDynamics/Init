@@ -62,7 +62,7 @@ class BareZenodoManager:
         self._changelog = changelog_manager
         return
 
-    def get_or_make_drafts(self) -> tuple[dict | None, dict | None, bool, bool]:
+    def get_or_make_drafts(self) -> tuple[dict | None, dict | None]:
         """Get current draft depositions in both Zenodo and Zenodo Sandbox,
         or create new ones if any of them doesn't exist.
 
@@ -70,16 +70,11 @@ class BareZenodoManager:
         -------
         main_draft_data, sandbox_draft_data, vars_updated, changelog_updated
         """
-        main_draft_data, main_vars_updated, main_changelog_updated = self.get_or_make_draft(sandbox=False)
-        sandbox_draft_data, sandbox_vars_updated, sandbox_changelog_updated = self.get_or_make_draft(sandbox=True)
-        return (
-            main_draft_data,
-            sandbox_draft_data,
-            main_vars_updated or sandbox_vars_updated,
-            main_changelog_updated or sandbox_changelog_updated,
-        )
+        main_draft_data = self.get_or_make_draft(sandbox=False)
+        sandbox_draft_data  = self.get_or_make_draft(sandbox=True)
+        return main_draft_data, sandbox_draft_data
 
-    def get_or_make_draft(self, sandbox: bool) -> tuple[dict | None, bool, bool]:
+    def get_or_make_draft(self, sandbox: bool) -> dict | None:
         """Get the current draft deposition, or create a new one if a draft does not exist.
 
         This also creates the project concept, if no concept ID is defined already.
@@ -95,7 +90,7 @@ class BareZenodoManager:
         """
         title = f"{self._platform_name(sandbox)} Draft"
         if not self._has_token[sandbox]:
-            return None, False, False
+            return None
         record = self._changelog.get_release(self._var_key(sandbox))
         if record and record["draft"]:
             logger.success(
@@ -103,7 +98,7 @@ class BareZenodoManager:
                 "Retrieved current draft from changelog:",
                 logger.data_block(record)
             )
-            return record, False, False
+            return record
         else:
             logger.info(
                 f"{title} Retrieval",
@@ -113,18 +108,27 @@ class BareZenodoManager:
         api = self._api[sandbox]
         concept_record = self._varman.setdefault(self._var_key(sandbox), {}).setdefault("concept", {})
         if concept_record.get("id"):
-            deposition = api.deposition_new_version(deposition_id=int(concept_record["id"]) + 1)
-            logger.success(
-                f"{title} Creation",
-                "Created new version draft:",
-                logger.data_block(deposition)
-            )
+            if concept_record.get("draft"):
+                depo_id = concept_record["id"] + 1
+                logger.success(
+                    f"{title} Creation",
+                    f"Selected open draft defined in variables file wih deposition ID {depo_id}"
+                )
+            else:
+                deposition = api.deposition_new_version(deposition_id=int(concept_record["id"]) + 1)
+                logger.success(
+                    f"{title} Creation",
+                    "Created new version draft:",
+                    logger.data_block(deposition)
+                )
+                depo_id = deposition["id"]
             draft = {
-                "id": deposition["id"],
-                "doi": self._doi(deposition["id"], sandbox=sandbox),
+                "id": depo_id,
+                "doi": self._doi(depo_id, sandbox=sandbox),
+                "draft": True,
             }
-            self._changelog.update_release_zenodo(draft=True, sandbox=sandbox, **draft)
-            return draft, False, True
+            self._changelog.update_release_zenodo(sandbox=sandbox, **draft)
+            return draft
         deposition = api.deposition_create()
         logger.success(
             f"{title} Concept Creation",
@@ -134,12 +138,13 @@ class BareZenodoManager:
         concept, draft = [
             {
                 "id": _id,
-                "doi": self._doi(_id, sandbox=sandbox)
+                "doi": self._doi(_id, sandbox=sandbox),
+                "draft": True,
             } for _id in (deposition["conceptrecid"], deposition["id"])
         ]
         concept_record.update(concept)
-        self._changelog.update_release_zenodo(draft=True, sandbox=sandbox, **draft)
-        return draft, True, True
+        self._changelog.update_release_zenodo(sandbox=sandbox, **draft)
+        return draft
 
     def _upload_metadata(self, deposition_id: str | int, metadata: dict, sandbox: bool):
         response = self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
@@ -190,29 +195,37 @@ class ZenodoManager(BareZenodoManager):
         version: PEP440SemVer | str,
         publish_main: bool = False,
         publish_sandbox: bool = False,
+        id_main: int | None = None,
+        id_sandbox: int | None = None,
     ):
-        main_draft_data, sandbox_draft_data, vars_updated, changelog_updated = self.get_or_make_drafts()
+        if not id_main:
+            main_draft = self.get_or_make_draft(sandbox=False)
+            id_main = main_draft["id"] if main_draft else None
+        if not id_sandbox:
+            sandbox_draft = self.get_or_make_draft(sandbox=True)
+            id_sandbox = sandbox_draft["id"] if sandbox_draft else None
+
         outputs = []
-        for draft_data, publish, sandbox in (
-            (main_draft_data, publish_main, False),
-            (sandbox_draft_data, publish_sandbox, True),
+        for draft_id, publish, sandbox in (
+            (id_main, publish_main, False),
+            (id_sandbox, publish_sandbox, True),
         ):
-            if draft_data:
+            if draft_id:
                 self._update_metadata(
-                    deposition_id=draft_data["id"],
+                    deposition_id=draft_id,
                     sandbox=sandbox,
                     version=version,
                 )
                 outputs.append(
                     self._make_output(
-                        deposition_id=draft_data["id"],
+                        deposition_id=draft_id,
                         asset_config=self._manager.fill_jinja_templates(self._manager.data["release.zenodo.asset"], env_vars={"version": version}),
                         publish=publish
                     )
                 )
             else:
                 outputs.append(None)
-        return outputs[0], outputs[1], vars_updated, changelog_updated
+        return outputs[0], outputs[1]
 
     def _update_metadata(self, deposition_id: str | int, sandbox: bool, version: PEP440SemVer | str):
         metadata = self._create_metadata(version=version)
