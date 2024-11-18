@@ -242,7 +242,7 @@ class PushEventHandler(EventHandler):
             zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(version=version)
             new_manager.git.push()
 
-        new_manager.repo.update_all(manager_before=self.manager, update_rulesets=init)
+        new_manager.repo.update_all(manager_before=self.manager, update_rulesets=init, reset_labels=True)
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
