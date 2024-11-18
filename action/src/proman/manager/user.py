@@ -1,22 +1,19 @@
 from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
-from functools import partial
 import re
 
 import pyserials as ps
-from controlman import data_helper, data_validator
+from controlman import data_helper
 import pylinks
 
 from proman.dstruct import User
-from pylinks.api import github
 
 if _TYPE_CHECKING:
     from typing import Literal
     from github_contexts.github.payload.object.issue import Issue
     from github_contexts.github.payload.object.pull_request import PullRequest
     from proman.manager import Manager
-    from proman.dstruct import IssueForm
 
 
 class UserManager:
@@ -43,7 +40,7 @@ class UserManager:
                 raise ValueError(f"Person '{entity_id}' not found in team or contributor data.")
             return User(
                 id=entity_id,
-                association="member" if bool(self._manager.data["team"].get(entity_id)) else "external",
+                member=bool(self._manager.data["team"].get(entity_id)),
                 data=entity,
             )
         elif entity_id["member"]:
@@ -56,7 +53,7 @@ class UserManager:
             raise ValueError(f"No member data found in the data branch or main data for member ID {member_id}.")
         return User(
             id=member_id,
-            association="member",
+            member=True,
             data=member,
         )
 
@@ -67,7 +64,7 @@ class UserManager:
                 f"No member data found in the data branch or main data for contributor ID {contributor_id}.")
         return User(
             id=contributor_id,
-            association="external",
+            member=False,
             data=contributor,
         )
 
@@ -87,7 +84,7 @@ class UserManager:
             if member_roles:
                 user = User(
                     id=member_id,
-                    association="member",
+                    member=True,
                     data=member,
                     current_role=member_roles,
                 )
@@ -102,15 +99,15 @@ class UserManager:
     ) -> User:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
-                return User(id=member_id, association="member", data=member_data)
+                return User(id=member_id, member=True, data=member_data)
         if github_id in self._contributors:
-            return User(id=github_id, association="external", data=self._contributors[github_id])
+            return User(id=github_id, member=False, data=self._contributors[github_id])
         data = data_helper.fill_entity(
             entity={"github": {"rest_id": github_id}},
             github_api=self._gh_api,
             cache_manager=self._manager.cache,
             )[0]
-        user = User(id=github_id, association="user", data=data)
+        user = User(id=github_id, member=False, data=data)
         if add_to_contributors:
             self.add_contributor(user=user, write=update_file)
         return user
@@ -123,16 +120,16 @@ class UserManager:
     ):
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("id") == username:
-                return User(id=member_id, association="member", data=member_data)
+                return User(id=member_id, member=True, data=member_data)
         for github_user in self._contributors["github"].values():
             if github_user["github"]["id"] == username:
-                return User(id=github_user["github"]["id"], association="user", data=github_user)
+                return User(id=github_user["github"]["id"], member=False, data=github_user)
         data = data_helper.fill_entity(
             entity={"github": {"id": username}},
             github_api=self._gh_api,
             cache_manager=self._manager.cache,
             )[0]
-        user = User(id=data["github"]["id"], association="user", data=data)
+        user = User(id=data["github"]["id"], member=False, data=data)
         if add_to_contributors:
             self.add_contributor(user=user, write=update_file)
         return user
@@ -146,13 +143,13 @@ class UserManager:
     ):
         for member_id, member_data in self._manager.data["team"].items():
             if member_data["name"]["full"] == name and member_data.get("email", {}).get("id") == email:
-                return User(id=member_id, association="member", data=member_data)
+                return User(id=member_id, member=True, data=member_data)
         for github_user in self._contributors["github"].values():
             if github_user["name"]["full"] == name and github_user.get("email", {}).get("id") == email:
-                return User(id=github_user["github"]["id"], association="user", data=github_user)
+                return User(id=github_user["github"]["id"], member=False, data=github_user)
         user = User(
             id=f"{name}_{email}",
-            association="external",
+            member=False,
             data={"name": {"full": name}, "email": {"id": email, "url": f"mailto:{email}"}}
         )
         if add_to_contributors:
@@ -172,34 +169,22 @@ class UserManager:
         )
         return User(
             id=user.id,
-            association=user.association,
+            member=user.member,
             data=user.as_dict,
             github_association=issue.get("author_association"),
         )
 
     def add_contributor(self, user: User, write: bool = False):
-        github_id = user.get("github", {}).get("id")
-        entity = user.as_dict
-        if github_id:
-            existing_data = self._contributors.setdefault("github", {}).setdefault(github_id, {})
-            ps.update.dict_from_addon(existing_data, entity)
-        else:
-            user_id = f"{user.name.full}_{user.email.id}"
-            existing_data = self._contributors.setdefault("external", {}).setdefault(user_id, {})
-            ps.update.dict_from_addon(existing_data, entity)
+        contributor_id = user.get("github", {}).get("id") or f"{user.name.full}_{user.email.id}"
+        contributor_entry = self._contributors.setdefault(contributor_id, {})
+        ps.update.dict_from_addon(contributor_entry, user.as_dict)
         if write:
             self.write_contributors()
         return
 
-    def from_user_contributor_id(self, id: str) -> User:
-        return User(id=id, association="user", data=self._contributors["github"][id])
-
-    def from_external_contributor_id(self, id: str) -> User:
-        return User(id=id, association="external", data=self._contributors["external"][id])
-
     def write_contributors(self):
         with open(self._contributors_path, "w") as contributors_file:
-            contributors_file.write(ps.write.to_json_string(self._contributors, sort_keys=True, indent=4))
+            contributors_file.write(ps.write.to_json_string(self._contributors, sort_keys=True, indent=3))
         return
 
 
