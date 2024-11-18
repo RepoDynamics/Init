@@ -124,16 +124,16 @@ class ChangelogManager(BareChangelogManager):
         self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
         for assignee in issue_form.pull_assignees + issue_form.review_assignees:
             self.update_contributor(
-                association=assignee.association,
                 id=assignee.id,
+                member=assignee.member,
                 roles=assignee.current_role,
             )
         if issue.milestone:
-            self.update_milestone(milestone=issue.milestone)
+            self._update_milestone(milestone=issue.milestone)
         if issue_form.role["submitter"]:
             submitter = self._manager.user.from_issue_author(issue, add_to_contributors=True)
             self.update_contributor(
-                association=submitter.association, id=submitter.id, roles=issue_form.role["submitter"]
+                member=submitter.member, id=submitter.id, roles=issue_form.role["submitter"]
             )
         self.current["issue"] = {
             "number": issue.number,
@@ -166,8 +166,6 @@ class ChangelogManager(BareChangelogManager):
         }
         return
 
-
-
     def update_pull_request(
         self,
         issue_form: IssueForm,
@@ -197,7 +195,7 @@ class ChangelogManager(BareChangelogManager):
         }
         self.current["pull_request"].update(add)
         if pull.milestone:
-            self.update_milestone(pull.milestone)
+            self._update_milestone(pull.milestone)
         return
 
     def update_pull_request_reviewers(self, pull: PullRequest, issue_form: IssueForm):
@@ -212,42 +210,17 @@ class ChangelogManager(BareChangelogManager):
             else:
                 roles = issue_form.role["review_assignee"]
             if roles:
-                self.update_contributor(
-                    association=user.association,
-                    id=user.id,
-                    roles=roles,
-                )
+                self.update_contributor(id=user.id, member=user.member, roles=roles)
         return
 
-    def add_pull_contributor(self, contributor: User, role: Literal["authors", "committers"]):
-        contributors = self.current["pull_request"][role]
-        contributor_entry = contributor.changelog_entry
-        if contributor_entry not in contributors:
-            contributors.append(contributor_entry)
-        return
-
-
-
-
-
-
-
-
-
-
-
-
-    def update_milestone(self, milestone: Milestone):
-        self.current["milestone"] = {
-            "number": milestone.number,
-            "id": milestone.id,
-            "node_id": milestone.node_id,
-            "url": milestone.html_url,
-            "title": milestone.title,
-            "description": milestone.description,
-            "due_on": self._manager.normalize_github_date(milestone.due_on),
-            "created_at": self._manager.normalize_github_date(milestone.created_at),
-        }
+    def update_contributor(self, id: str, member: bool, roles: dict[str, int]):
+        category = "member" if member else "collaborator"
+        contributor_roles = self.current.setdefault(
+            "contributor", {}
+        ).setdefault(category).setdefault(id, {}).setdefault("role", {})
+        for role_id, role_priority in roles.items():
+            if role_id not in contributor_roles:
+                contributor_roles[role_id] = role_priority
         return
 
     def _update_contributors_with_assignees(self, issue: Issue | PullRequest, issue_form: IssueForm):
@@ -273,33 +246,24 @@ class ChangelogManager(BareChangelogManager):
                 ]
             if roles:
                 self.update_contributor(
-                    association=user.association,
                     id=user.id,
+                    member=user.member,
                     roles=roles,
                 )
         return
 
-    def update_contributor(
-        self,
-        association: Literal["member", "user", "external"],
-        id: str,
-        roles: dict[str, int],
-    ):
-        category = "member" if association == "member" else "external"
-        contributor_roles = self.current.setdefault(
-            "contributor", {}
-        ).setdefault(category).setdefault(id, {}).setdefault("role", {})
-        for role_id, role_priority in roles.items():
-            if role_id not in contributor_roles:
-                contributor_roles[role_id] = role_priority
+    def _update_milestone(self, milestone: Milestone):
+        self.current["milestone"] = {
+            "number": milestone.number,
+            "id": milestone.id,
+            "node_id": milestone.node_id,
+            "url": milestone.html_url,
+            "title": milestone.title,
+            "description": milestone.description,
+            "due_on": self._manager.normalize_github_date(milestone.due_on),
+            "created_at": self._manager.normalize_github_date(milestone.created_at),
+        }
         return
-
-    @staticmethod
-    def _create_user_list(users: list[User]) -> list[dict]:
-        return sorted(
-            [user.changelog_entry for user in users],
-            key=lambda changelog_entry: changelog_entry["id"]
-        )
 
     @staticmethod
     def _create_labels(labels: list[Label]):
