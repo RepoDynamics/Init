@@ -53,7 +53,8 @@ class GitHubReleaseManager:
         tag: VersionTag,
         on_main: bool,
         publish: bool = False,
-        release_id: int | None = None
+        release_id: int | None = None,
+        body: str | None = None,
     ) -> dict[str, str | int]:
         if not release_id:
             draft = self._manager.changelog.get_release("github")
@@ -74,7 +75,7 @@ class GitHubReleaseManager:
             release_id=release_id,
             tag_name=str(tag),
             name=self._manager.fill_jinja_template(config["name"], env_vars=jinja_env_vars),
-            body=self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
+            body=body or self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
             prerelease=is_prerelease,
             discussion_category_name=self._manager.fill_jinja_template(
                 config["discussion_category_name"], env_vars=jinja_env_vars
