@@ -245,7 +245,7 @@ class OutputManager:
                 "name": self._fill_jinja(job_config["name"]),
                 "job": {
                     "publish": [],
-                    "test": self._create_output_package_test(source=target),
+                    "test": self._create_output_package_test(source=target, flatten_name=True),
                 }
             }
             for typ, build in build_jobs.items():
@@ -295,14 +295,16 @@ class OutputManager:
         pyargs: list[str] | None = None,
         args: list[str] | None = None,
         overrides: dict[str, str] | None = None,
+        flatten_name: bool = False,
     ) -> dict:
         source = source.lower()
         env_vars = {
             "source": {"github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI"}[source]
         }
         job_config = self._main_manager.data["workflow.job.test"]
+        job_name = self._fill_jinja(job_config["name"], env_vars)
         out = {
-            "name": self._fill_jinja(job_config["name"], env_vars),
+            "name": job_name,
             "job": {
                 "repository": self._repository,
                 "ref": self._ref_name,
@@ -334,8 +336,11 @@ class OutputManager:
                     "python": python_version,
                 }
                 task_env_vars = env_vars | task | {"os": os["name"]}
+                task_name = self._fill_jinja(job_config["task_name"], task_env_vars)
+                if flatten_name:
+                    task_name = f"{job_name}: {task_name}"
                 task |= {
-                    "name": self._fill_jinja(job_config["task_name"], task_env_vars),
+                    "name": task_name,
                     "artifact": self._create_workflow_artifact_config(job_config["artifact"], task_env_vars),
                 }
                 out["job"]["tasks"].append(task)
