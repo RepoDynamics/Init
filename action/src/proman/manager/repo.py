@@ -29,11 +29,15 @@ class RepoManager:
         self,
         manager_before: Manager,
         update_rulesets: bool = True,
+        reset_labels: bool = False,
     ):
         self.update_settings()
         self.update_gh_pages()
         self.update_branch_names(manager_before=manager_before)
-        self.update_labels(manager_before=manager_before)
+        if reset_labels:
+            self.reset_labels()
+        else:
+            self.update_labels(manager_before=manager_before)
         if update_rulesets:
             self.update_rulesets()
         return
