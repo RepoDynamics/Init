@@ -212,7 +212,7 @@ class IssuesEventHandler(EventHandler):
             self._git_base.checkout(head.name)
             # Write initial commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
-            self._git_base.commit(message="Temp", allow_empty=True)
+            self._git_base.commit(message="[skip actions]", allow_empty=True)
             self._git_base.push(target="origin", set_upstream=True)
             return head
 
