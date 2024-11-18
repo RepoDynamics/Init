@@ -50,6 +50,27 @@ class BareChangelogManager:
         self.current["date"] = datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%d")
         return
 
+    def update_parent(self, sha: str, version: Version):
+        self.current["parent"] = {
+            "sha": sha,
+            "version": version.public,
+            "distance": version.local[0] if version.is_local else 0,
+        }
+        return
+
+    def update_protocol(self, protocol: ProtocolManager):
+        self.update_protocol_data(protocol.get_all_data())
+        self.update_protocol_tasklist(protocol.get_tasklist())
+        return
+
+    def update_protocol_data(self, data: dict):
+        self.current.setdefault("protocol", {})["data"] = data
+        return
+
+    def update_protocol_tasklist(self, tasklist: Tasklist):
+        self.current.setdefault("protocol", {})["tasks"] = tasklist.as_list
+        return
+
     def update_release_github(self, id: int, node_id: str):
         release = self.current.setdefault("release", {})
         release["github"] = {"id": id, "node_id": node_id}
@@ -58,6 +79,10 @@ class BareChangelogManager:
     def update_release_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
         release = self.current.setdefault("release", {})
         release["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
+        return
+
+    def update_type_id(self, type_id: str):
+        self.current["type_id"] = type_id
         return
 
     def update_version(self, version: str):
@@ -84,26 +109,64 @@ class ChangelogManager(BareChangelogManager):
         super().__init__(repo_path=self._manager.git.repo_path)
         return
 
-    def finalize_current(self, version: Version):
-        new_changelog = self._changelog.pop("current")
-        self._changelog[str(version)] = new_changelog
-        self.write()
-        return new_changelog
-
-    def update_current(self, data: dict):
-        ps.update.dict_from_addon(
-            data=data,
-            addon=self.current,
-        )
-        self._changelog["current"] = data
-        logger.info(
-            "Changelog Update",
-            mdit.element.code_block(
-                ps.write.to_yaml_string(self._changelog["current"]),
-                language="yaml"
+    def initialize_from_issue(
+        self,
+        issue_form: IssueForm,
+        issue: Issue,
+        labels: list[Label],
+        pull: dict,
+        protocol: ProtocolManager,
+        base_version: Version,
+    ):
+        self.update_type_id(issue_form.id)
+        self.update_protocol(protocol=protocol)
+        self.update_parent(sha=pull["base"].sha, version=base_version)
+        self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
+        for assignee in issue_form.pull_assignees + issue_form.review_assignees:
+            self.update_contributor(
+                association=assignee.association,
+                id=assignee.id,
+                roles=assignee.current_role,
             )
-        )
+        if issue.milestone:
+            self.update_milestone(milestone=issue.milestone)
+        if issue_form.role["submitter"]:
+            submitter = self._manager.user.from_issue_author(issue, add_to_contributors=True)
+            self.update_contributor(
+                association=submitter.association, id=submitter.id, roles=issue_form.role["submitter"]
+            )
+        self.current["issue"] = {
+            "number": issue.number,
+            "id": issue.id,
+            "node_id": issue.node_id,
+            "url": issue.html_url,
+            "created_at": self._manager.normalize_github_date(issue.created_at),
+            "title": issue.title,
+        }
+        self.current["pull_request"] = {
+            "number": pull["number"],
+            "id": pull["id"],
+            "node_id": pull["node_id"],
+            "url": pull["html_url"],
+            "created_at": self._manager.normalize_github_date(pull["created_at"]),
+            "title": pull["title"],
+            "labels": self._create_labels(labels),
+            "base": {
+                "ref": pull["base"].name,
+                "sha": pull["base"].sha,
+                "version": str(base_version.public),
+                "distance": base_version.local[0] if base_version.is_local else 0
+            },
+            "head": {
+                "ref": pull["head"].name,
+                "sha": pull["head"].sha,
+                "version": str(base_version.public),
+                "distance": base_version.local[0] if base_version.is_local else 0
+            },
+        }
         return
+
+
 
     def update_pull_request(
         self,
@@ -163,91 +226,16 @@ class ChangelogManager(BareChangelogManager):
             contributors.append(contributor_entry)
         return
 
-    def create_current_from_issue(
-        self,
-        issue_form: IssueForm,
-        issue: Issue,
-        labels: list[Label],
-        pull: dict,
-        protocol: ProtocolManager,
-        base_version: Version,
-    ):
-        self.update_type_id(issue_form.id)
-        self.update_protocol(protocol=protocol)
-        self.update_parent(pull["base"].sha, base_version)
-        self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
-        for assignee in issue_form.pull_assignees + issue_form.review_assignees:
-            self.update_contributor(
-                association=assignee.association,
-                id=assignee.id,
-                roles=assignee.current_role,
-            )
-        if issue.milestone:
-            self.update_milestone(milestone=issue.milestone)
-        if issue_form.role["submitter"]:
-            submitter = self._manager.user.from_issue_author(issue, add_to_contributors=True)
-            self.update_contributor(
-                association=submitter.association, id=submitter.id, roles=issue_form.role["submitter"]
-            )
-        self.current["issue"] = {
-            "number": issue.number,
-            "id": issue.id,
-            "node_id": issue.node_id,
-            "url": issue.html_url,
-            "created_at": self._manager.normalize_github_date(issue.created_at),
-            "title": issue.title,
-        }
-        self.current["pull_request"] = {
-            "number": pull["number"],
-            "id": pull["id"],
-            "node_id": pull["node_id"],
-            "url": pull["html_url"],
-            "created_at": self._manager.normalize_github_date(pull["created_at"]),
-            "title": pull["title"],
-            "labels": self._create_labels(labels),
-            "base": {
-                "ref": pull["base"].name,
-                "sha": pull["base"].sha,
-                "version": str(base_version.public),
-                "distance": base_version.local[0] if base_version.is_local else 0
-            },
-            "head": {
-                "ref": pull["head"].name,
-                "sha": pull["head"].sha,
-                "version": str(base_version.public),
-                "distance": base_version.local[0] if base_version.is_local else 0
-            },
-        }
-        return
 
-    def update_parent(
-        self,
-        sha: str,
-        version: Version
-    ):
-        self.current["parent"] = {
-            "sha": sha,
-            "version": version.public,
-            "distance": version.local[0] if version.is_local else 0,
-        }
-        return
 
-    def update_protocol(self, protocol: ProtocolManager):
-        self.update_protocol_tasklist(protocol.get_tasklist())
-        self.update_protocol_data(protocol.get_all_data())
-        return
 
-    def update_protocol_data(self, data: dict):
-        self.current.setdefault("protocol", {})["data"] = data
-        return
 
-    def update_protocol_tasklist(self, tasklist: Tasklist):
-        self.current.setdefault("protocol", {})["tasks"] = tasklist.as_list
-        return
 
-    def update_type_id(self, type_id: str):
-        self.current["type_id"] = type_id
-        return
+
+
+
+
+
 
     def update_milestone(self, milestone: Milestone):
         self.current["milestone"] = {
