@@ -24,7 +24,6 @@ class GitHubReleaseManager:
         name: str | None = None,
         body: str | None = None,
         prerelease: bool = False,
-        discussion_category_name: str | None = None,
     ) -> dict[str, str | int]:
         release = self._manager.changelog.get_release("github")
         if release:
@@ -35,7 +34,6 @@ class GitHubReleaseManager:
             body=body,
             draft=True,
             prerelease=prerelease,
-            discussion_category_name=discussion_category_name,
         )
         logger.success(
             "GitHub Release Draft",
@@ -66,9 +64,6 @@ class GitHubReleaseManager:
             name=self._manager.fill_jinja_template(config["name"], env_vars=jinja_env_vars),
             body=body or self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
             prerelease=is_prerelease,
-            discussion_category_name=self._manager.fill_jinja_template(
-                config["discussion_category_name"], env_vars=jinja_env_vars
-            ),
         )
         logger.success(
             "GitHub Release Update",
@@ -83,11 +78,15 @@ class GitHubReleaseManager:
                 make_latest = on_main
         else:
             make_latest = None
+
         output = self._make_output(
             release_id=release_id,
             publish=publish and not config["draft"],
-            asset_config=self._manager.fill_jinja_templates(config["asset"], env_vars={"version": tag.version}),
+            asset_config=self._manager.fill_jinja_templates(
+                config["asset"], env_vars={"version": tag.version}
+            ) if "asset" in config else None,
             make_latest=make_latest,
+            discussion_category_name=config.get("discussion_category_name"),
         )
         return output
 
@@ -103,12 +102,19 @@ class GitHubReleaseManager:
         return
 
     @staticmethod
-    def _make_output(release_id: int, publish: bool, asset_config: dict, make_latest: bool | None = None):
+    def _make_output(
+        release_id: int,
+        publish: bool,
+        asset_config: dict | None = None,
+        make_latest: bool | None = None,
+        discussion_category_name: str | None = None,
+    ):
         out = {
             "release_id": release_id,
             "draft": not publish,
             "delete_assets": "all",
-            "assets": create_releaseman_intput(asset_config=asset_config, target="github")
+            "assets": create_releaseman_intput(asset_config=asset_config, target="github") if asset_config else None,
+            "discussion_category_name": discussion_category_name,
         }
         if make_latest is None:
             return out
