@@ -236,7 +236,7 @@ class PushEventHandler(EventHandler):
                 self._squash()
             else:
                 new_manager.git.push()
-            new_manager.release.tag_version(ver=version)
+            new_manager.release.tag_version(version=version)
         else:
             gh_release_output = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
             zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(version=version)
