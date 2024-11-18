@@ -1,9 +1,9 @@
 from __future__ import annotations as _annotations
 
 import copy
+import datetime
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from loggerman import logger
 import pyserials as ps
 import controlman
 
@@ -50,7 +50,7 @@ class BareChangelogManager:
     def update_parent(self, sha: str, version: Version):
         self.current["parent"] = {
             "sha": sha,
-            "version": version.public,
+            "version": str(version.public),
             "distance": version.local[0] if version.is_local else 0,
         }
         return
@@ -183,7 +183,7 @@ class ChangelogManager(BareChangelogManager):
                 label_list.extend(label_entries)
         add = {
             "additions": pull.additions,
-            "assignees": self._update_contributors_with_assignees(pull, issue_form=issue_form),
+            "assignees": self._update_contributors_with_assignees(issue=pull, issue_form=issue_form),
             "changed_files": pull.changed_files,
             "commits": pull.commits,
             "deletions": pull.deletions,
