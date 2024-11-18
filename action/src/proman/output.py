@@ -323,6 +323,8 @@ class OutputManager:
                 "overrides": ps.write.to_json_string(overrides) if overrides else "",
                 "codecov-yml-path": self._branch_manager.data["tool.codecov.config.file.path"],
                 "artifact": self._create_workflow_artifact_merge_config(job_config["artifact"], env_vars),
+                "retries": "60",
+                "retry-sleep-seconds": "15",
                 "tasks": []
             }
         }
