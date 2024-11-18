@@ -2,21 +2,17 @@ from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from enum import Enum
 import copy
 
 from github_contexts import github as gh_context
 from loggerman import logger
 import mdit
-import pyserials as ps
 
 from proman.dtype import LabelType, IssueStatus
 from proman.main import EventHandler
-from proman.manager.changelog import ChangelogManager
 
 if _TYPE_CHECKING:
     from proman.dstruct import Label, Branch, Version
-    from proman.manager.user import User
 
 
 class IssuesEventHandler(EventHandler):
@@ -284,7 +280,7 @@ class IssuesEventHandler(EventHandler):
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
-            head_manager.changelog.create_current_from_issue(
+            head_manager.changelog.initialize_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
                 labels=labels,
@@ -292,7 +288,7 @@ class IssuesEventHandler(EventHandler):
                 protocol=self.manager.protocol,
                 base_version=base_version,
             )
-            head_manager.changelog.write()
+            head_manager.changelog.write_file()
             self._git_base.commit(
                 message=str(
                     self.manager.commit.create_auto(

@@ -9,6 +9,7 @@ from controlman import data_helper, data_validator
 import pylinks
 
 from proman.dstruct import User
+from pylinks.api import github
 
 if _TYPE_CHECKING:
     from typing import Literal
@@ -102,9 +103,8 @@ class UserManager:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
                 return User(id=member_id, association="member", data=member_data)
-        for contributor_id, contributor_data in self._contributors.items():
-            if contributor_id == github_id:
-                return User(id=github_id, association="user", data=contributor_data)
+        if github_id in self._contributors:
+            return User(id=github_id, association="external", data=self._contributors[github_id])
         data = data_helper.fill_entity(
             entity={"github": {"rest_id": github_id}},
             github_api=self._gh_api,

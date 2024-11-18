@@ -168,23 +168,30 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_init(self):
-        init = self.head_commit_msg.footer.initialize_project
+        user_input = self.head_commit_msg.footer
+        init = user_input.initialize_project
         self.reporter.event(
             "Project initialization" if init else "Repository initialization phase"
         )
-        version = self.head_commit_msg.footer.version or PEP440SemVer("0.0.0")
+        version = user_input.version or PEP440SemVer("0.0.0")
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(str(version))
         self.manager.changelog.update_date()
         gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag, body=self.head_commit_msg.body)
         zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
+
         if init:
-            if self.head_commit_msg.footer.publish_github is False:
-                self.manager.changelog.current["release"].pop("github")
-            if self.head_commit_msg.footer.publish_zenodo is False:
-                self.manager.changelog.current["release"].pop("zenodo", None)
-            if self.head_commit_msg.footer.publish_zenodo_sandbox is False:
-                self.manager.changelog.current["release"].pop("zenodo_sandbox", None)
+            for changelog_key, do_publish in (
+                ("github", user_input.publish_github),
+                ("zenodo", user_input.publish_zenodo),
+                ("zenodo_sandbox", user_input.publish_zenodo_sandbox)
+            ):
+                if do_publish is False:
+                    self.manager.changelog.current["release"].pop(changelog_key, None)
+                else:
+                    self.manager.changelog.current["release"].get(changelog_key, {}).pop("draft", None)
+                    if changelog_key != "github":
+                        self.manager.variable[changelog_key]["concept"]["draft"] = False
             self.manager.changelog.finalize()
 
         hash_after = self.gh_context.hash_after
