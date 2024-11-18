@@ -1,11 +1,9 @@
 from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
-import datetime
 
 from loggerman import logger
-import pylinks as pl
-import pyserials as ps
+from versionman.pep440_semver import PEP440SemVer
 
 from proman.dstruct import Version, VersionTag
 from proman.dtype import IssueStatus, ReleaseAction
@@ -15,7 +13,6 @@ from proman.manager.release.zenodo import ZenodoManager
 if _TYPE_CHECKING:
     from typing import Literal
     from gittidy import Git
-    from versionman.pep440_semver import PEP440SemVer
     from proman.manager import Manager
     from proman.dstruct import Branch
 
