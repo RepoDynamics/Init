@@ -364,13 +364,13 @@ class User(PropertyDict):
     def __init__(
         self,
         id: str | int,
-        association: Literal["member", "user", "external"],
+        member: bool,
         data: dict,
         github_association: str | None = None,
         current_role: dict[str, int] | None = None
     ):
         self.id = id
-        self.association = association
+        self.member = member
         self.github_association = github_association
         self.current_role = current_role
         super().__init__(data)
@@ -394,7 +394,7 @@ class User(PropertyDict):
         return name
 
     def __eq__(self, other):
-        return isinstance(other, User) and self.id == other.id and self.association == other.association
+        return isinstance(other, User) and self.id == other.id and self.member == other.member
 
 
 class Tasklist:
