@@ -63,10 +63,10 @@ class BranchManager:
                 elif branch_type is BranchType.PRE:
                     args["issue"] = int(suffix_raw)
                 elif branch_type is BranchType.DEV:
-                    issue_num, target_branch = suffix_raw.split(branch_data["separator"], 1)
+                    issue_num, target_branch = suffix_raw.split(branch_data["name_separator"], 1)
                     args |= {"issue": int(issue_num), "target": self.from_name(target_branch)}
                 else:
-                    auto_type, target_branch = suffix_raw.split(branch_data["separator"], 1)
+                    auto_type, target_branch = suffix_raw.split(branch_data["name_separator"], 1)
                     args |= {"auto_type": auto_type, "target": self.from_name(target_branch)}
                 return self._make(**args, name=branch_name)
         return self._make(type=BranchType.OTHER, prefix=branch_name, name=branch_name)
@@ -81,7 +81,7 @@ class BranchManager:
             type=BranchType.RELEASE,
             prefix=data["name"],
             version=major_version,
-            separator=data["separator"],
+            separator=data["name_separator"],
         )
 
     def new_pre(self, pull_nr: int) -> Branch:
@@ -91,7 +91,7 @@ class BranchManager:
             type=BranchType.PRE,
             prefix=data["name"],
             issue=pull_nr,
-            separator=data["separator"],
+            separator=data["name_separator"],
         )
 
     def new_dev(self, issue_nr: int, target: str | Branch) -> Branch:
@@ -117,7 +117,7 @@ class BranchManager:
             prefix=data["name"],
             auto_type=self._manager.data["commit.auto"][auto_type]["type"],
             target=target,
-            separator=data["separator"],
+            separator=data["name_separator"],
         )
 
     def checkout_to_auto(self, branch: Branch) -> None:
