@@ -176,7 +176,7 @@ class PushEventHandler(EventHandler):
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(str(version))
         self.manager.changelog.update_date()
-        gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag)
+        gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag, body=self.head_commit_msg.body)
         zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
         if init:
             if self.head_commit_msg.footer.publish_github is False:
@@ -216,7 +216,7 @@ class PushEventHandler(EventHandler):
                 gh_release_output = None
             else:
                 gh_release_output = new_manager.release.github.update_draft(
-                    tag=version, on_main=True, publish=True, release_id=gh_draft["id"]
+                    tag=version, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
                 )
             zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
                 version=version,
