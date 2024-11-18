@@ -109,7 +109,7 @@ class BareZenodoManager:
         concept_record = self._varman.setdefault(self._var_key(sandbox), {}).setdefault("concept", {})
         if concept_record.get("id"):
             if concept_record.get("draft"):
-                depo_id = concept_record["id"] + 1
+                depo_id = int(concept_record["id"]) + 1
                 logger.success(
                     f"{title} Creation",
                     f"Selected open draft defined in variables file wih deposition ID {depo_id}"
