@@ -3,23 +3,20 @@ from __future__ import annotations as _annotations
 import copy
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-from pathlib import Path
-import re
-import datetime
-
 from loggerman import logger
 import pyserials as ps
-import mdit
 import controlman
+
+from github_contexts.github.payload.object import Issue
 
 from proman.dtype import LabelType
 
 if _TYPE_CHECKING:
     from typing import Literal
     from pathlib import Path
-    from github_contexts.github.payload.object import Issue, PullRequest, Milestone
+    from github_contexts.github.payload.object import PullRequest, Milestone
     from proman.manager import Manager, ProtocolManager
-    from proman.dstruct import IssueForm, User, Tasklist, Version, Label
+    from proman.dstruct import IssueForm, Tasklist, Version, Label
 
 
 class BareChangelogManager:
