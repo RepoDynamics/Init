@@ -203,7 +203,7 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.COMMIT,
             future_versions={self.gh_context.ref_name: version},
         )
-        self.jinja_env_vars["ccc"] = new_manager
+        self.jinja_env_vars["ccc"] = new_manager.data
         self.run_refactor(
             branch_manager=new_manager,
             action=InitCheckAction.COMMIT,
