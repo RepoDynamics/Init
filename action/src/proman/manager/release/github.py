@@ -25,7 +25,6 @@ class GitHubReleaseManager:
         body: str | None = None,
         prerelease: bool = False,
         discussion_category_name: str | None = None,
-        make_latest: Literal['true', 'false', 'legacy'] = 'true'
     ) -> dict[str, str | int]:
         release = self._manager.changelog.get_release("github")
         if release:
@@ -37,7 +36,6 @@ class GitHubReleaseManager:
             draft=True,
             prerelease=prerelease,
             discussion_category_name=discussion_category_name,
-            make_latest=make_latest,
         )
         logger.success(
             "GitHub Release Draft",
@@ -61,15 +59,6 @@ class GitHubReleaseManager:
             release_id = draft["id"]
         config = self._manager.data["release.github"]
         is_prerelease = bool(tag.version.pre)
-        if publish:
-            if is_prerelease:
-                make_latest = "false"
-            elif config["order"] == "date":
-                make_latest = "true"
-            else:
-                make_latest = "true" if on_main else "false"
-        else:
-            make_latest = None
         jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
         update_response = self._manager.gh_api_actions.release_update(
             release_id=release_id,
@@ -80,16 +69,25 @@ class GitHubReleaseManager:
             discussion_category_name=self._manager.fill_jinja_template(
                 config["discussion_category_name"], env_vars=jinja_env_vars
             ),
-            make_latest=make_latest,
         )
         logger.success(
             "GitHub Release Update",
             str(update_response)
         )
+        if publish:
+            if is_prerelease:
+                make_latest = False
+            elif config["order"] == "date":
+                make_latest = True
+            else:
+                make_latest = on_main
+        else:
+            make_latest = None
         output = self._make_output(
             release_id=release_id,
             publish=publish and not config["draft"],
             asset_config=self._manager.fill_jinja_templates(config["asset"], env_vars={"version": tag.version}),
+            make_latest=make_latest,
         )
         return output
 
@@ -105,10 +103,13 @@ class GitHubReleaseManager:
         return
 
     @staticmethod
-    def _make_output(release_id: int, publish: bool, asset_config: dict):
-        return {
+    def _make_output(release_id: int, publish: bool, asset_config: dict, make_latest: bool | None = None):
+        out = {
             "release_id": release_id,
             "draft": not publish,
             "delete_assets": "all",
             "assets": create_releaseman_intput(asset_config=asset_config, target="github")
         }
+        if make_latest is None:
+            return out
+        return out | {"make_latest": "true" if make_latest else "false"}
