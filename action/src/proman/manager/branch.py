@@ -25,10 +25,10 @@ class BranchManager:
         return Branch(
             type=type,
             prefix=prefix,
-            url=self._manager.gh_link.branch(name),
             sha=remote.get("commit", {}).get("sha"),
             protected=remote.get("protected"),
             protection=remote.get("protection"),
+            linker=self._manager.gh_link,
             **kwargs
         )
 
@@ -37,7 +37,7 @@ class BranchManager:
         return Branch(
             type=b.type,
             prefix=b.prefix,
-            url=b.url,
+            linker=b.linker,
             version=b.version,
             issue=b.issue,
             target=b.target,
