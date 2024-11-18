@@ -216,7 +216,7 @@ class PushEventHandler(EventHandler):
                 gh_release_output = None
             else:
                 gh_release_output = new_manager.release.github.update_draft(
-                    tag=version, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
+                    tag=version_tag, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
                 )
             zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
                 version=version,
