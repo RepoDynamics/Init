@@ -135,7 +135,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         and issue_form.commit.action
         )
         if publish_testpypi:
-            version = self.manager.release.next_dev_version(
+            version = self.manager.release.tag_next_dev_version(
                 issue_num=self.pull.number,
                 git_base=self._git_base,
                 git_head=self._git_head,
