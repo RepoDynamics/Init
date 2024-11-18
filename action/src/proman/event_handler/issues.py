@@ -195,7 +195,7 @@ class IssuesEventHandler(EventHandler):
                     base_branches_and_labels.append((branch, common_labels + [branch_label]))
             return base_branches_and_labels
 
-        def create_head_branch(base: Branch) -> tuple[Branch, Version]:
+        def create_head_branch(base: Branch) -> Branch:
             head = self.manager.branch.new_dev(
                 issue_nr=self.issue.number, target=base.name
             )
@@ -210,12 +210,11 @@ class IssuesEventHandler(EventHandler):
             )
             self._git_base.fetch_remote_branches_by_name(branch_names=head.name)
             self._git_base.checkout(head.name)
-            base_version = self.manager.release.latest_version()
             # Write initial commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
             self._git_base.commit(message="Temp", allow_empty=True)
             self._git_base.push(target="origin", set_upstream=True)
-            return head, base_version
+            return head
 
         def create_pull(head: Branch, base: Branch, labels: list[Label]) -> dict:
             api_response_pull = self._gh_api.pull_create(
@@ -274,12 +273,13 @@ class IssuesEventHandler(EventHandler):
         implementation_branches_info = []
         base_protocol = copy.copy(self.manager.protocol)
         for base_branch, labels in get_base_branches():
-            head_branch, base_version = create_head_branch(base=base_branch)
+            head_branch = create_head_branch(base=base_branch)
             pull = create_pull(head=head_branch, base=base_branch, labels=labels)
             implementation_branches_info.append(pull)
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
+            base_version = head_manager.release.latest_version()
             head_manager.changelog.initialize_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
@@ -288,7 +288,16 @@ class IssuesEventHandler(EventHandler):
                 protocol=self.manager.protocol,
                 base_version=base_version,
             )
+            if issue_form.commit.action:
+                next_dev_version_tag = head_manager.release.calculate_next_dev_version(
+                    version_base=base_version.public,
+                    issue_num=self.issue.number,
+                    action=issue_form.commit.action,
+                )
+                self.manager.release.github.get_or_make_draft(tag=next_dev_version_tag)
+                self.manager.release.zenodo.get_or_make_drafts()
             head_manager.changelog.write_file()
+            head_manager.user.write_contributors()
             self._git_base.commit(
                 message=str(
                     self.manager.commit.create_auto(
