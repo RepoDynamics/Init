@@ -115,8 +115,19 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
 
     def _run_synchronize_dev(self):
         tasklist = self.update_tasklist_and_contributors_from_commits()
-
-
+        if not self.issue_form.commit.action:
+            target_version = self.manager.release.next_local_version(self.base_version)
+        else:
+            tag = self.manager.release.next_dev_version_tag(
+                version_base=self.base_version,
+                issue_num=self.branch_head.issue,
+                action=self.issue_form.commit.action,
+                version_head=self.head_version,
+            )
+            target_version = tag.version
+            self.manager.release.github.get_or_make_draft(tag=tag)
+            self.manager.release.zenodo.get_or_make_drafts()
+            self.head_manager.changelog.update_release_zenodo_draft_status(sandbox=True, draft=False)
         self.head_manager.changelog.update_from_pull_request(
             issue_form=self.issue_form,
             pull=self.pull,
@@ -124,22 +135,22 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             protocol=self.manager.protocol,
             tasklist=tasklist,
             base_version=self.base_version,
+            head_version=self.head_version,
+            target_version=target_version,
         )
-        manager.changelog.write_file()
-        manager.user.write_contributors()
+        self.head_manager.changelog.write_file()
+        hash_contributors = self.head_manager.user.contributors.commit_changes()
+        self.head_manager.variable.write_file()
 
         self.manager.protocol.add_timeline_entry()
 
-        changes = self.run_change_detection(branch_manager=old_head_manager)
+        # changes = self.run_change_detection(branch_manager=old_head_manager)
+
         action = InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL
-        if "dynamic" in changes:
-            new_manager, commit_hash_cca = self.run_cca(
-                branch_manager=old_head_manager,
-                action=action,
-            )
-        else:
-            new_manager = old_head_manager
-            commit_hash_cca = None
+        new_manager, commit_hash_cca = self.run_cca(
+            branch_manager=self.head_manager,
+            action=action,
+        )
 
 
         if new_manager.git.has_changes():
