@@ -133,7 +133,7 @@ class CommitManager:
     def from_pull_request(
         self,
         pull_nr: int | str,
-        head_manager: Manager,
+        head_manager: Manager | None = None,
         revision_range: str | None = None,
         add_to_contributors: bool = True,
     ) -> list[Commit]:
@@ -149,7 +149,8 @@ class CommitManager:
                 email=user["email"],
                 add_to_contributors=add_to_contributors,
             )
-
+        if not head_manager:
+            head_manager = self._manager
         commits = []
         commits_data = self._manager.gh_api_actions.pull_commits(
             number=pull_nr,
