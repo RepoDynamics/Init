@@ -1,8 +1,7 @@
 from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING, NamedTuple as _NamedTuple
-import datetime
-from dataclasses import dataclass as _dataclass, asdict
+from dataclasses import dataclass as _dataclass
 
 import jinja2
 
@@ -13,12 +12,12 @@ import pycolorit as _pcit
 
 from proman.exception import ProManException
 from proman.dtype import IssueStatus, LabelType, BranchType
+from proman import date
 
 if _TYPE_CHECKING:
-    from typing import Literal, Sequence, Callable, Any
-
+    from typing import Sequence, Callable
+    from datetime import datetime
     from conventional_commits import ConventionalCommitMessage
-    from github_contexts.github.enum import AuthorAssociation
     from pylinks.site.github import Repo as GitHubRepoLinker, Branch as GitHubBranchLinker
     from pylinks.url import URL
     from proman.dtype import ReleaseAction
@@ -52,23 +51,27 @@ class Token:
 @_dataclass
 class Version:
     public: PEP440SemVer | str
-    local: tuple[Any, ...] | None = None
+    distance: int = 0
+    sha: str | None = None
+    date: datetime | None = None
 
     def __post_init__(self):
         if isinstance(self.public, str):
             self.public = PEP440SemVer(self.public)
-        if not self.local:
-            self.local = tuple()
+        if not self.date:
+            self.date = date.now()
+        return
 
     @property
     def full(self) -> str:
-        if not self.local:
-            return str(self.public)
-        return f"{self.public}+{'.'.join(map(str, self.local))}"
+        if self.is_local:
+            return f"{self.public}+{self.distance}"
+        return str(self.public)
+
 
     @property
     def is_local(self) -> bool:
-        return bool(self.local)
+        return bool(self.distance)
 
     def __str__(self):
         return self.full
@@ -231,7 +234,7 @@ class Commit:
                 return [recursive_fill(value) for value in template]
             if isinstance(template, str):
                 return jinja2.Template(template).render(
-                    self.jinja_env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
+                    self.jinja_env_vars | {"now": date.now()} | (env_vars or {})
                 )
             return template
 
