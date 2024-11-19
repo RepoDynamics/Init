@@ -28,8 +28,8 @@ class BareChangelogManager:
         self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else []
         if not self._changelog or not self._changelog[0].get("ongoing"):
             self._current = {"ongoing": True}
-            self._read_current = {}
             self._changelog.insert(0, self._current)
+            self._read_current = {}
         else:
             self._current = self._changelog[0]
             self._read_current = copy.deepcopy(self._current)
@@ -170,6 +170,11 @@ class BareChangelogManager:
         release["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
         return
 
+    def update_release_zenodo_draft_status(self, sandbox: bool, draft: bool = False):
+        release_data = self.current.get("release", {}).get("zenodo_sandbox" if sandbox else "zenodo", {})
+        release_data["draft"] = draft
+        return
+
     def update_type_id(self, type_id: str):
         self.current["type_id"] = type_id
         return
@@ -185,10 +190,10 @@ class BareChangelogManager:
         if self._current == self._read_current:
             return False
         self._path.write_text(
-            ps.write.to_json_string(self._changelog, sort_keys=True, indent=4).strip() + "\n",
+            ps.write.to_json_string(self._changelog, sort_keys=True, indent=3).strip() + "\n",
             newline="\n"
         )
-        return
+        return True
 
 
 
@@ -208,7 +213,7 @@ class ChangelogManager(BareChangelogManager):
         pull: dict,
         protocol: ProtocolManager,
         base_version: Version,
-        head_version: Version,
+        target_version: Version,
     ):
         self.update_date()
         self.update_issue(issue)
@@ -220,7 +225,7 @@ class ChangelogManager(BareChangelogManager):
         self.update_public(public=bool(issue_form.commit.action))
         self.update_pull_request(pull=pull, base_version=base_version, head_version=base_version)
         self.update_type_id(type_id=issue_form.id)
-        self.update_version(version=head_version)
+        self.update_version(version=target_version)
         self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
         for assignee in issue_form.pull_assignees + issue_form.review_assignees:
             self.update_contributor(
@@ -243,6 +248,8 @@ class ChangelogManager(BareChangelogManager):
         protocol: ProtocolManager,
         tasklist: Tasklist,
         base_version: Version,
+        head_version: Version,
+        target_version: Version | PEP440SemVer,
     ):
         self.update_date()
         self.update_labels(labels)
@@ -254,7 +261,7 @@ class ChangelogManager(BareChangelogManager):
         self.update_public(public=bool(issue_form.commit.action))
         self.update_pull_request(pull=pull, base_version=base_version, head_version=head_version)
         self.update_type_id(type_id=issue_form.id)
-        self.update_version(version=head_version)
+        self.update_version(version=target_version)
         self._update_contributors_with_assignees(issue=pull, issue_form=issue_form)
         if not pull.draft:
             self.update_pull_request_reviewers(pull=pull, issue_form=issue_form)
@@ -274,6 +281,13 @@ class ChangelogManager(BareChangelogManager):
             if roles:
                 self.update_contributor(id=user.id, member=user.member, roles=roles)
         return
+
+    def commit_changes(self) -> str | None:
+        written = self.write_file()
+        if not written:
+            return None
+        commit = self._manager.commit.create_auto(id="changelog_sync")
+        return self._manager.git.commit(message=str(commit.conv_msg))
 
     def _update_contributors_with_assignees(self, issue: Issue | PullRequest, issue_form: IssueForm):
         assignee_gh_ids = []
