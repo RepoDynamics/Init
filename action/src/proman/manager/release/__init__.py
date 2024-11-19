@@ -69,7 +69,7 @@ class ReleaseManager:
         version = f"{next_final_ver.base}{deploy_type.prerelease_type}{issue_num}"
         return Version(PEP440SemVer(version))
 
-    def calculate_next_dev_version(
+    def next_dev_version_tag(
         self,
         version_base: PEP440SemVer,
         issue_num: int | str,
@@ -165,7 +165,7 @@ class ReleaseManager:
         action: ReleaseAction,
     ) -> VersionTag:
         version_head = self.latest_version(git=git_head, dev_only=True)
-        next_dev_version_tag = self.calculate_next_dev_version(
+        next_dev_version_tag = self.next_dev_version_tag(
             version_base=self.latest_version(git=git_base, dev_only=False).public,
             version_head=version_head.public if version_head else None,
             issue_num=issue_num,
@@ -194,7 +194,7 @@ class ReleaseManager:
     @staticmethod
     def next_local_version(base_version: Version):
         return Version(
-            publich=base_version.public,
+            public=base_version.public,
             distance=base_version.distance + 1
         )
 
