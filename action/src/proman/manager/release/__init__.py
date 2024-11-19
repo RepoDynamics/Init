@@ -33,20 +33,20 @@ class ReleaseManager:
     def zenodo(self) -> ZenodoManager:
         return self._zenodo
 
+
     def calculate_next_version(
         self,
+        base_version: Version,
         issue_num: int | str,
         deploy_type: IssueStatus,
         action: ReleaseAction | None,
         first_public_release: bool = False,
-        git_base: Git | None = None,
     ) -> Version:
-        ver_base = self.latest_version(git=git_base)
         if not action:
             # Internal changes; return next local version
             return Version(
-                public=ver_base.public,
-                local=(ver_base.local[0] + 1,)
+                public=base_version.public,
+                distance=base_version.distance + 1,
             )
         if ver_base.public.pre:
             ver_base_pre_phase = ver_base.public.pre[0]
@@ -68,22 +68,6 @@ class ReleaseManager:
             return Version(next_final_ver)
         version = f"{next_final_ver.base}{deploy_type.prerelease_type}{issue_num}"
         return Version(PEP440SemVer(version))
-
-    def tag_next_dev_version(
-        self,
-        issue_num: int | str,
-        git_base: Git,
-        git_head: Git,
-        action: ReleaseAction,
-    ) -> VersionTag:
-        version_head = self.latest_version(git=git_head, dev_only=True)
-        next_dev_version_tag = self.calculate_next_dev_version(
-            version_base=self.latest_version(git=git_base, dev_only=False).public,
-            version_head=version_head.public if version_head else None,
-            issue_num=issue_num,
-            action=action,
-        )
-        return self.tag_version(next_dev_version_tag, git=git_head)
 
     def calculate_next_dev_version(
         self,
@@ -156,17 +140,38 @@ class ReleaseManager:
             branch_name = branch if isinstance(branch, str) else branch.name
             git.checkout(branch=branch_name)
         latest_version = get_latest_version()
-        distance = git.get_distance(
-            ref_start=f"refs/tags/{ver_tag_prefix}{latest_version.input}"
-        ) if latest_version else None
         if branch:
             git.checkout(branch=curr_branch)
             git.stash_pop()
-        if not latest_version and not dev_only:
-            logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
         if not latest_version:
-            return
-        return Version(public=latest_version, local=(distance,) if distance else None)
+            if not dev_only:
+                logger.error(f"No matching version tags found with prefix '{ver_tag_prefix}'.")
+            return None
+        distance = git.get_distance(
+            ref_start=f"refs/tags/{ver_tag_prefix}{latest_version.input}"
+        )
+        return Version(
+            public=latest_version,
+            distance=distance,
+            sha=git.commit_hash_normal(),
+            date=git.commit_date_latest(),
+        )
+
+    def tag_next_dev_version(
+        self,
+        issue_num: int | str,
+        git_base: Git,
+        git_head: Git,
+        action: ReleaseAction,
+    ) -> VersionTag:
+        version_head = self.latest_version(git=git_head, dev_only=True)
+        next_dev_version_tag = self.calculate_next_dev_version(
+            version_base=self.latest_version(git=git_base, dev_only=False).public,
+            version_head=version_head.public if version_head else None,
+            issue_num=issue_num,
+            action=action,
+        )
+        return self.tag_version(next_dev_version_tag, git=git_head)
 
     def tag_version(
         self,
@@ -185,6 +190,13 @@ class ReleaseManager:
 
     def create_version_tag(self, version: PEP440SemVer) -> VersionTag:
         return VersionTag(tag_prefix=self._manager.data["tag.version.prefix"], version=version)
+
+    @staticmethod
+    def next_local_version(base_version: Version):
+        return Version(
+            publich=base_version.public,
+            distance=base_version.distance + 1
+        )
 
     @staticmethod
     def _next_prerelease_phase(current_phase: Literal["a", "b", "rc"]) -> Literal["a", "b", "rc"]:
