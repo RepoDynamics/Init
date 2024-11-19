@@ -281,16 +281,18 @@ class IssuesEventHandler(EventHandler):
             ) else self.manager
             base_version = head_manager.release.latest_version()
             if issue_form.commit.action:
-                next_dev_version_tag = head_manager.release.calculate_next_dev_version(
+                next_dev_version_tag = head_manager.release.next_dev_version_tag(
                     version_base=base_version.public,
                     issue_num=self.issue.number,
                     action=issue_form.commit.action,
                 )
-                head_version = next_dev_version_tag.version
+                target_version = next_dev_version_tag.version
                 self.manager.release.github.get_or_make_draft(tag=next_dev_version_tag)
                 self.manager.release.zenodo.get_or_make_drafts()
             else:
-                head_version = self.manager.release.next_local_version(base_version=base_version)
+                target_version = self.manager.release.next_local_version(base_version=base_version)
+
+
             head_manager.changelog.initialize_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
@@ -298,10 +300,10 @@ class IssuesEventHandler(EventHandler):
                 pull=pull,
                 protocol=self.manager.protocol,
                 base_version=base_version,
-                head_version=head_version,
+                target_version=target_version,
             )
             head_manager.changelog.write_file()
-            head_manager.user.write_contributors()
+            hash_contributors = head_manager.user.contributors.commit_changes()
             head_manager.variable.write_file()
             self._git_base.commit(
                 message=str(
