@@ -1,7 +1,6 @@
 from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
-import datetime
 import copy
 
 import jinja2
@@ -22,6 +21,7 @@ from proman.manager.release import ReleaseManager
 from proman.manager.repo import RepoManager
 from proman.manager.user import UserManager
 from proman.manager.variable import VariableManager
+from proman import date
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
@@ -174,7 +174,7 @@ class Manager:
 
     def fill_jinja_template(self, template: str, env_vars: dict | None = None) -> str:
         return jinja2.Template(template).render(
-            self.jinja_env_vars | {"now": datetime.datetime.now(tz=datetime.UTC)} | (env_vars or {})
+            self.jinja_env_vars | {"now": date.now()} | (env_vars or {})
         )
 
     def fill_jinja_templates(self, templates: dict, env_vars: dict | None = None) -> dict:
@@ -191,8 +191,8 @@ class Manager:
         return recursive_fill(templates)
 
     @staticmethod
-    def normalize_github_date(date: str) -> str:
-        return datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%SZ").strftime("%Y-%m-%d")
+    def normalize_github_date(date_str: str) -> str:
+        return date.to_string(date.from_github(date_str))
 
 
 def from_metadata_json(
