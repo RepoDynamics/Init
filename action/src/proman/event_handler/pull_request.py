@@ -25,7 +25,7 @@ from proman.exception import ProManException
 
 if TYPE_CHECKING:
     from typing import Sequence
-    from proman.dstruct import Label, Commit, IssueForm, MainTasklistEntry, SubTasklistEntry
+    from proman.dstruct import Label, Commit, IssueForm, MainTasklistEntry, SubTasklistEntry, Tasklist, Version
     from proman.manager import Manager
 
 
@@ -34,7 +34,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
     _INTERNAL_HEAD_TO_BASE_MAP = {
         BranchType.PRE: (BranchType.MAIN, BranchType.RELEASE),
         BranchType.DEV: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRE),
-        BranchType.AUTO: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRE),
+        BranchType.AUTO: (BranchType.MAIN, BranchType.RELEASE, BranchType.PRE, BranchType.DEV),
     }
     _EXTERNAL_HEAD_TO_BASE_MAP = {
         BranchType.DEV: (BranchType.DEV,),
@@ -48,9 +48,45 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         self._git_base.fetch_remote_branches_by_name(branch_names=self.gh_context.base_ref)
         self._git_base.checkout(branch=self.gh_context.base_ref)
 
+        self.head_manager = self.manager_from_metadata_file(repo="head")
+        self.head_manager_new = self.head_manager
         self.manager.protocol.load_from_pull(self.pull)
-        self.issue_form: IssueForm = None
+        self._issue_form: IssueForm = None
+        self._commits: list[Commit] = []
+        self._base_version: Version = None
+        self._head_version: Version = None
         return
+
+    @property
+    def commits(self) -> list[Commit]:
+        if not self._commits:
+            self._commits = self.head_manager_new.commit.from_pull_request(
+                pull_nr=self.pull.number,
+                add_to_contributors=True,
+            )
+        return self._commits
+
+    @property
+    def head_commit(self) -> Commit:
+        return self.commits[0]
+
+    @property
+    def base_version(self) -> Version:
+        if not self._base_version:
+            self._base_version = self.manager.release.latest_version()
+        return self._base_version
+
+    @property
+    def head_version(self) -> Version:
+        if not self._head_version:
+            self._head_version = self.manager.release.latest_version(git=self._git_head)
+        return self._head_version
+
+    @property
+    def issue_form(self) -> IssueForm:
+        if not self._issue_form:
+            self._issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
+        return self._issue_form
 
     @logger.sectioner("Pull Request Handler Execution")
     def run(self):
@@ -66,7 +102,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         elif action is _gh_context.enum.ActionType.REOPENED:
             self._run_action_reopened()
         elif action is _gh_context.enum.ActionType.SYNCHRONIZE:
-            self._run_action_synchronize()
+            if self.branch_head.type is BranchType.DEV:
+                self._run_synchronize_dev()
         elif action is _gh_context.enum.ActionType.LABELED:
             self._run_action_labeled()
         elif action is _gh_context.enum.ActionType.READY_FOR_REVIEW:
@@ -76,10 +113,23 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         self.manager.protocol.update_on_github()
         return
 
-    def _run_action_synchronize(self):
+    def _run_synchronize_dev(self):
+        tasklist = self.update_tasklist_and_contributors_from_commits()
+
+
+        self.head_manager.changelog.update_from_pull_request(
+            issue_form=self.issue_form,
+            pull=self.pull,
+            labels=self.manager.label.resolve_labels(self.pull.label_names),
+            protocol=self.manager.protocol,
+            tasklist=tasklist,
+            base_version=self.base_version,
+        )
+        manager.changelog.write_file()
+        manager.user.write_contributors()
+
         self.manager.protocol.add_timeline_entry()
 
-        old_head_manager = self.manager_from_metadata_file(repo="head")
         changes = self.run_change_detection(branch_manager=old_head_manager)
         action = InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL
         if "dynamic" in changes:
@@ -90,8 +140,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         else:
             new_manager = old_head_manager
             commit_hash_cca = None
-        issue_form = self.manager.issue.form_from_id_labels(self.pull.label_names)
-        tasklist = self._update_changelogs(manager=new_manager, issue_form=issue_form)
+
+
         if new_manager.git.has_changes():
             commit_hash_changelog = new_manager.git.commit(
                 message=self.manager.commit.create_auto("changelog_sync")
@@ -255,7 +305,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             f"to release branch '{self.branch_base.name}'"
         )
         head_manager = self.manager_from_metadata_file(repo="head")
-        self._update_changelogs(manager=head_manager, issue_form=self.issue_form)
+        self.update_tasklist_and_contributors_from_commits(manager=head_manager, issue_form=self.issue_form)
         next_ver = self.manager.release.calculate_next_version(
             issue_num=self.branch_head.issue,
             deploy_type=IssueStatus.DEPLOY_FINAL,
@@ -399,7 +449,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         time.sleep(30)
         self._gh_api.pull_update(number=self.pull.number, base=pre_release_branch_name)
         hash_base = self._git_base.commit_hash_normal()
-        changelog_manager = self._update_changelogs(
+        changelog_manager = self.update_tasklist_and_contributors_from_commits(
             ver_dist=str(next_ver_pre),
             commit_type=self._primary_commit_type.conv_type,
             commit_title=self.pull.title,
@@ -535,8 +585,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             return
         return response
 
-    @logger.sectioner("Changelog Generation")
-    def _update_changelogs(self, manager: Manager, issue_form: IssueForm):
+    @logger.sectioner("Commits Update")
+    def update_tasklist_and_contributors_from_commits(self) -> Tasklist:
 
         def extract_commit_body(commit_body: str, level: int = 0) -> list[dict[str, bool | str | list]]:
             pattern = rf'{" " * level * 2}- (.+?)(?=\n{" " * level * 2}- |\Z)'
@@ -582,32 +632,28 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                     apply(commit_entry["subtasks"], subtask.subtasks)
             return
 
-        commits = manager.commit.from_pull_request(
-            pull_nr=self.pull.number,
-            head_manager=manager,
-        )
         tasklist = self.manager.protocol.get_tasklist()
-        for commit in commits:
+        for commit in self.commits:
             author_role = None
             committer_role = None
             if commit.dev_id:
-                commit_role = manager.data["commit.dev"][commit.dev_id].get("role", {})
+                commit_role = self.head_manager.data["commit.dev"][commit.dev_id].get("role", {})
                 author_role = commit_role.get("author")
                 committer_role = commit_role.get("committer")
             if not author_role:
-                author_role = issue_form.role.get("commit_author")
+                author_role = self.issue_form.role.get("commit_author")
             if not committer_role:
-                committer_role = issue_form.role.get("commit_committer")
+                committer_role = self.issue_form.role.get("commit_committer")
             if author_role:
                 for author in commit.authors:
-                    manager.changelog.update_contributor(
-                        association=author.association,
+                    self.head_manager.changelog.update_contributor(
+                        member=author.member,
                         id=author.id,
                         roles=author_role,
                     )
             if committer_role and commit.committer:
-                manager.changelog.update_contributor(
-                    association=commit.committer.association,
+                self.head_manager.changelog.update_contributor(
+                    member=commit.committer.member,
                     id=commit.committer.id,
                     roles=committer_role,
                 )
@@ -621,22 +667,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 else:
                     apply(extract_commit_body(commit.body), task.subtasks)
                 break
-
         self.manager.protocol.write_tasklist(tasklist)
-
-        manager.changelog.update_pull_request(
-            issue_form=issue_form,
-            pull=self.pull,
-            labels=self.manager.label.resolve_labels(self.pull.label_names),
-            protocol=self.manager.protocol,
-            base_sha=self._git_base.commit_hash_normal(),
-            base_version=self.manager.release.latest_version(),
-            tasklist=tasklist,
-        )
-        if not self.pull.draft:
-            manager.changelog.update_pull_request_reviewers(pull=self.pull, issue_form=issue_form)
-        manager.changelog.write()
-        manager.user.write_contributors()
         return tasklist
 
     def _write_pre_protocol(self, ver: str):
