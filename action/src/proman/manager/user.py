@@ -121,15 +121,15 @@ class UserManager:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("id") == username:
                 return User(id=member_id, member=True, data=member_data)
-        for github_user in self._contributors["github"].values():
-            if github_user["github"]["id"] == username:
-                return User(id=github_user["github"]["id"], member=False, data=github_user)
+        for contributor_id, contributor_data in self._contributors.items():
+            if contributor_data.get("github", {}).get("id") == username:
+                return User(id=contributor_id, member=False, data=contributor_data)
         data = data_helper.fill_entity(
             entity={"github": {"id": username}},
             github_api=self._gh_api,
             cache_manager=self._manager.cache,
             )[0]
-        user = User(id=data["github"]["id"], member=False, data=data)
+        user = User(id=data["github"]["rest_id"], member=False, data=data)
         if add_to_contributors:
             self.add_contributor(user=user, write=update_file)
         return user
@@ -144,9 +144,9 @@ class UserManager:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data["name"]["full"] == name and member_data.get("email", {}).get("id") == email:
                 return User(id=member_id, member=True, data=member_data)
-        for github_user in self._contributors["github"].values():
-            if github_user["name"]["full"] == name and github_user.get("email", {}).get("id") == email:
-                return User(id=github_user["github"]["id"], member=False, data=github_user)
+        for contributor_id, contributor_data in self._contributors.items():
+            if contributor_data["name"]["full"] == name and contributor_data.get("email", {}).get("id") == email:
+                return User(id=contributor_id, member=False, data=contributor_data)
         user = User(
             id=f"{name}_{email}",
             member=False,
@@ -175,7 +175,7 @@ class UserManager:
         )
 
     def add_contributor(self, user: User, write: bool = False):
-        contributor_id = user.get("github", {}).get("id") or f"{user.name.full}_{user.email.id}"
+        contributor_id = user.get("github", {}).get("rest_id") or f"{user.name.full}_{user.email.id}"
         contributor_entry = self._contributors.setdefault(contributor_id, {})
         ps.update.dict_from_addon(contributor_entry, user.as_dict)
         if write:
