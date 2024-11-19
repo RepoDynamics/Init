@@ -194,17 +194,9 @@ class PushEventHandler(EventHandler):
                         self.manager.variable[changelog_key]["concept"]["draft"] = False
             self.manager.changelog.finalize()
 
-        hash_after = self.gh_context.hash_after
-        vars_is_updated = self.manager.variable.write_file()
-        if vars_is_updated:
-            hash_after = self.manager.git.commit(
-                message=str(self.manager.commit.create_auto("vars_sync"))
-            )
-        changelog_is_updated = self.manager.changelog.write_file()
-        if changelog_is_updated:
-            hash_after = self.manager.git.commit(
-                message=str(self.manager.commit.create_auto("changelog_sync"))
-            )
+
+        hash_vars = self.manager.variable.commit_changes()
+        hash_changelog = self.manager.changelog.commit_changes()
         new_manager, _ = self.run_cca(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
@@ -214,7 +206,10 @@ class PushEventHandler(EventHandler):
         self.run_refactor(
             branch_manager=new_manager,
             action=InitCheckAction.COMMIT,
-            ref_range=(self.gh_context.hash_before, hash_after),
+            ref_range=(
+                self.gh_context.hash_before,
+                hash_changelog or hash_vars or self.gh_context.hash_after
+            ),
         ) if new_manager.data["tool.pre-commit.config.file.content"] else None
 
         if init:
