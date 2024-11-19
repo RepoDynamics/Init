@@ -264,7 +264,9 @@ class PushEventHandler(EventHandler):
         # Ref: https://blog.avneesh.tech/how-to-delete-all-commit-history-in-github
         #      https://stackoverflow.com/questions/55325930/git-how-to-squash-all-commits-on-master-branch
         self._git_base.checkout("temp", orphan=True)
-        self._git_base.commit(message=self.head_commit_msg.conv_msg.footerless)
+        self._git_base.commit(
+            message=f"{self.head_commit_msg.conv_msg.footerless.strip()}\n[skip ci]".strip()
+        )
         self._git_base.branch_delete(self.gh_context.ref_name, force=True)
         self._git_base.branch_rename(self.gh_context.ref_name, force=True)
         self._git_base.push(
