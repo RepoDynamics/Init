@@ -90,6 +90,7 @@ class CommitManager:
             )
 
     def create_auto(self, id: str, env_vars: dict | None = None) -> Commit:
+        # Skipping workflow runs: https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-workflow-runs/skipping-workflow-runs
         commit_data = self._manager.data[f"commit.auto.{id}"]
         scope = commit_data.get("scope")
         if isinstance(scope, str):
