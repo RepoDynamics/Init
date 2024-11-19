@@ -8,6 +8,7 @@ from controlman import data_helper
 import pylinks
 
 from proman.dstruct import User
+from proman.manager.contributor import ContributorManager
 
 if _TYPE_CHECKING:
     from typing import Literal
@@ -21,11 +22,12 @@ class UserManager:
     def __init__(self, manager: Manager):
         self._manager = manager
         self._gh_api = pylinks.api.github(token=self._manager.gh_context.token)
-        self._contributors_path = self._manager.git.repo_path / self._manager.data["doc.contributors.path"]
-        self._contributors = ps.read.json_from_file(
-            self._contributors_path
-        ) if self._contributors_path.is_file() else {}
+        self._contributors = ContributorManager(manager=self._manager)
         return
+
+    @property
+    def contributors(self) -> ContributorManager:
+        return self._contributors
 
     def from_id(self, entity_id: str | dict):
         """Get a user (member or contributor) from their ID.
@@ -95,7 +97,6 @@ class UserManager:
         self,
         github_id: int,
         add_to_contributors: bool = False,
-        update_file: bool = False,
     ) -> User:
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("rest_id") == github_id:
@@ -109,14 +110,13 @@ class UserManager:
             )[0]
         user = User(id=github_id, member=False, data=data)
         if add_to_contributors:
-            self.add_contributor(user=user, write=update_file)
+            self._contributors.add(user=user)
         return user
 
     def from_github_username(
         self,
         username: str,
         add_to_contributors: bool = False,
-        update_file: bool = False,
     ):
         for member_id, member_data in self._manager.data["team"].items():
             if member_data.get("github", {}).get("id") == username:
@@ -131,7 +131,7 @@ class UserManager:
             )[0]
         user = User(id=data["github"]["rest_id"], member=False, data=data)
         if add_to_contributors:
-            self.add_contributor(user=user, write=update_file)
+            self._contributors.add(user=user)
         return user
 
     def from_name_and_email(
@@ -139,7 +139,6 @@ class UserManager:
         name: str,
         email: str,
         add_to_contributors: bool = False,
-        update_file: bool = False,
     ):
         for member_id, member_data in self._manager.data["team"].items():
             if member_data["name"]["full"] == name and member_data.get("email", {}).get("id") == email:
@@ -153,19 +152,17 @@ class UserManager:
             data={"name": {"full": name}, "email": {"id": email, "url": f"mailto:{email}"}}
         )
         if add_to_contributors:
-            self.add_contributor(user=user, write=update_file)
+            self._contributors.add(user=user)
         return user
 
     def from_issue_author(
         self,
         issue: Issue | PullRequest | dict,
         add_to_contributors: bool = False,
-        update_file: bool = False,
     ) -> User:
         user = self.get_from_github_rest_id(
             issue["user"]["id"],
             add_to_contributors=add_to_contributors,
-            update_file=update_file,
         )
         return User(
             id=user.id,
@@ -173,18 +170,3 @@ class UserManager:
             data=user.as_dict,
             github_association=issue.get("author_association"),
         )
-
-    def add_contributor(self, user: User, write: bool = False):
-        contributor_id = user.get("github", {}).get("rest_id") or f"{user.name.full}_{user.email.id}"
-        contributor_entry = self._contributors.setdefault(contributor_id, {})
-        ps.update.dict_from_addon(contributor_entry, user.as_dict)
-        if write:
-            self.write_contributors()
-        return
-
-    def write_contributors(self):
-        with open(self._contributors_path, "w") as contributors_file:
-            contributors_file.write(ps.write.to_json_string(self._contributors, sort_keys=True, indent=3))
-        return
-
-
