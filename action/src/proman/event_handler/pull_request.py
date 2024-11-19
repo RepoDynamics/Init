@@ -113,6 +113,10 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         self.manager.protocol.update_on_github()
         return
 
+    def _run_sync_other(self):
+        # changes = self.run_change_detection(branch_manager=old_head_manager)
+        return
+
     def _run_synchronize_dev(self):
         tasklist = self.update_tasklist_and_contributors_from_commits()
         if not self.issue_form.commit.action:
@@ -138,33 +142,25 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             head_version=self.head_version,
             target_version=target_version,
         )
-        self.head_manager.changelog.write_file()
+        hash_variables = self.head_manager.variable.commit_changes()
         hash_contributors = self.head_manager.user.contributors.commit_changes()
-        self.head_manager.variable.write_file()
-
-        self.manager.protocol.add_timeline_entry()
-
-        # changes = self.run_change_detection(branch_manager=old_head_manager)
+        hash_changelog = self.head_manager.changelog.commit_changes()
 
         action = InitCheckAction.COMMIT if self.payload.internal else InitCheckAction.FAIL
         new_manager, commit_hash_cca = self.run_cca(
             branch_manager=self.head_manager,
             action=action,
         )
-
-
-        if new_manager.git.has_changes():
-            commit_hash_changelog = new_manager.git.commit(
-                message=self.manager.commit.create_auto("changelog_sync")
-            )
-        else:
-            commit_hash_changelog = None
-
         commit_hash_refactor = self.run_refactor(
             branch_manager=new_manager,
             action=action,
-            ref_range=(self.gh_context.hash_before, commit_hash_changelog or self.gh_context.hash_after),
+            ref_range=(
+                self.gh_context.hash_before,
+                hash_changelog or hash_contributors or hash_variables or self.gh_context.hash_after
+            ),
         ) if new_manager.data["tool.pre-commit.config.file.content"] else None
+
+        self.manager.protocol.add_timeline_entry()
 
         if self.pull.draft and tasklist.complete and not self.reporter.failed:
             status_label = self.manager.label.status_label(IssueStatus.TESTING)
@@ -182,9 +178,9 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             )
             self._gh_api.pull_review_request(
                 number=self.pull.number,
-                reviewers=[user["github"]["id"] for user in issue_form.review_assignees]
+                reviewers=[user["github"]["id"] for user in self.issue_form.review_assignees]
             )
-            for reviewer in issue_form.review_assignees:
+            for reviewer in self.issue_form.review_assignees:
                 self.manager.protocol.add_timeline_entry(
                     {"event": "review_requested", "requested_reviewer": reviewer}
                 )
@@ -209,6 +205,8 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         if self.payload.internal and (publish_testpypi or commit_hash):
             with logger.sectioning("Repository Update"):
                 new_manager.git.push()
+
+
         self._output_manager.set(
             main_manager=self.manager,
             branch_manager=new_manager,

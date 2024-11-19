@@ -152,6 +152,8 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.AMEND,
             future_versions={self.gh_context.event.repository.default_branch: "0.0.0"},
         )
+        main_manager.changelog.write_file()
+        main_manager.variable.write_file()
         self.run_refactor(
             branch_manager=main_manager,
             action=InitCheckAction.AMEND,
@@ -175,7 +177,7 @@ class PushEventHandler(EventHandler):
         )
         version = user_input.version or PEP440SemVer("0.0.0")
         version_tag = self.manager.release.create_version_tag(version)
-        self.manager.changelog.update_version(str(version))
+        self.manager.changelog.update_version(version)
         self.manager.changelog.update_date()
         gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag, body=self.head_commit_msg.body)
         zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
@@ -193,7 +195,6 @@ class PushEventHandler(EventHandler):
                     if changelog_key != "github":
                         self.manager.variable[changelog_key]["concept"]["draft"] = False
             self.manager.changelog.finalize()
-
 
         hash_vars = self.manager.variable.commit_changes()
         hash_changelog = self.manager.changelog.commit_changes()

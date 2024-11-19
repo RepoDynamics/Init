@@ -3,8 +3,10 @@ from __future__ import annotations as _annotations
 import copy
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
+from loggerman import logger
 import pyserials as ps
 import controlman
+from controlman import data_validator
 
 from github_contexts.github.payload.object import Issue
 
@@ -24,15 +26,28 @@ if _TYPE_CHECKING:
 class BareChangelogManager:
 
     def __init__(self, repo_path: Path):
-        self._path = repo_path / controlman.const.FILEPATH_CHANGELOG
-        self._changelog = ps.read.json_from_file(self._path) if self._path.is_file() else []
+        log_title = "Changelog Load"
+        self._filepath = repo_path / controlman.const.FILEPATH_CHANGELOG
+        if self._filepath.exists():
+            self._changelog = ps.read.json_from_file(self._filepath)
+            logger.succes(
+                log_title,
+                f"Loaded changelog from file '{controlman.const.FILEPATH_CHANGELOG}':",
+                logger.data_block(self._changelog)
+            )
+        else:
+            self._changelog = []
+            logger.info(
+                log_title,
+               f"No changelog file found at '{controlman.const.FILEPATH_CHANGELOG}'."
+            )
+        self._read = copy.deepcopy(self._changelog)
+        data_validator.validate(self._changelog, schema="changelog")
         if not self._changelog or not self._changelog[0].get("ongoing"):
             self._current = {"ongoing": True}
             self._changelog.insert(0, self._current)
-            self._read_current = {}
         else:
             self._current = self._changelog[0]
-            self._read_current = copy.deepcopy(self._current)
         self.update_date()
         return
 
@@ -187,9 +202,9 @@ class BareChangelogManager:
         return self.current
 
     def write_file(self):
-        if self._current == self._read_current:
+        if self._changelog == self._read:
             return False
-        self._path.write_text(
+        self._filepath.write_text(
             ps.write.to_json_string(self._changelog, sort_keys=True, indent=3).strip() + "\n",
             newline="\n"
         )
@@ -282,12 +297,12 @@ class ChangelogManager(BareChangelogManager):
                 self.update_contributor(id=user.id, member=user.member, roles=roles)
         return
 
-    def commit_changes(self) -> str | None:
+    def commit_changes(self, amend: bool = False) -> str | None:
         written = self.write_file()
         if not written:
             return None
         commit = self._manager.commit.create_auto(id="changelog_sync")
-        return self._manager.git.commit(message=str(commit.conv_msg))
+        return self._manager.git.commit(message=str(commit.conv_msg), amend=amend)
 
     def _update_contributors_with_assignees(self, issue: Issue | PullRequest, issue_form: IssueForm):
         assignee_gh_ids = []

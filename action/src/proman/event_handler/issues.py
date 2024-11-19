@@ -276,10 +276,11 @@ class IssuesEventHandler(EventHandler):
             head_branch = create_head_branch(base=base_branch)
             pull = create_pull(head=head_branch, base=base_branch, labels=labels)
             implementation_branches_info.append(pull)
+
+            base_version = self.manager.release.latest_version()
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
-            base_version = head_manager.release.latest_version()
             if issue_form.commit.action:
                 next_dev_version_tag = head_manager.release.next_dev_version_tag(
                     version_base=base_version.public,
@@ -291,8 +292,6 @@ class IssuesEventHandler(EventHandler):
                 self.manager.release.zenodo.get_or_make_drafts()
             else:
                 target_version = self.manager.release.next_local_version(base_version=base_version)
-
-
             head_manager.changelog.initialize_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
@@ -302,14 +301,19 @@ class IssuesEventHandler(EventHandler):
                 base_version=base_version,
                 target_version=target_version,
             )
-            head_manager.changelog.write_file()
-            hash_contributors = head_manager.user.contributors.commit_changes()
             head_manager.variable.write_file()
+            head_manager.user.contributors.write_file()
+            head_manager.changelog.write_file()
             self._git_base.commit(
                 message=str(
                     self.manager.commit.create_auto(
                         id="dev_branch_creation",
-                        env_vars={"head": head_branch, "base": base_branch, "pull_request": pull},
+                        env_vars={
+                            "head": head_branch,
+                            "base": base_branch,
+                            "pull_request": pull,
+                            "changelog": head_manager.changelog.current
+                        },
                     )
                 ),
                 amend=True

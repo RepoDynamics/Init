@@ -62,9 +62,9 @@ class ContributorManager(BareContributorManager):
         super().__init__(self._manager.git.repo_path)
         return
 
-    def commit_changes(self) -> str | None:
+    def commit_changes(self, amend: bool = False) -> str | None:
         written = self.write_file()
         if not written:
             return None
         commit = self._manager.commit.create_auto(id="contrib_sync")
-        return self._manager.git.commit(message=str(commit.conv_msg))
+        return self._manager.git.commit(message=str(commit.conv_msg), amend=amend)
