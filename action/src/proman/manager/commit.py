@@ -99,7 +99,7 @@ class CommitManager:
             type=commit_data["type"],
             description=commit_data["description"],
             scope=scope,
-            body=commit_data.get("body"),
+            body=f"{commit_data.get("body", "").strip()}\n[skip ci]".strip(),
             footer=commit_data.get("footer"),
             type_description=commit_data.get("type_description"),
             jinja_env_vars=self._manager.jinja_env_vars | (env_vars or {}),
