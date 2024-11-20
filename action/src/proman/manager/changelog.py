@@ -31,7 +31,7 @@ class BareChangelogManager:
         if self._filepath.exists():
             self._changelog = ps.read.json_from_file(self._filepath)
             self._read = copy.deepcopy(self._changelog)
-            logger.succes(
+            logger.success(
                 log_title,
                 f"Loaded changelog from file '{controlman.const.FILEPATH_CHANGELOG}':",
                 logger.data_block(self._changelog)
