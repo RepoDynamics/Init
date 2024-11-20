@@ -179,8 +179,10 @@ class PushEventHandler(EventHandler):
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(version)
         self.manager.changelog.update_date()
-        gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag, body=self.head_commit_msg.body)
-        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
+        gh_draft = self.manager.release.github.get_or_make_draft(
+            tag=version_tag, body=self.head_commit_msg.body
+        ) if self.manager.data["release.github"] else None
+        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts() if self.manager.data["release.zenodo"] else None
 
         if init:
             for changelog_key, do_publish in (
@@ -212,30 +214,33 @@ class PushEventHandler(EventHandler):
                 hash_changelog or hash_vars or self.gh_context.hash_after
             ),
         ) if new_manager.data["tool.pre-commit.config.file.content"] else None
-
+        gh_release_output = zenodo_output = zenodo_sandbox_output = None
         if init:
-            if self.head_commit_msg.footer.publish_github is False:
-                new_manager.release.github.delete_draft(release_id=gh_draft["id"])
-                gh_release_output = None
-            else:
-                gh_release_output = new_manager.release.github.update_draft(
-                    tag=version_tag, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
+            if gh_draft:
+                if self.head_commit_msg.footer.publish_github is False:
+                    new_manager.release.github.delete_draft(release_id=gh_draft["id"])
+                else:
+                    gh_release_output = new_manager.release.github.update_draft(
+                        tag=version_tag, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
+                    )
+            if zenodo_draft or zenodo_sandbox_draft:
+                zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
+                    version=version,
+                    publish_main=self.head_commit_msg.footer.publish_zenodo is not False,
+                    publish_sandbox=self.head_commit_msg.footer.publish_zenodo_sandbox is not False,
+                    id_main=zenodo_draft["id"] if zenodo_draft else None,
+                    id_sandbox=zenodo_sandbox_draft["id"] if zenodo_sandbox_draft else None
                 )
-            zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
-                version=version,
-                publish_main=self.head_commit_msg.footer.publish_zenodo is not False,
-                publish_sandbox=self.head_commit_msg.footer.publish_zenodo_sandbox is not False,
-                id_main=zenodo_draft["id"] if zenodo_draft else None,
-                id_sandbox=zenodo_sandbox_draft["id"] if zenodo_sandbox_draft else None
-            )
             if self.head_commit_msg.footer.squash is not False:
                 self._squash()
             else:
                 new_manager.git.push()
             new_manager.release.tag_version(version=version)
         else:
-            gh_release_output = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
-            zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(version=version)
+            if gh_draft:
+                gh_release_output = new_manager.release.github.update_draft(tag=version_tag, on_main=True)
+            if zenodo_draft or zenodo_sandbox_draft:
+                zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(version=version)
             new_manager.git.push()
 
         new_manager.repo.update_all(manager_before=self.manager, update_rulesets=init, reset_labels=True)
