@@ -182,7 +182,7 @@ class PushEventHandler(EventHandler):
         gh_draft = self.manager.release.github.get_or_make_draft(
             tag=version_tag, body=self.head_commit_msg.body
         ) if self.manager.data["release.github"] else None
-        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts() if self.manager.data["release.zenodo"] else None
+        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts() if self.manager.data["release.zenodo"] else (None, None)
 
         if init:
             for changelog_key, do_publish in (
