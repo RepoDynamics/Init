@@ -81,7 +81,7 @@ class OutputManager:
             self._set_lint("pkg")
         if test_lint:
             self._set_lint("test")
-        if package_test:
+        if package_test and self._branch_manager.data["test"]:
             self._out_test.append(self._create_output_package_test(source=package_test_source))
         if package_build or package_publish_testpypi or package_publish_pypi:
             self.set_package_build_and_publish(
@@ -215,6 +215,8 @@ class OutputManager:
         build_jobs = {}
         job_config = self._main_manager.data[f"workflow.job.build"]
         for typ in ("pkg", "test"):
+            if not self._branch_manager.data[typ]:
+                continue
             cibw = cibw_platforms(typ)
             build_job = {
                 "repository": self._repository,
@@ -245,7 +247,7 @@ class OutputManager:
                 "name": self._fill_jinja(job_config["name"]),
                 "job": {
                     "publish": [],
-                    "test": self._create_output_package_test(source=target, flatten_name=True),
+                    "test": self._create_output_package_test(source=target, flatten_name=True) if self._branch_manager.data["test"] else False,
                 }
             }
             for typ, build in build_jobs.items():
@@ -269,7 +271,8 @@ class OutputManager:
                         ),
                     }
                 )
-            setattr(self, f"_out_publish_{target}", publish_out)
+            if publish_out["job"]["publish"]:
+                setattr(self, f"_out_publish_{target}", publish_out)
         return
 
     def set_release(
