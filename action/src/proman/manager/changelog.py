@@ -30,18 +30,19 @@ class BareChangelogManager:
         self._filepath = repo_path / controlman.const.FILEPATH_CHANGELOG
         if self._filepath.exists():
             self._changelog = ps.read.json_from_file(self._filepath)
+            self._read = copy.deepcopy(self._changelog)
             logger.succes(
                 log_title,
                 f"Loaded changelog from file '{controlman.const.FILEPATH_CHANGELOG}':",
                 logger.data_block(self._changelog)
             )
         else:
-            self._changelog = []
+            self._changelog = [{"ongoing": True, "public": True, "version": "0.0.0"}]
+            self._read = []
             logger.info(
                 log_title,
                f"No changelog file found at '{controlman.const.FILEPATH_CHANGELOG}'."
             )
-        self._read = copy.deepcopy(self._changelog)
         data_validator.validate(self._changelog, schema="changelog")
         if not self._changelog or not self._changelog[0].get("ongoing"):
             self._current = {"ongoing": True}
