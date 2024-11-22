@@ -294,7 +294,7 @@ class ZenodoManager(BareZenodoManager):
 
         metadata = {
             k: v for k, v in self._manager.data["release.zenodo"].items()
-            if k not in ("asset", "concept_id", "sandbox_concept_id", "contributors") and v
+            if k not in ("asset", "concept_id", "sandbox_concept_id", "contributors", "release_mode") and v
         }
         metadata["creators"] = [
             create_person(user=self._manager.user.from_id(entity_id))
