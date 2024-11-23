@@ -11,7 +11,7 @@ from controlman import data_validator
 from github_contexts.github.payload.object import Issue
 
 from proman.dtype import LabelType
-from proman import date
+from controlman import date
 
 
 if _TYPE_CHECKING:
@@ -74,7 +74,7 @@ class BareChangelogManager:
         return
 
     def update_date(self):
-        self.current["date"] = date.to_string(date.now())
+        self.current["date"] = date.to_internal(date.now())
         return
 
     def update_issue(self, issue: Issue):
@@ -83,7 +83,7 @@ class BareChangelogManager:
             "id": issue.id,
             "node_id": issue.node_id,
             "url": issue.html_url,
-            "created_at": date.from_github_to_string(issue.created_at),
+            "created_at": date.from_github_to_internal(issue.created_at),
             "title": issue.title,
         }
         return
@@ -113,8 +113,8 @@ class BareChangelogManager:
             "url": milestone.html_url,
             "title": milestone.title,
             "description": milestone.description,
-            "due_on": date.from_github_to_string(milestone.due_on),
-            "created_at": date.from_github_to_string(milestone.created_at),
+            "due_on": date.from_github_to_internal(milestone.due_on),
+            "created_at": date.from_github_to_internal(milestone.created_at),
         }
         return
 
@@ -123,7 +123,7 @@ class BareChangelogManager:
             "version": str(version.public),
             "distance": version.distance,
             "sha": version.sha,
-            "date": date.to_string(version.date)
+            "date": date.to_internal(version.date)
         }
         return
 
@@ -155,7 +155,7 @@ class BareChangelogManager:
             "id": pull["id"],
             "node_id": pull["node_id"],
             "url": pull["html_url"],
-            "created_at": date.from_github_to_string(pull["created_at"]),
+            "created_at": date.from_github_to_internal(pull["created_at"]),
             "title": pull["title"],
             "additions": pull.get("additions", 0),
             "deletions": pull.get("deletions", 0),

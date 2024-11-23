@@ -12,7 +12,7 @@ import pycolorit as _pcit
 
 from proman.exception import ProManException
 from proman.dtype import IssueStatus, LabelType, BranchType
-from proman import date
+from controlman import date
 
 if _TYPE_CHECKING:
     from typing import Sequence, Callable

@@ -21,7 +21,7 @@ from proman.manager.release import ReleaseManager
 from proman.manager.repo import RepoManager
 from proman.manager.user import UserManager
 from proman.manager.variable import VariableManager
-from proman import date
+from controlman import date
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
@@ -192,7 +192,7 @@ class Manager:
 
     @staticmethod
     def normalize_github_date(date_str: str) -> str:
-        return date.to_string(date.from_github(date_str))
+        return date.to_internal(date.from_github(date_str))
 
 
 def from_metadata_json(
