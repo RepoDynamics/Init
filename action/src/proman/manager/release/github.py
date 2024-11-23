@@ -7,7 +7,6 @@ from loggerman import logger
 from proman.manager.release.asset import create_releaseman_intput
 
 if _TYPE_CHECKING:
-    from typing import Literal
     from proman.manager import Manager
     from proman.dstruct import VersionTag
 
@@ -55,14 +54,14 @@ class GitHubReleaseManager:
         if not release_id:
             draft = self._manager.changelog.get_release("github")
             release_id = draft["id"]
-        config = self._manager.data["release.github"]
+        config = self._manager.data["workflow.publish.github"]
         is_prerelease = bool(tag.version.pre)
         jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
         update_response = self._manager.gh_api_actions.release_update(
             release_id=release_id,
             tag_name=str(tag),
-            name=self._manager.fill_jinja_template(config["name"], env_vars=jinja_env_vars),
-            body=body or self._manager.fill_jinja_template(config["body"], env_vars=jinja_env_vars),
+            name=self._manager.fill_jinja_template(config["release"]["name"], env_vars=jinja_env_vars),
+            body=body or self._manager.fill_jinja_template(config["release"]["body"], env_vars=jinja_env_vars),
             prerelease=is_prerelease,
         )
         logger.success(
@@ -72,7 +71,7 @@ class GitHubReleaseManager:
         if publish:
             if is_prerelease:
                 make_latest = False
-            elif config["order"] == "date":
+            elif config["release"]["order"] == "date":
                 make_latest = True
             else:
                 make_latest = on_main
@@ -81,12 +80,12 @@ class GitHubReleaseManager:
 
         output = self._make_output(
             release_id=release_id,
-            publish=publish and not config["draft"],
+            publish=publish and not config["release"]["draft"],
             asset_config=self._manager.fill_jinja_templates(
                 config["asset"], env_vars={"version": tag.version}
             ) if "asset" in config else None,
             make_latest=make_latest,
-            discussion_category_name=config.get("discussion_category_name"),
+            discussion_category_name=config["release"].get("discussion_category_name"),
         )
         return output
 

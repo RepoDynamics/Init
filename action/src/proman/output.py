@@ -133,7 +133,9 @@ class OutputManager:
     def _set_web(self, deploy: bool):
         if "web" not in self._branch_manager.data:
             return
-        job_config = self._main_manager.data["workflow.job.web"]
+        job_config = self._main_manager.data["workflow.web"]
+        if not job_config or (not deploy and job_config["action"]["build"] == "disabled"):
+            return
         out = {
             "name": self._fill_jinja(job_config["name"]),
             "job": {
@@ -154,6 +156,9 @@ class OutputManager:
 
     def _set_lint(self, component: Literal["pkg", "test"]):
         if component not in self._branch_manager.data:
+            return
+        job_config = self._main_manager.data[f"workflow.lint"]
+        if not job_config or job_config["action"] == "disabled":
             return
         out = {
             "job": {
@@ -176,7 +181,7 @@ class OutputManager:
             }
         }
         out["name"] = self._fill_jinja(
-            self._main_manager.data[f"workflow.job.lint.name"],
+            job_config["name"],
             env_vars=out["job"] | self._jinja_env_vars,
         )
         self._out_lint.append(out)
@@ -213,9 +218,11 @@ class OutputManager:
             return platforms
 
         build_jobs = {}
-        job_config = self._main_manager.data[f"workflow.job.build"]
+        job_config = self._main_manager.data[f"workflow.build"]
         for typ in ("pkg", "test"):
             if not self._branch_manager.data[typ]:
+                continue
+            if not (publish_pypi or publish_testpypi) and job_config["action"] == "disabled":
                 continue
             cibw = cibw_platforms(typ)
             build_job = {
@@ -242,7 +249,7 @@ class OutputManager:
         for target, do_publish, in (("testpypi", publish_testpypi), ("pypi", publish_pypi)):
             if not do_publish:
                 continue
-            job_config = self._main_manager.data[f"workflow.job.publish_{target}"]
+            job_config = self._main_manager.data[f"workflow.publish.{target}"]
             publish_out = {
                 "name": self._fill_jinja(job_config["name"]),
                 "job": {
@@ -251,6 +258,8 @@ class OutputManager:
                 }
             }
             for typ, build in build_jobs.items():
+                if job_config["action"][typ] == "disabled":
+                    continue
                 publish_out["job"]["publish"].append(
                     {
                         "name": self._fill_jinja(
@@ -266,7 +275,7 @@ class OutputManager:
                         },
                         "artifact": build["artifact"],
                         "index-url": self._branch_manager.fill_jinja_template(
-                            self._main_manager.data[f"workflow.job.publish_{target}.index.url"],
+                            job_config["index"]["url"]["upload"],
                             env_vars=self._jinja_env_vars,
                         ),
                     }
@@ -281,15 +290,33 @@ class OutputManager:
         config_zenodo: dict | None = None,
         config_zenodo_sandbox: dict | None = None,
     ):
-        self._out_release = {
-            "name": self._branch_manager.data["workflow.job.release.name"],
-            "ref": self._ref,
-            "repo-path": const.OUTPUT_RELEASE_REPO_PATH,
-            "artifact-path": const.OUTPUT_RELEASE_ARTIFACT_PATH,
-            "github": config_github or {},
-            "zenodo": config_zenodo or {},
-            "zenodo-sandbox": config_zenodo_sandbox or {},
-        }
+        for config, key in (
+            (config_github, "github"),
+            (config_zenodo, "zenodo"),
+            (config_zenodo_sandbox, "zenodo-sandbox")
+        ):
+            job_config = self._branch_manager.data[f"workflow.publish.{key}"]
+            if not job_config or job_config["action"] == "disabled":
+                continue
+            out = self._out_release or {
+                "name": job_config["name"],
+                "job": {
+                    "ref": self._ref,
+                    "repo-path": const.OUTPUT_RELEASE_REPO_PATH,
+                    "artifact-path": const.OUTPUT_RELEASE_ARTIFACT_PATH,
+                    "tasks": []
+                }
+            }
+            out["job"]["tasks"].append(
+                {
+                    "name": job_config["task_name"],
+                    "env": job_config["env"],
+                    "github": config if key == "github" else {},
+                    "zenodo": config if key == "zenodo" else {},
+                    "zenodo-sandbox": config if key == "zenodo-sandbox" else {},
+                }
+            )
+            self._out_release = out
         return
 
     def _create_output_package_test(
@@ -304,7 +331,7 @@ class OutputManager:
         env_vars = {
             "source": {"github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI"}[source]
         }
-        job_config = self._main_manager.data["workflow.job.test"]
+        job_config = self._main_manager.data["workflow.test"]
         job_name = self._fill_jinja(job_config["name"], env_vars)
         out = {
             "name": job_name,

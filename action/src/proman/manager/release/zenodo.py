@@ -219,7 +219,7 @@ class ZenodoManager(BareZenodoManager):
                 outputs.append(
                     self._make_output(
                         deposition_id=draft_id,
-                        asset_config=self._manager.fill_jinja_templates(self._manager.data["release.zenodo.asset"], env_vars={"version": version}),
+                        asset_config=self._manager.fill_jinja_templates(self._manager.data[f"workflow.publish.zenodo{"-sandbox" if sandbox else ""}.asset"], env_vars={"version": version}),
                         publish=publish
                     )
                 )
@@ -292,15 +292,15 @@ class ZenodoManager(BareZenodoManager):
                         outputs.append(output)
             return outputs
 
+        metadata_raw = self._manager.data["citation.zenodo"]
         metadata = {
-            k: v for k, v in self._manager.data["release.zenodo"].items()
-            if k not in ("asset", "concept_id", "sandbox_concept_id", "contributors", "release_mode") and v
+            k: v for k, v in metadata_raw.items() if v
         }
         metadata["creators"] = [
             create_person(user=self._manager.user.from_id(entity_id))
             for entity_id in metadata["creators"]
         ]
-        contributors_data = self._manager.data["release.zenodo.contributors"]
+        contributors_data = metadata_raw.get("contributors")
         if contributors_data:
             contributors_entry = []
             for contributor_data in contributors_data:
