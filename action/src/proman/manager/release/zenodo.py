@@ -123,7 +123,7 @@ class BareZenodoManager:
                 )
                 depo_id = deposition["id"]
             draft = {
-                "id": depo_id,
+                "id": int(depo_id),
                 "doi": self._doi(depo_id, sandbox=sandbox),
                 "draft": True,
             }
@@ -137,7 +137,7 @@ class BareZenodoManager:
         )
         concept, draft = [
             {
-                "id": _id,
+                "id": int(_id),
                 "doi": self._doi(_id, sandbox=sandbox),
                 "draft": True,
             } for _id in (deposition["conceptrecid"], deposition["id"])
