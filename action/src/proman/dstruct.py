@@ -59,7 +59,7 @@ class Version:
         if isinstance(self.public, str):
             self.public = PEP440SemVer(self.public)
         if not self.date:
-            self.date = date.now()
+            self.date = date.from_now()
         return
 
     @property
@@ -234,7 +234,7 @@ class Commit:
                 return [recursive_fill(value) for value in template]
             if isinstance(template, str):
                 return jinja2.Template(template).render(
-                    self.jinja_env_vars | {"now": date.now()} | (env_vars or {})
+                    self.jinja_env_vars | {"now": date.from_now()} | (env_vars or {})
                 )
             return template
 
