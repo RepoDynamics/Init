@@ -74,7 +74,7 @@ class BareChangelogManager:
         return
 
     def update_date(self):
-        self.current["date"] = date.to_internal(date.now())
+        self.current["date"] = date.to_internal(date.from_now())
         return
 
     def update_issue(self, issue: Issue):
