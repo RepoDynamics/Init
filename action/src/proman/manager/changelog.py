@@ -83,7 +83,7 @@ class BareChangelogManager:
             "id": issue.id,
             "node_id": issue.node_id,
             "url": issue.html_url,
-            "created_at": date.from_github_to_internal(issue.created_at),
+            "created_at": date.to_internal(date.from_github(issue.created_at)),
             "title": issue.title,
         }
         return
@@ -113,8 +113,8 @@ class BareChangelogManager:
             "url": milestone.html_url,
             "title": milestone.title,
             "description": milestone.description,
-            "due_on": date.from_github_to_internal(milestone.due_on),
-            "created_at": date.from_github_to_internal(milestone.created_at),
+            "due_on": date.to_internal(date.from_github(milestone.due_on)),
+            "created_at": date.to_internal(date.from_github(milestone.created_at)),
         }
         return
 
@@ -155,7 +155,7 @@ class BareChangelogManager:
             "id": pull["id"],
             "node_id": pull["node_id"],
             "url": pull["html_url"],
-            "created_at": date.from_github_to_internal(pull["created_at"]),
+            "created_at": date.to_internal(date.from_github(pull["created_at"])),
             "title": pull["title"],
             "additions": pull.get("additions", 0),
             "deletions": pull.get("deletions", 0),
