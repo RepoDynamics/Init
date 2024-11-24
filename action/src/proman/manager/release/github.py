@@ -3,6 +3,7 @@ from __future__ import annotations as _annotations
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
 from loggerman import logger
+import mdit
 
 from proman.manager.release.asset import create_releaseman_intput
 
@@ -57,11 +58,19 @@ class GitHubReleaseManager:
         config = self._manager.data["workflow.publish.github"]
         is_prerelease = bool(tag.version.pre)
         jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
+        if not body:
+            body_template = config["release"].get("body")
+            if isinstance(body_template, str):
+                body = body_template
+            elif body_template:
+                body = mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
+        if body:
+            body = self._manager.fill_jinja_template(body, env_vars=jinja_env_vars)
         update_response = self._manager.gh_api_actions.release_update(
             release_id=release_id,
             tag_name=str(tag),
             name=self._manager.fill_jinja_template(config["release"]["name"], env_vars=jinja_env_vars),
-            body=body or self._manager.fill_jinja_template(config["release"]["body"], env_vars=jinja_env_vars),
+            body=body,
             prerelease=is_prerelease,
         )
         logger.success(
