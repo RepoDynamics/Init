@@ -54,7 +54,7 @@ class RepoManager:
             k: v for k, v in self._manager.data.get("repo", {}).items() if k not in (
                 "topics", "gitattributes", "gitignore",
                 "id", "node_id", "name", "full_name",
-                "created_at", "default_branch", "url",
+                "created_at", "default_branch", "url", "owner",
             )
         }
         if repo_config:
