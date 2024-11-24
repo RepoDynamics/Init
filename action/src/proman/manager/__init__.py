@@ -174,7 +174,7 @@ class Manager:
 
     def fill_jinja_template(self, template: str, env_vars: dict | None = None) -> str:
         return jinja2.Template(template).render(
-            self.jinja_env_vars | {"now": date.now()} | (env_vars or {})
+            self.jinja_env_vars | {"now": date.from_now()} | (env_vars or {})
         )
 
     def fill_jinja_templates(self, templates: dict, env_vars: dict | None = None) -> dict:
