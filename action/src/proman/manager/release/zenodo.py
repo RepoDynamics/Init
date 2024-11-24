@@ -12,13 +12,9 @@ if _TYPE_CHECKING:
     from versionman.pep440_semver import PEP440SemVer
     from proman.manager.user import User
     from proman.manager import Manager
-    from proman.dstruct import Token
-    from proman.manager.variable import BareVariableManager
-    from proman.manager.changelog import BareChangelogManager
 
 
-class BareZenodoManager:
-
+class ZenodoManager:
     _ROLE_TYPES = [
         "ContactPerson",
         "DataCollector",
@@ -42,24 +38,19 @@ class BareZenodoManager:
         "WorkPackageLeader",
         "Other",
     ]
-
-    def __init__(
-        self,
-        token: Token,
-        token_sandbox: Token,
-        variable_manager: BareVariableManager,
-        changelog_manager: BareChangelogManager,
-    ):
+    
+    def __init__(self, manager: Manager):
+        self._manager = manager
         self._api = {
-            True: pl.api.zenodo(token=token_sandbox.get(), sandbox=True),
-            False: pl.api.zenodo(token=token.get(), sandbox=False),
+            True: pl.api.zenodo(token=self._manager.zenodo_sandbox_token.get(), sandbox=True),
+            False: pl.api.zenodo(token=self._manager.zenodo_token.get(), sandbox=False),
         }
         self._has_token = {
-            True: bool(token_sandbox),
-            False: bool(token),
+            True: bool(self._manager.zenodo_sandbox_token),
+            False: bool(self._manager.zenodo_token),
         }
-        self._varman = variable_manager
-        self._changelog = changelog_manager
+        self._varman = self._manager.variable
+        self._changelog = self._manager.changelog
         return
 
     def get_or_make_drafts(self) -> tuple[dict | None, dict | None]:
@@ -89,9 +80,9 @@ class BareZenodoManager:
         draft_data, vars_updated, changelog_updated
         """
         title = f"{self._platform_name(sandbox)} Draft"
-        if not self._has_token[sandbox]:
+        if not self._has_token[sandbox] or self._workflow_config(sandbox=sandbox).get("action") != "auto":
             return None
-        record = self._changelog.get_release(self._var_key(sandbox))
+        record = self._changelog.current.get(self._var_key(sandbox))
         if record and record["draft"]:
             logger.success(
                 f"{title} Retrieval",
@@ -127,7 +118,7 @@ class BareZenodoManager:
                 "doi": self._doi(depo_id, sandbox=sandbox),
                 "draft": True,
             }
-            self._changelog.update_release_zenodo(sandbox=sandbox, **draft)
+            self._changelog.update_zenodo(sandbox=sandbox, **draft)
             return draft
         deposition = api.deposition_create()
         logger.success(
@@ -143,52 +134,8 @@ class BareZenodoManager:
             } for _id in (deposition["conceptrecid"], deposition["id"])
         ]
         concept_record.update(concept)
-        self._changelog.update_release_zenodo(sandbox=sandbox, **draft)
+        self._changelog.update_zenodo(sandbox=sandbox, **draft)
         return draft
-
-    def _upload_metadata(self, deposition_id: str | int, metadata: dict, sandbox: bool):
-        response = self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
-        logger.success(
-            f"{self._platform_name(sandbox)} Draft Metadata Update",
-            "Updated metadata for deposition:",
-            logger.data_block(response)
-        )
-        return
-
-    @staticmethod
-    def _make_output(deposition_id: str | int, asset_config: dict, publish: bool):
-        return {
-            "deposition_id": deposition_id,
-            "delete_assets": "all",
-            "assets": create_releaseman_intput(asset_config=asset_config, target="zenodo"),
-            "publish": publish,
-        }
-
-    @staticmethod
-    def _doi(deposition_id: str | int, sandbox: bool):
-        doi_prefix = "10.5072" if sandbox else "10.5281"  # https://developers.zenodo.org/#testing
-        return f"{doi_prefix}/zenodo.{deposition_id}"
-
-    @staticmethod
-    def _var_key(sandbox: bool) -> Literal["zenodo", "zenodo_sandbox"]:
-        return "zenodo_sandbox" if sandbox else "zenodo"
-
-    @staticmethod
-    def _platform_name(sandbox: bool) -> str:
-        return "Zenodo Sandbox" if sandbox else "Zenodo"
-
-
-class ZenodoManager(BareZenodoManager):
-    
-    def __init__(self, manager: Manager):
-        self._manager = manager
-        super().__init__(
-            token=self._manager.zenodo_token,
-            token_sandbox=self._manager.zenodo_sandbox_token,
-            variable_manager=self._manager.variable,
-            changelog_manager=self._manager.changelog,
-        )
-        return
 
     def update_drafts(
         self,
@@ -317,3 +264,37 @@ class ZenodoManager(BareZenodoManager):
             "preserve_doi": True,
         }
         return metadata
+
+    def _upload_metadata(self, deposition_id: str | int, metadata: dict, sandbox: bool):
+        response = self._api[sandbox].deposition_update(deposition_id=deposition_id, metadata=metadata)
+        logger.success(
+            f"{self._platform_name(sandbox)} Draft Metadata Update",
+            "Updated metadata for deposition:",
+            logger.data_block(response)
+        )
+        return
+
+    def _workflow_config(self, sandbox: bool):
+        return self._manager.data[f"workflow.publish.{"zenodo_sandbox" if sandbox else "zenodo"}"]
+
+    @staticmethod
+    def _make_output(deposition_id: str | int, asset_config: dict, publish: bool):
+        return {
+            "deposition_id": deposition_id,
+            "delete_assets": "all",
+            "assets": create_releaseman_intput(asset_config=asset_config, target="zenodo"),
+            "publish": publish,
+        }
+
+    @staticmethod
+    def _doi(deposition_id: str | int, sandbox: bool):
+        doi_prefix = "10.5072" if sandbox else "10.5281"  # https://developers.zenodo.org/#testing
+        return f"{doi_prefix}/zenodo.{deposition_id}"
+
+    @staticmethod
+    def _var_key(sandbox: bool) -> Literal["zenodo", "zenodo_sandbox"]:
+        return "zenodo_sandbox" if sandbox else "zenodo"
+
+    @staticmethod
+    def _platform_name(sandbox: bool) -> str:
+        return "Zenodo Sandbox" if sandbox else "Zenodo"

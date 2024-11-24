@@ -28,28 +28,19 @@ class BareChangelogManager:
     def __init__(self, repo_path: Path):
         log_title = "Changelog Load"
         self._filepath = repo_path / controlman.const.FILEPATH_CHANGELOG
-        if self._filepath.exists():
-            self._changelog = ps.read.json_from_file(self._filepath)
-            self._read = copy.deepcopy(self._changelog)
-            logger.success(
-                log_title,
-                f"Loaded changelog from file '{controlman.const.FILEPATH_CHANGELOG}':",
-                logger.data_block(self._changelog)
-            )
-        else:
-            self._changelog = [{"ongoing": True, "public": True, "version": "0.0.0"}]
-            self._read = []
-            logger.info(
-                log_title,
-               f"No changelog file found at '{controlman.const.FILEPATH_CHANGELOG}'."
-            )
+        self._changelog = ps.read.json_from_file(self._filepath)
+        self._read = copy.deepcopy(self._changelog)
+        logger.success(
+            log_title,
+            f"Loaded changelog from file '{controlman.const.FILEPATH_CHANGELOG}':",
+            logger.data_block(self._changelog)
+        )
         data_validator.validate(self._changelog, schema="changelog")
         if not self._changelog or not self._changelog[0].get("ongoing"):
             self._current = {"ongoing": True}
             self._changelog.insert(0, self._current)
         else:
             self._current = self._changelog[0]
-        self.update_date()
         return
 
     @property
@@ -59,9 +50,6 @@ class BareChangelogManager:
     @property
     def full(self) -> list:
         return self._changelog
-
-    def get_release(self, platform: Literal["zenodo", "zenodo_sandbox", "github"]) -> dict | None:
-        return self.current.get("release", {}).get(platform)
 
     def update_contributor(self, id: str, member: bool, roles: dict[str, int]):
         category = "member" if member else "collaborator"
@@ -176,18 +164,16 @@ class BareChangelogManager:
         }
         return
 
-    def update_release_github(self, id: int, node_id: str):
-        release = self.current.setdefault("release", {})
-        release["github"] = {"id": id, "node_id": node_id}
+    def update_github(self, id: int, node_id: str):
+        self.current["github"] = {"id": id, "node_id": node_id}
         return
 
-    def update_release_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
-        release = self.current.setdefault("release", {})
-        release["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
+    def update_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
+        self.current["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
         return
 
     def update_release_zenodo_draft_status(self, sandbox: bool, draft: bool = False):
-        release_data = self.current.get("release", {}).get("zenodo_sandbox" if sandbox else "zenodo", {})
+        release_data = self.current.get("zenodo_sandbox" if sandbox else "zenodo", {})
         release_data["draft"] = draft
         return
 

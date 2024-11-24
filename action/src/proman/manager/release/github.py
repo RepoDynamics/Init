@@ -18,22 +18,18 @@ class GitHubReleaseManager:
         self._manager = manager
         return
 
-    def get_or_make_draft(
-        self,
-        tag: VersionTag | str,
-        name: str | None = None,
-        body: str | None = None,
-        prerelease: bool = False,
-    ) -> dict[str, str | int]:
-        release = self._manager.changelog.get_release("github")
+    def get_or_make_draft(self, tag: VersionTag | str) -> dict[str, str | int] | None:
+        release = self._manager.changelog.current.get("github")
         if release:
             return release
+        if self._manager.data["workflow.publish.github.action"] != "auto":
+            return None
         response = self._manager.gh_api_actions.release_create(
             tag_name=str(tag),
-            name=name,
-            body=body,
+            name=self._name,
+            body=self._body,
             draft=True,
-            prerelease=prerelease,
+            prerelease=True,
         )
         logger.success(
             "GitHub Release Draft",
@@ -41,7 +37,7 @@ class GitHubReleaseManager:
             str(response)
         )
         out = {k: v for k, v in response.items() if k in ("id", "node_id")}
-        self._manager.changelog.update_release_github(**out)
+        self._manager.changelog.update_github(**out)
         return out
 
     def update_draft(
@@ -50,35 +46,24 @@ class GitHubReleaseManager:
         on_main: bool,
         publish: bool = False,
         release_id: int | None = None,
-        body: str | None = None,
     ) -> dict[str, str | int]:
         if not release_id:
-            draft = self._manager.changelog.get_release("github")
+            draft = self._manager.changelog.current.get("github")
             release_id = draft["id"]
         config = self._manager.data["workflow.publish.github"]
-        is_prerelease = bool(tag.version.pre)
-        jinja_env_vars = {"version": tag.version, "changelog": self._manager.changelog.current}
-        if not body:
-            body_template = config["release"].get("body")
-            if isinstance(body_template, str):
-                body = body_template
-            elif body_template:
-                body = mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
-        if body:
-            body = self._manager.fill_jinja_template(body, env_vars=jinja_env_vars)
         update_response = self._manager.gh_api_actions.release_update(
             release_id=release_id,
             tag_name=str(tag),
-            name=self._manager.fill_jinja_template(config["release"]["name"], env_vars=jinja_env_vars),
-            body=body,
-            prerelease=is_prerelease,
+            name=self._name,
+            body=self._body,
+            prerelease=self._is_pre(tag),
         )
         logger.success(
             "GitHub Release Update",
             str(update_response)
         )
         if publish:
-            if is_prerelease:
+            if self._is_pre(tag):
                 make_latest = False
             elif config["release"]["order"] == "date":
                 make_latest = True
@@ -100,7 +85,7 @@ class GitHubReleaseManager:
 
     def delete_draft(self, release_id: int | None = None):
         if not release_id:
-            draft = self._manager.changelog.get_release("github")
+            draft = self._manager.changelog.current.get("github")
             release_id = draft["id"]
         self._manager.gh_api_actions.release_delete(release_id=release_id)
         logger.success(
@@ -108,6 +93,23 @@ class GitHubReleaseManager:
             f"Deleted draft for release ID {release_id}"
         )
         return
+
+    @property
+    def _name(self) -> str | None:
+        return self._manager.data["workflow.publish.github.release.name"]
+
+    @property
+    def _body(self) -> str | None:
+        body_template = self._manager.data["workflow.publish.github.release.body"]
+        if isinstance(body_template, str):
+            return body_template
+        if body_template:
+            return mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
+        return None
+
+    @staticmethod
+    def _is_pre(tag: VersionTag):
+        return bool(tag.version.pre)
 
     @staticmethod
     def _make_output(

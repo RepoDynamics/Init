@@ -152,8 +152,6 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.AMEND,
             future_versions={self.gh_context.event.repository.default_branch: "0.0.0"},
         )
-        main_manager.changelog.write_file()
-        main_manager.variable.write_file()
         self.run_refactor(
             branch_manager=main_manager,
             action=InitCheckAction.AMEND,
@@ -179,11 +177,8 @@ class PushEventHandler(EventHandler):
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(version)
         self.manager.changelog.update_date()
-        gh_draft = self.manager.release.github.get_or_make_draft(
-            tag=version_tag, body=self.head_commit_msg.body
-        ) if self.manager.data["workflow.publish.github.action"] == "auto" else None
-        zenodo_draft = self.manager.release.zenodo.get_or_make_draft(sandbox=False) if self.manager.data["workflow.publish.zenodo.action"] == "auto" else None
-        zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_draft(sandbox=True) if self.manager.data["workflow.publish.zenodo-sandbox.action"] else None
+        gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag)
+        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
 
         if init:
             for changelog_key, do_publish in (
@@ -192,9 +187,9 @@ class PushEventHandler(EventHandler):
                 ("zenodo_sandbox", user_input.publish_zenodo_sandbox)
             ):
                 if do_publish is False:
-                    self.manager.changelog.current["release"].pop(changelog_key, None)
+                    self.manager.changelog.current.pop(changelog_key, None)
                 else:
-                    self.manager.changelog.current["release"].get(changelog_key, {}).pop("draft", None)
+                    self.manager.changelog.current.get(changelog_key, {}).pop("draft", None)
                     if changelog_key != "github":
                         self.manager.variable[changelog_key]["concept"]["draft"] = False
             self.manager.changelog.finalize()
@@ -222,7 +217,7 @@ class PushEventHandler(EventHandler):
                     new_manager.release.github.delete_draft(release_id=gh_draft["id"])
                 else:
                     gh_release_output = new_manager.release.github.update_draft(
-                        tag=version_tag, on_main=True, publish=True, release_id=gh_draft["id"], body=self.head_commit_msg.body
+                        tag=version_tag, on_main=True, publish=True, release_id=gh_draft["id"],
                     )
             if zenodo_draft or zenodo_sandbox_draft:
                 zenodo_output, zenodo_sandbox_output = new_manager.release.zenodo.update_drafts(
