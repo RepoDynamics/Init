@@ -181,8 +181,9 @@ class PushEventHandler(EventHandler):
         self.manager.changelog.update_date()
         gh_draft = self.manager.release.github.get_or_make_draft(
             tag=version_tag, body=self.head_commit_msg.body
-        ) if self.manager.data["release.github"] else None
-        zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts() if self.manager.data["release.zenodo"] else (None, None)
+        ) if self.manager.data["workflow.publish.github.action"] == "auto" else None
+        zenodo_draft = self.manager.release.zenodo.get_or_make_draft(sandbox=False) if self.manager.data["workflow.publish.zenodo.action"] == "auto" else None
+        zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_draft(sandbox=True) if self.manager.data["workflow.publish.zenodo-sandbox.action"] else None
 
         if init:
             for changelog_key, do_publish in (
