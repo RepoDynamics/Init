@@ -133,11 +133,11 @@ class BareChangelogManager:
         return
 
     def update_protocol_data(self, data: dict):
-        self.current.setdefault("protocol", {})["data"] = data
+        self.current["protocol"] = data
         return
 
     def update_protocol_tasklist(self, tasklist: Tasklist):
-        self.current.setdefault("protocol", {})["tasks"] = tasklist.as_list
+        self.current["tasks"] = tasklist.as_list
         return
 
     def update_public(self, public: bool):
