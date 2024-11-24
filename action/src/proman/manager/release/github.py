@@ -1,6 +1,8 @@
 from __future__ import annotations as _annotations
 
+import os
 from typing import TYPE_CHECKING as _TYPE_CHECKING
+from pathlib import Path
 
 from loggerman import logger
 import mdit
@@ -104,7 +106,11 @@ class GitHubReleaseManager:
         if isinstance(body_template, str):
             return body_template
         if body_template:
-            return mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
+            current_dir = Path.cwd()
+            os.chdir(self._manager.git.repo_path)
+            body = mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
+            os.chdir(current_dir)
+            return body
         return None
 
     @staticmethod
