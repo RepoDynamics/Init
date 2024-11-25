@@ -167,13 +167,13 @@ class BareChangelogManager:
     def update_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
         entry = {"id": id, "doi": doi, "draft": draft}
         if sandbox:
-            self.current.setdefault("dev_release", {})["zenodo_sandbox"] = entry
+            self.current.setdefault("dev", {})["zenodo_sandbox"] = entry
         else:
             self.current["zenodo"] = entry
         return
 
     def update_release_zenodo_draft_status(self, sandbox: bool, draft: bool = False):
-        release_data = self.current.get("dev_release", {}).get("zenodo_sandbox", {}) if sandbox else self.current.get("zenodo")
+        release_data = self.current.get("dev", {}).get("zenodo_sandbox", {}) if sandbox else self.current.get("zenodo")
         release_data["draft"] = draft
         return
 
@@ -199,8 +199,6 @@ class BareChangelogManager:
             newline="\n"
         )
         return True
-
-
 
 
 class ChangelogManager(BareChangelogManager):
