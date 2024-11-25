@@ -36,7 +36,7 @@ class BareChangelogManager:
             logger.data_block(self._changelog)
         )
         data_validator.validate(self._changelog, schema="changelog")
-        if not self._changelog or not self._changelog[0].get("ongoing"):
+        if self._changelog[0].get("phase") != "dev":
             self._current = {"phase": "dev"}
             self._changelog.insert(0, self._current)
         else:
