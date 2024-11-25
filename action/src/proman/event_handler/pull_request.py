@@ -315,7 +315,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
         )
         head_manager = self.manager_from_metadata_file(repo="head")
         self.update_tasklist_and_contributors_from_commits(manager=head_manager, issue_form=self.issue_form)
-        next_ver = self.manager.release.calculate_next_version(
+        next_ver = self.manager.release.next_version(
             issue_num=self.branch_head.issue,
             deploy_type=IssueStatus.DEPLOY_FINAL,
             action=self.issue_form.commit.action,
