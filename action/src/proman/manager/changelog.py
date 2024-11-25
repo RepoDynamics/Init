@@ -165,11 +165,15 @@ class BareChangelogManager:
         return
 
     def update_zenodo(self, id: str, doi: str, draft: bool, sandbox: bool):
-        self.current["zenodo_sandbox" if sandbox else "zenodo"] = {"id": id, "doi": doi, "draft": draft}
+        entry = {"id": id, "doi": doi, "draft": draft}
+        if sandbox:
+            self.current.setdefault("dev_release", {})["zenodo_sandbox"] = entry
+        else:
+            self.current["zenodo"] = entry
         return
 
     def update_release_zenodo_draft_status(self, sandbox: bool, draft: bool = False):
-        release_data = self.current.get("zenodo_sandbox" if sandbox else "zenodo", {})
+        release_data = self.current.get("dev_release", {}).get("zenodo_sandbox", {}) if sandbox else self.current.get("zenodo")
         release_data["draft"] = draft
         return
 
@@ -180,8 +184,11 @@ class BareChangelogManager:
     def update_version(self, version: Version | PEP440SemVer | str):
         self.current["version"] = str(version)
 
-    def finalize(self):
-        self.current.pop("ongoing")
+    def finalize(self, pre: bool):
+        if pre:
+            self.current["phase"] = pre
+        else:
+            self.current.pop("phase")
         return self.current
 
     def write_file(self):
