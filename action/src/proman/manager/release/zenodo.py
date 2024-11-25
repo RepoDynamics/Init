@@ -82,7 +82,7 @@ class ZenodoManager:
         title = f"{self._platform_name(sandbox)} Draft"
         if not self._has_token[sandbox] or self._workflow_config(sandbox=sandbox).get("action") != "auto":
             return None
-        record = self._changelog.current.get("dev_release", {}).get("zenodo_sandbox") if sandbox else self._changelog.current.get("zenodo")
+        record = self._changelog.current.get("dev", {}).get("zenodo_sandbox") if sandbox else self._changelog.current.get("zenodo")
         if record and record["draft"]:
             logger.success(
                 f"{title} Retrieval",
