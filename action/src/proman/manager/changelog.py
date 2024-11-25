@@ -185,6 +185,7 @@ class BareChangelogManager:
         self.current["version"] = str(version)
 
     def finalize(self, pre: bool):
+        self.current.pop("dev", None)
         if pre:
             self.current["phase"] = pre
         else:
