@@ -186,10 +186,13 @@ class PushEventHandler(EventHandler):
                 ("zenodo", user_input.publish_zenodo),
                 ("zenodo_sandbox", user_input.publish_zenodo_sandbox)
             ):
+                changelog_entry = self.manager.changelog.current.get(
+                    changelog_key
+                ) if changelog_key != "zenodo_sandbox" else self.manager.changelog.current.get("dev", {})
                 if do_publish is False:
-                    self.manager.changelog.current.pop(changelog_key, None)
+                    changelog_entry.pop(changelog_key, None)
                 else:
-                    self.manager.changelog.current.get(changelog_key, {}).pop("draft", None)
+                    changelog_entry.pop("draft", None)
                     if changelog_key != "github":
                         self.manager.variable[changelog_key]["concept"]["draft"] = False
             self.manager.changelog.finalize(pre=False)
