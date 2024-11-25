@@ -195,7 +195,7 @@ class IssuesEventHandler(EventHandler):
                     base_branches_and_labels.append((branch, common_labels + [branch_label]))
             return base_branches_and_labels
 
-        def create_head_branch(base: Branch) -> Branch:
+        def create_head_branch(base: Branch) -> tuple[Branch, Version]:
             head = self.manager.branch.new_dev(
                 issue_nr=self.issue.number, target=base.name
             )
@@ -210,11 +210,12 @@ class IssuesEventHandler(EventHandler):
             )
             self._git_base.fetch_remote_branches_by_name(branch_names=head.name)
             self._git_base.checkout(head.name)
+            base_version = self.manager.release.latest_version()
             # Write initial commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
             self._git_base.commit(message="[skip actions]", allow_empty=True)
             self._git_base.push(target="origin", set_upstream=True)
-            return head
+            return head, base_version
 
         def create_pull(head: Branch, base: Branch, labels: list[Label]) -> dict:
             api_response_pull = self._gh_api.pull_create(
@@ -273,14 +274,18 @@ class IssuesEventHandler(EventHandler):
         implementation_branches_info = []
         base_protocol = copy.copy(self.manager.protocol)
         for base_branch, labels in get_base_branches():
-            head_branch = create_head_branch(base=base_branch)
+            head_branch, base_version = create_head_branch(base=base_branch)
             pull = create_pull(head=head_branch, base=base_branch, labels=labels)
             implementation_branches_info.append(pull)
-
-            base_version = self.manager.release.latest_version()
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
+            target_varsion = head_manager.release.next_version(
+                base_version=base_version,
+                issue_num=self.issue.number,
+                deploy_type=IssueStatus.DEPLOY_ALPHA,
+                action=issue_form.commit.action,
+            )
             if issue_form.commit.action:
                 next_dev_version_tag = head_manager.release.next_dev_version_tag(
                     version_base=base_version.public,
