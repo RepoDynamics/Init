@@ -280,23 +280,12 @@ class IssuesEventHandler(EventHandler):
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
-            target_varsion = head_manager.release.next_version(
+            target_version = head_manager.release.next_version(
                 base_version=base_version,
                 issue_num=self.issue.number,
                 deploy_type=IssueStatus.DEPLOY_ALPHA,
                 action=issue_form.commit.action,
             )
-            if issue_form.commit.action:
-                next_dev_version_tag = head_manager.release.next_dev_version_tag(
-                    version_base=base_version.public,
-                    issue_num=self.issue.number,
-                    action=issue_form.commit.action,
-                )
-                target_version = next_dev_version_tag.version
-                self.manager.release.github.get_or_make_draft(tag=next_dev_version_tag)
-                self.manager.release.zenodo.get_or_make_drafts()
-            else:
-                target_version = self.manager.release.next_local_version(base_version=base_version)
             head_manager.changelog.initialize_from_issue(
                 issue_form=issue_form,
                 issue=self.issue,
