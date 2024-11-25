@@ -159,7 +159,7 @@ class EventHandler:
         self._path_head = self._git_head.repo_path
         self._jinja_env_vars = {
             "event": self.gh_context.event_name.value,
-            "action": self.gh_context.event.action.value if self.gh_context.event.action else "",
+            "action": self.gh_context.event.action.value if "action" in self.gh_context.event else "",
             "context": self.gh_context,
             "payload": self.gh_context.event,
         }
