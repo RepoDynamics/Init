@@ -53,7 +53,7 @@ class WorkflowDispatchEventHandler(EventHandler):
         self._payload: WorkflowDispatchPayload = self.gh_context.event
         logger.info(
             "User Inputs",
-            str(self._payload.inputs),
+            logger.data_block(self._payload.inputs),
         )
         self._inputs = {
             WorkflowDispatchInput(k): _WORKFLOW_DISPATCH_INPUT_TYPE[WorkflowDispatchInput(k)](v)
