@@ -293,7 +293,7 @@ class OutputManager:
         for config, key in (
             (config_github, "github"),
             (config_zenodo, "zenodo"),
-            (config_zenodo_sandbox, "zenodo-sandbox")
+            (config_zenodo_sandbox, "zenodo_sandbox")
         ):
             job_config = self._branch_manager.data[f"workflow.publish.{key}"]
             if not job_config or job_config["action"] == "disabled":
@@ -313,7 +313,7 @@ class OutputManager:
                     "env": job_config["env"],
                     "github": config if key == "github" else {},
                     "zenodo": config if key == "zenodo" else {},
-                    "zenodo-sandbox": config if key == "zenodo-sandbox" else {},
+                    "zenodo-sandbox": config if key == "zenodo_sandbox" else {},
                 }
             )
             self._out_release = out
