@@ -108,7 +108,11 @@ class GitHubReleaseManager:
         if body_template:
             current_dir = Path.cwd()
             os.chdir(self._manager.git.repo_path)
-            body = mdit.generate(body_template).source(target="github", filters=body_template.get("filters"))
+            body = mdit.generate(body_template).source(
+                target="github",
+                filters=body_template.get("filters"),
+                heading_number_explicit=False,
+            )
             os.chdir(current_dir)
             return body
         return None

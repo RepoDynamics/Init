@@ -37,7 +37,7 @@ class BareChangelogManager:
         )
         data_validator.validate(self._changelog, schema="changelog")
         if not self._changelog or not self._changelog[0].get("ongoing"):
-            self._current = {"ongoing": True}
+            self._current = {"phase": "dev"}
             self._changelog.insert(0, self._current)
         else:
             self._current = self._changelog[0]
@@ -126,10 +126,6 @@ class BareChangelogManager:
 
     def update_protocol_tasklist(self, tasklist: Tasklist):
         self.current["tasks"] = tasklist.as_list
-        return
-
-    def update_public(self, public: bool):
-        self.current["public"] = public
         return
 
     def update_pull_request(

@@ -17,7 +17,7 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev130"
+version = "0.0.0.dev131"
 name = "ProMan"
 dependencies = [
     "pre-commit == 4.0.1",
@@ -25,7 +25,7 @@ dependencies = [
     "versioningit >= 3.1.2, < 4",
     "Jinja2 >= 3, < 4",
     "ActionMan == 0.0.0.dev24",
-    "ControlMan == 0.0.0.dev389",
+    "ControlMan == 0.0.0.dev390",
     "ConventionalCommits == 0.0.0.dev46",
     "GitHub-Contexts == 0.0.0.dev16",
     "LoggerMan == 0.0.0.dev74",
