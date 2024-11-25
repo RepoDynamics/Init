@@ -33,8 +33,7 @@ class ReleaseManager:
     def zenodo(self) -> ZenodoManager:
         return self._zenodo
 
-
-    def calculate_next_version(
+    def next_version(
         self,
         base_version: Version,
         issue_num: int | str,
@@ -48,8 +47,8 @@ class ReleaseManager:
                 public=base_version.public,
                 distance=base_version.distance + 1,
             )
-        if ver_base.public.pre:
-            ver_base_pre_phase = ver_base.public.pre[0]
+        if base_version.public.pre:
+            ver_base_pre_phase = base_version.public.pre[0]
             if ver_base_pre_phase == "rc":
                 # Can only be the next post
                 return Version(public=ver_base.public.next_post)
@@ -62,12 +61,12 @@ class ReleaseManager:
                 new_ver = f"{ver_base.public.base}{new_pre_phase}{ver_base.public.pre[1]}"
                 return Version(public=PEP440SemVer(new_ver))
             return Version(public=ver_base.public.next_post)
-        next_final_ver = self._next_final_version(version=ver_base.public, action=action,
+        next_final_ver = self._next_final_version(version=base_version.public, action=action,
                                                   first_public_release=first_public_release)
         if action is ReleaseAction.POST or deploy_type is IssueStatus.DEPLOY_FINAL:
-            return Version(next_final_ver)
+            return Version(public=next_final_ver)
         version = f"{next_final_ver.base}{deploy_type.prerelease_type}{issue_num}"
-        return Version(PEP440SemVer(version))
+        return Version(public=PEP440SemVer(version))
 
     def next_dev_version_tag(
         self,
