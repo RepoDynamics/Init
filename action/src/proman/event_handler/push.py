@@ -192,7 +192,7 @@ class PushEventHandler(EventHandler):
                     self.manager.changelog.current.get(changelog_key, {}).pop("draft", None)
                     if changelog_key != "github":
                         self.manager.variable[changelog_key]["concept"]["draft"] = False
-            self.manager.changelog.finalize()
+            self.manager.changelog.finalize(pre=False)
 
         hash_vars = self.manager.variable.commit_changes()
         hash_changelog = self.manager.changelog.commit_changes()
