@@ -162,6 +162,7 @@ class EventHandler:
             "action": self.gh_context.event.action.value if "action" in self.gh_context.event else "",
             "context": self.gh_context,
             "payload": self.gh_context.event,
+            "mdit": mdit,
         }
         self.manager: Manager = None
         if not in_repo_creation_event:

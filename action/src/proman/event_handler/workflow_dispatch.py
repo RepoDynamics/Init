@@ -5,30 +5,17 @@ from enum import Enum
 
 from loggerman import logger
 import controlman
-# from repodynamics.datatype import InitCheckAction
-# from repodynamics.datatype import (
-#     Branch,
-#     BranchType,
-# )
-# from repodynamics.control.manager import ControlCenterManager
 
 from proman.main import EventHandler
 from proman.manager.changelog import ChangelogManager
+from proman.dtype import InitCheckAction
 
 if TYPE_CHECKING:
     from github_contexts.github.payload import WorkflowDispatchPayload
 
 
-class ConfigLintAction(Enum):
-    DISABLE = "disable"
-    REPORT = "report"
-    PULL = "pull"
-    MERGE = "pull & merge"
-    COMMIT = "commit"
-
-
-class WorkflowDispatchInput(Enum):
-    CONFIG = "config"
+class Input(Enum):
+    CCA = "config"
     LINT = "lint"
     BUILD = "build"
     TEST = "test"
@@ -36,13 +23,21 @@ class WorkflowDispatchInput(Enum):
     RELEASE = "release"
 
 
-_WORKFLOW_DISPATCH_INPUT_TYPE = {
-    WorkflowDispatchInput.CONFIG: ConfigLintAction,
-    WorkflowDispatchInput.LINT: ConfigLintAction,
-    WorkflowDispatchInput.BUILD: bool,
-    WorkflowDispatchInput.TEST: bool,
-    WorkflowDispatchInput.WEBSITE: bool,
-    WorkflowDispatchInput.RELEASE: bool,
+def bool_from_json(json_bool: str) -> bool:
+    if json_bool == "false":
+        return False
+    if json_bool == "true":
+        return True
+    raise ValueError(f"JSON boolean {json_bool} not recognized.")
+
+
+_INPUT_TYPE = {
+    Input.CCA: InitCheckAction,
+    Input.LINT: InitCheckAction,
+    Input.BUILD: bool_from_json,
+    Input.TEST: bool_from_json,
+    Input.WEBSITE: bool_from_json,
+    Input.RELEASE: bool_from_json,
 }
 
 
@@ -51,18 +46,31 @@ class WorkflowDispatchEventHandler(EventHandler):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._payload: WorkflowDispatchPayload = self.gh_context.event
+        self._inputs = {}
+        for k, v in self._payload.inputs.items():
+            input_type = Input(k)
+            input_value = _INPUT_TYPE[input_type](v)
+            self._inputs[input_type] = input_value
+        if self.gh_context.ref_is_main:
+            self.branch_manager = self.manager
+        else:
+            self.branch_manager = self.manager_from_metadata_file(repo="head")
+        return
+
+    @logger.sectioner("Issues Handler Execution")
+    def run(self):
         logger.info(
             "User Inputs",
             logger.data_block(self._payload.inputs),
         )
-        self._inputs = {
-            WorkflowDispatchInput(k): _WORKFLOW_DISPATCH_INPUT_TYPE[WorkflowDispatchInput(k)](v)
-            for k, v in self._payload.inputs.items()
-        }
-        return
+        if Input.CCA in self._inputs:
+            new_manager, commit_hash = self.run_cca(
+                branch_manager=self.manager,
+                action=InitCheckAction.COMMIT,
+                future_versions={self.gh_context.ref_name: version},
+            )
 
-    def _run_event(self):
-        if WorkflowDispatchInput.RELEASE in self._inputs:
+        if Input.RELEASE in self._inputs:
             if self.gh_context.ref_is_main:
                 return self._release_first_major_version()
             logger.critical("Cannot create first major release: not on main branch")

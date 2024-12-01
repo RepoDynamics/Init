@@ -177,7 +177,7 @@ class Manager:
             self.jinja_env_vars | {"now": date.from_now()} | (env_vars or {})
         )
 
-    def fill_jinja_templates(self, templates: dict, env_vars: dict | None = None) -> dict:
+    def fill_jinja_templates(self, templates: dict | list | str, env_vars: dict | None = None) -> dict:
 
         def recursive_fill(template):
             if isinstance(template, dict):

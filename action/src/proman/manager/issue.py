@@ -76,7 +76,7 @@ class IssueManager:
                 "review_assignee": None,
                 "commit_author": None,
                 "commit_committer": None,
-            } | self._manager.data.get("issue.form_default.role", {}) | issue_form.get("role", {}),
+            } | self._manager.data.get("issue.form.role", {}) | issue_form.get("role", {}),
             pre_process=issue_form.get("pre_process", {}),
             post_process=issue_form.get("post_process", {}),
             name=issue_form["name"],

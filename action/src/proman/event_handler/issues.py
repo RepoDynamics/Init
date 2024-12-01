@@ -123,7 +123,7 @@ class IssuesEventHandler(EventHandler):
 
         self.reporter.event(f"Issue #{self.issue.number} opened")
         issue_form = self.manager.issue.form_from_issue_body(self.issue.body)
-        issue_entries, body_processed = self.manager.protocol.generate_from_issue(
+        issue_entries, body_processed = self.manager.protocol.initialize_issue(
             issue=self.issue, issue_form=issue_form
         )
         self.manager.protocol.add_timeline_entry()
@@ -269,6 +269,8 @@ class IssuesEventHandler(EventHandler):
                 )
             self._gh_api.pull_update(number=pull["number"], body=devdoc_pull.protocol)
             return pull
+
+        if self.manager.protocol._protocol_config.get("fi")
 
         issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
         implementation_branches_info = []

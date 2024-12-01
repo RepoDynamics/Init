@@ -129,7 +129,7 @@ class LabelManager:
                         prefix=group_data["prefix"],
                         suffix=label_data["suffix"],
                         description=label_data.get("description", group_data.get("description", "")),
-                        color=group_data.get("color", ""),
+                        color=label_data.get("color") or group_data.get("color", ""),
                     )
                     name_to_obj[label_data["name"]] = id_to_obj[(group_id, label_id)] = label
         return name_to_obj, id_to_obj

@@ -56,11 +56,12 @@ class BranchType(_Enum):
 
 
 class InitCheckAction(_Enum):
-    NONE = "none"
+    NONE = "disabled"
     FAIL = "fail"
     REPORT = "report"
     ISSUE = "issue"
     PULL = "pull"
+    MERGE = "merge"
     COMMIT = "commit"
     AMEND = "amend"
 
@@ -115,6 +116,26 @@ class IssueStatus(_Enum):
         if self is IssueStatus.DEPLOY_RC:
             return "rc"
         return
+
+    def __gt__(self, other):
+        if isinstance(other, str):
+            other = IssueStatus(other)
+        return self.level > other.level
+
+    def __ge__(self, other):
+        if isinstance(other, str):
+            other = IssueStatus(other)
+        return self.level >= other.level
+
+    def __lt__(self, other):
+        if isinstance(other, str):
+            other = IssueStatus(other)
+        return self.level < other.level
+
+    def __le__(self, other):
+        if isinstance(other, str):
+            other = IssueStatus(other)
+        return self.level <= other.level
 
 
 class LabelType(_Enum):

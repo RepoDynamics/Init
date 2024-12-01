@@ -6,7 +6,6 @@ import re
 from loggerman import logger
 import mdit
 import pyserials as ps
-from controlman.file_gen.forms import pre_process_existence
 
 from proman.dtype import IssueStatus
 from proman.dstruct import Tasklist, MainTasklistEntry, SubTasklistEntry
@@ -28,6 +27,11 @@ class ProtocolManager:
         self._protocol_comment_id = None
         self._protocol_issue_nr = None
         self._protocol_pull_nr = None
+        self._config: dict = {}
+        self._protocol_data: dict[str, str] = {}
+        self._protocol_config: dict = {}
+        self._issue_inputs: dict = {}
+        self._env_vars: dict = {}
         return
 
     @property
@@ -39,9 +43,16 @@ class ProtocolManager:
         self._protocol = value
         return
 
-    def generate_from_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str]:
+    def initialize_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str]:
+        self._config = self._manager.data["issue.protocol"]
+        self._issue_inputs = self._extract_issue_ticket_inputs(issue.body, issue_form.body)
+
+
+        self._env_vars = {
+            "form": issue_form,
+            "input": self._issue_inputs,
+        }
         body_template = issue_form.post_process.get("body")
-        issue_entries = self._extract_entries_from_issue_body(issue.body, issue_form.body)
         if body_template:
             body_processed = self._generate(
                 template=body_template,
@@ -59,6 +70,26 @@ class ProtocolManager:
             issue_body=body_processed,
         )
         return issue_entries, body_processed
+
+    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
+        data = {}
+        env_vars = {
+            "data": data,
+            "form": issue_form,
+            "input": issue_inputs,
+            "issue_body": issue_body,
+        }
+        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title"):
+            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
+            if template_data:
+                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
+        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
+            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
+        protocol = self._manager.fill_jinja_template(
+            template=template,
+            env_vars=env_vars,
+        )
+        return protocol
 
     def load_from_issue(self, issue: Issue) -> str:
         if self._manager.data["doc.protocol.as_comment"]:
@@ -89,13 +120,36 @@ class ProtocolManager:
             comment_id=self._protocol_comment_id, body=self.protocol
         )
 
+    def _generate_output(self) -> str:
+
+        def make_config():
+            config_str = ps.write.to_yaml_string(self._protocol_config).strip()
+            marker_start, marker_end = self._make_text_marker(id="config")
+            return f"{marker_start}\n{config_str}\n{marker_end}"
+
+        def make_inputs():
+            if not self._issue_inputs:
+                return ""
+            inputs = ps.write.to_yaml_string(self._issue_inputs).strip()
+            marker_start, marker_end = self._make_text_marker(id="input")
+            return f"\n\n{marker_start}\n{inputs}\n{marker_end}"
+
+        output = self._manager.fill_jinja_templates(
+            templates=self._config["template"],
+            env_vars=self._env_vars,
+        )
+        if not isinstance(output, str):
+            output = mdit.generate(output).source(target="github")
+        output = f"{output.strip()}\n\n{make_config()}{make_inputs()}"
+        return output
+
     def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
-        marker_start, marker_end = self.make_text_marker(id=id, data=spec)
+        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
         data_filled = self._manager.fill_jinja_template(template=spec["value"], env_vars=env_vars)
         return f"{marker_start}{data_filled}{marker_end}"
 
     def get_data(self, id: str, spec: dict) -> str:
-        marker_start, marker_end = self.make_text_marker(id=id, data=spec)
+        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
         pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
         match = re.search(pattern, self.protocol, flags=re.DOTALL)
         return match.group(1) if match else ""
@@ -113,113 +167,10 @@ class ProtocolManager:
         data: str,
         replace: bool = False
     ) -> str:
-        marker_start, marker_end = self.make_text_marker(id=id, data=spec)
+        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
         pattern = rf"({re.escape(marker_start)})(.*?)({re.escape(marker_end)})"
         replacement = r"\1" + data + r"\3" if replace else r"\1\2" + data + r"\3"
         self.protocol = re.sub(pattern, replacement, self.protocol, flags=re.DOTALL)
-        return self.protocol
-
-    def add_timeline_entry(self, env_vars: dict | None = None) -> str:
-        template = self._manager.data["doc.protocol.timeline.template"]
-        if not template:
-            return self.protocol
-        entry = self._manager.fill_jinja_template(template, env_vars)
-        if not entry.strip():
-            return self.protocol
-        return self.add_data(
-            id="timeline",
-            spec=self._manager.data["doc.protocol.timeline"],
-            data=entry,
-            replace=False
-        )
-
-    def add_reference(
-        self,
-        ref_id: str,
-        ref_title: str,
-        ref_url: str,
-    ) -> str:
-        env_vars = {
-            "ref": {
-                "id": ref_id,
-                "url": ref_url,
-                "title": ref_title,
-            }
-        }
-        template = self._manager.data["doc.protocol.references.template"]
-        if not template:
-            return self.protocol
-        entry = self._manager.fill_jinja_template(template, env_vars)
-        if not entry.strip():
-            return self.protocol
-        return self.add_data(
-            id="references",
-            spec=self._manager.data["doc.protocol.references"],
-            data=entry,
-            replace=False
-        )
-
-    def add_reference_readthedocs(self, pull_nr: int) -> str:
-
-        def create_readthedocs_preview_url():
-            # Ref: https://github.com/readthedocs/actions/blob/v1/preview/scripts/edit-description.js
-            # Build the ReadTheDocs website for pull-requests and add a link to the pull request's description.
-            # Note: Enable "Preview Documentation from Pull Requests" in ReadtheDocs project at https://docs.readthedocs.io/en/latest/pull-requests.html
-            # https://docs.readthedocs.io/en/latest/guides/pull-requests.html
-
-            config = self._manager.data["tool.readthedocs.config.workflow"]
-            domain = "org.readthedocs.build" if config["platform"] == "community" else "com.readthedocs.build"
-            slug = config["name"]
-            url = f"https://{slug}--{pull_nr}.{domain}/"
-            if config["version_scheme"]["translation"]:
-                language = config["language"]
-                url += f"{language}/{pull_nr}/"
-            return url
-
-        if not self._manager.data["tool.readthedocs"]:
-            return self.protocol
-        return self.add_reference(
-            ref_id="readthedocs-preview",
-            ref_title="Website Preview on ReadTheDocs",
-            ref_url=create_readthedocs_preview_url(),
-        )
-
-    def add_pr_list(self, pr_list: list[dict[str, str]]) -> str:
-        pr_list_template = self._manager.data["doc.protocol.pr_list.template"]
-        if not pr_list_template:
-            return self.protocol
-        env_vars = {"pulls": pr_list}
-        entry = self._manager.fill_jinja_template(pr_list_template, env_vars)
-        if not entry.strip():
-            return self.protocol
-        return self.add_data(
-            id="pr_list",
-            spec=self._manager.data["doc.protocol.pr_list"],
-            data=entry,
-            replace=True
-        )
-
-    def update_status(self, status: IssueStatus, env_vars: dict | None = None) -> str:
-        status_template = self._manager.data["doc.protocol.status.template"]
-        if not status_template:
-            return self.protocol
-        self.add_data(
-            id="status",
-            spec=self._manager.data["doc.protocol.status"],
-            data=self._manager.fill_jinja_template(status_template, (env_vars or {}) | {"status": status.value}),
-            replace=True
-        )
-        checkbox_templates = self._manager.data.get("doc.protocol.status_checkbox", {})
-        for status_id, checkbox_data in checkbox_templates.items():
-            checkbox_level = IssueStatus(status_id).level if status_id != "deploy" else 10
-            checkbox = self.get_data(id=f"status_checkbox.{status_id}", spec=checkbox_data)
-            checkbox_set = self.toggle_checkbox(checkbox, check=status.level > checkbox_level)
-            self.add_data(
-                id=f"status_checkbox.{status_id}",
-                spec=checkbox_data,
-                data=checkbox_set,
-                replace=True,
-            )
         return self.protocol
 
     def get_tasklist(self) -> Tasklist | None:
@@ -313,15 +264,6 @@ class ProtocolManager:
         )
         return tasklist
 
-    def get_pr_title(self):
-        return self.get_data(id="pr_title", spec=self._manager.data["doc.protocol.pr_title"]).strip()
-
-    def make_text_marker(self, id: str, data: dict) -> tuple[str, str]:
-        return tuple(
-            data[pos] if pos in data else self._manager.data["doc.protocol.marker"][pos].format(id)
-            for pos in ("start", "end")
-        )
-
     def write_tasklist(self, tasklist: Tasklist) -> str:
         """Write an implementation tasklist as Markdown string
         and update it in the protocol.
@@ -353,54 +295,16 @@ class ProtocolManager:
             replace=True
         )
 
-    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
-        data = {}
-        env_vars = {
-            "data": data,
-            "form": issue_form,
-            "input": issue_inputs,
-            "issue_body": issue_body,
-        }
-        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title", "status"):
-            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
-            if template_data:
-                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
-        status_checkbox = self._manager.data["doc.protocol.status_checkbox"]
-        if status_checkbox:
-            env_vars["status_checkbox"] = {}
-            for status_id, status_checkbox_data in status_checkbox.items():
-                env_vars["status_checkbox"][status_id] = self.create_data(
-                    id=f"status_checkbox.{status_id}", spec=status_checkbox_data, env_vars=env_vars
-                )
-        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
-            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
-        protocol = self._manager.fill_jinja_template(
-            template=template,
-            env_vars=env_vars,
+    def _make_text_marker(self, id: str, data: dict | None = None) -> tuple[str, str]:
+        data = data or {}
+        return tuple(
+            data[pos] if pos in data else self._config["marker"][pos].format(id)
+            for pos in ("start", "end")
         )
-        return protocol
 
     @staticmethod
-    def toggle_checkbox(checkbox: str, check: bool) -> str:
-        """Toggle the checkbox in a markdown tasklist entry."""
+    def _extract_issue_ticket_inputs(body: str, body_elems: list[dict]) -> dict[str, str | list]:
 
-        def replacer(match):
-            checkmark = "X" if check else " "
-            return f"{match.group(1)}{checkmark}{match.group(3)}"
-
-        pattern = re.compile(r"(^[\s\n]*-\s*\[)([ ]|X)(]\s*)", re.MULTILINE)
-        matches = re.findall(pattern, checkbox)
-        if len(matches) == 0 or len(matches) > 1:
-            logger.warning(
-                "Checkbox Toggle",
-                f"Found {len(matches)} checkboxes in the input string:",
-                mdit.element.code_block(checkbox, language="markdown", caption="Input String"),
-            )
-            return checkbox
-        return re.sub(pattern, replacer, checkbox, count=1)
-
-    @staticmethod
-    def _extract_entries_from_issue_body(body: str, body_elems: list[dict]):
         def create_pattern(parts_):
             pattern_sections = []
             for idx, part in enumerate(parts_):
@@ -413,16 +317,38 @@ class ProtocolManager:
                 pattern_sections.append(pattern_section)
             return "".join(pattern_sections)
 
+        def extract_value(raw_value: str, elem_settings):
+            raw_value = raw_value.strip()
+            elem_type = elem_settings["type"]
+            if elem_type == "textarea":
+                render = elem_settings.get("attributes", {}).get("render")
+                if render:
+                    return raw_value.removeprefix(f"```{render}").removesuffix("```")
+                return raw_value
+            if elem_type == "dropdown":
+                multiple = elem_settings.get("attributes", {}).get("multiple")
+                if multiple:
+                    return raw_value.split(", ")
+                return raw_value
+            if elem_type == "checkboxes":
+                out = []
+                for line in raw_value.splitlines():
+                    if line.startswith("- [X] "):
+                        out.append(True)
+                    elif line.startswith("- [ ] "):
+                        out.append(False)
+                return out
+            return raw_value
+
         parts = []
+        settings = {}
         for elem in body_elems:
-            if elem["type"] == "markdown":
+            if elem["type"] == "markdown" or not elem.get("active", True):
                 continue
-            pre_process = elem.get("pre_process")
-            if not pre_process or pre_process_existence(pre_process):
-                optional = False
-            else:
-                optional = True
-            parts.append({"id": elem.get("id"), "title": elem["attributes"]["label"], "optional": optional})
+            elem_id = elem.get("id")
+            parts.append({"id": elem_id, "title": elem["attributes"]["label"], "optional": optional})
+            if elem_id:
+                settings[elem_id] = elem
         pattern = create_pattern(parts)
         compiled_pattern = re.compile(pattern, re.S)
         # Search for the pattern in the markdown
@@ -436,8 +362,27 @@ class ProtocolManager:
             raise ProManException()
         # Create a dictionary with titles as keys and matched content as values
         sections = {
-            section_id: content.strip() if content else None
+            section_id: extract_value(content, settings[section_id]) if content else None
             for section_id, content in match.groupdict().items()
         }
         logger.debug("Matched sections", str(sections))
         return sections
+
+    # @staticmethod
+    # def _toggle_checkbox(checkbox: str, check: bool) -> str:
+    #     """Toggle the checkbox in a markdown tasklist entry."""
+    #
+    #     def replacer(match):
+    #         checkmark = "X" if check else " "
+    #         return f"{match.group(1)}{checkmark}{match.group(3)}"
+    #
+    #     pattern = re.compile(r"(^[\s\n]*-\s*\[)([ ]|X)(]\s*)", re.MULTILINE)
+    #     matches = re.findall(pattern, checkbox)
+    #     if len(matches) == 0 or len(matches) > 1:
+    #         logger.warning(
+    #             "Checkbox Toggle",
+    #             f"Found {len(matches)} checkboxes in the input string:",
+    #             mdit.element.code_block(checkbox, language="markdown", caption="Input String"),
+    #         )
+    #         return checkbox
+    #     return re.sub(pattern, replacer, checkbox, count=1)

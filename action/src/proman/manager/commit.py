@@ -116,6 +116,7 @@ class CommitManager:
             body=commit_data.get("body"),
             footer=commit_data.get("footer"),
             action=ReleaseAction(commit_data["action"]) if commit_data.get("action") else None,
+            type_description=commit_data.get("type_description"),
             jinja_env_vars=self._manager.jinja_env_vars | (env_vars or {}),
         )
 

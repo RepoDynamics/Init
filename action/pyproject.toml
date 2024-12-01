@@ -17,7 +17,7 @@ namespaces = true
 # ----------------------------------------- Project Metadata -------------------------------------
 #
 [project]
-version = "0.0.0.dev132"
+version = "0.0.0.dev133"
 name = "ProMan"
 dependencies = [
     "pre-commit == 4.0.1",
@@ -25,19 +25,19 @@ dependencies = [
     "versioningit >= 3.1.2, < 4",
     "Jinja2 >= 3, < 4",
     "ActionMan == 0.0.0.dev24",
-    "ControlMan == 0.0.0.dev391",
-    "ConventionalCommits == 0.0.0.dev46",
+    "ControlMan == 0.0.0.dev392",
+    "ConventionalCommits == 0.0.0.dev47",
     "GitHub-Contexts == 0.0.0.dev16",
-    "LoggerMan == 0.0.0.dev74",
-    "MDit == 0.0.0.dev44",
+    "LoggerMan == 0.0.0.dev75",
+    "MDit == 0.0.0.dev45",
     "HTMP == 0.0.0.dev5",
-    "PyLinks == 0.0.0.dev57",
+    "PyLinks == 0.0.0.dev58",
     "PySyntax == 0.0.0.dev5",
     "VersionMan == 0.0.0.dev249",
-    "GitTidy == 0.0.0.dev71",
+    "GitTidy == 0.0.0.dev72",
     "PkgData == 0.0.0.dev5",
-    "PyShellMan == 0.0.0.dev34",
-    "PySerials == 0.0.0.dev47",
+    "PyShellMan == 0.0.0.dev35",
+    "PySerials == 0.0.0.dev48",
     "FileEx == 0.0.0.dev1",
     "ANSI-SGR == 0.0.0.dev10",
     "PyColorIT == 0.0.0.dev8",
