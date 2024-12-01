@@ -190,7 +190,7 @@ class OutputManager:
 
         def cibw_platforms(typ: Literal["pkg", "test"]) -> list[dict]:
             platforms = []
-            for os in self._branch_manager.data[f"{typ}.os"]:
+            for os in self._branch_manager.data[f"{typ}.os"].values():
                 ci_build = os.get("builds")
                 if not ci_build:
                     continue
