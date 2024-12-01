@@ -166,12 +166,7 @@ class OutputManager:
                 "ref-name": self._ref_name,
                 "ref": self._ref,
                 "ref-before": self._ref_before,
-                "os": [
-                    {
-                        "name": self._branch_manager.data[f"{component}.os.{key}.name"],
-                        "runner": self._branch_manager.data[f"{component}.os.{key}.runner"],
-                    } for key in ("linux", "macos", "windows")
-                ],
+                "os": list(self._branch_manager.data[f"{component}.os"].values()),
                 "pkg": self._branch_manager.data[component],
                 "pkg2": self._branch_manager.data["pkg" if component == "test" else "test"],
                 "python-max": self._branch_manager.data[f"{component}.python.version.minors"][-1],
@@ -195,9 +190,8 @@ class OutputManager:
 
         def cibw_platforms(typ: Literal["pkg", "test"]) -> list[dict]:
             platforms = []
-            for os_key in ("linux", "macos", "windows"):
-                os = self._branch_manager.data[f"{typ}.os"].get(os_key, {})
-                ci_build = os.get("cibuild")
+            for os in self._branch_manager.data[f"{typ}.os"]:
+                ci_build = os.get("builds")
                 if not ci_build:
                     continue
                 for cibw_platform in ci_build:
@@ -210,7 +204,7 @@ class OutputManager:
                         }
                         out["artifact"] = {
                             "wheel": self._create_workflow_artifact_config_single(
-                                self._main_manager.data["workflow.job.build.artifact.wheel"],
+                                self._main_manager.data["workflow.build.artifact.wheel"],
                                 jinja_env_vars=out | os,
                             )
                         }
@@ -218,27 +212,26 @@ class OutputManager:
             return platforms
 
         build_jobs = {}
-        job_config = self._main_manager.data[f"workflow.build"]
+        build_config = self._main_manager.data[f"workflow.build"]
         for typ in ("pkg", "test"):
             if not self._branch_manager.data[typ]:
                 continue
-            if not (publish_pypi or publish_testpypi) and job_config["action"] == "disabled":
+            if not (publish_pypi or publish_testpypi) and build_config["action"] == "disabled":
                 continue
-            cibw = cibw_platforms(typ)
             build_job = {
                 "repository": self._repository,
                 "ref": self._ref_name,
-                "cibw": cibw or False,
+                "ci_builds": cibw_platforms(typ) or False,
                 "pkg": self._branch_manager.data[typ],
             }
             build_job["artifact"] = self._create_workflow_artifact_config(
-                job_config["artifact"],
+                build_config["artifact"],
                 jinja_env_vars=build_job | {"platform": "any", "python": "3"},
                 include_merge=True,
             )
             out = {
                 "name": self._fill_jinja(
-                    job_config["name"],
+                    build_config["name"],
                     env_vars=build_job,
                 ),
                 "job": build_job,
@@ -358,10 +351,7 @@ class OutputManager:
                 "tasks": []
             }
         }
-        for os_key in ("linux", "macos", "windows"):
-            os = self._branch_manager.data["pkg.os"].get(os_key)
-            if not os:
-                continue
+        for os in self._branch_manager.data["pkg.os"].values():
             for python_version in self._branch_manager.data["pkg.python.version.minors"]:
                 task = {
                     "runner": os["runner"],
