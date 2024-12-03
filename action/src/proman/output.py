@@ -188,8 +188,8 @@ class OutputManager:
         publish_pypi: bool = False,
     ):
 
-        def cibw_platforms(typ: Literal["pkg", "test"]) -> list[dict]:
-            platforms = []
+        def ci_builds(typ: Literal["pkg", "test"]) -> list[dict]:
+            builds = []
             for os in self._branch_manager.data[f"{typ}.os"].values():
                 ci_build = os.get("builds")
                 if not ci_build:
@@ -208,8 +208,43 @@ class OutputManager:
                                 jinja_env_vars=out | os,
                             )
                         }
-                        platforms.append(out)
-            return platforms
+                        builds.append(out)
+            return builds
+
+        def conda_builds(typ: Literal["pkg", "test"]) -> list[dict]:
+            pkg = self._branch_manager.data[typ]
+            if pkg["python"]["pure"]:
+                for runner_prefix in ("ubuntu", "macos", "windows"):
+                    for os in pkg["os"].values():
+                        if os["runner"].startswith(runner_prefix):
+                            selected_os = os
+                            break
+                    else:
+                        raise RuntimeError("No OS found.")
+                noarch_build = {
+                    "os": selected_os,
+                    "python": pkg["python"]["version"]["minors"][-1],
+                }
+                noarch_build["conda"] = self._create_workflow_artifact_config_single(
+                    self._main_manager.data["workflow.build.artifact.conda"],
+                    jinja_env_vars=noarch_build,
+                )
+                return [noarch_build]
+            builds = []
+            for os in self._branch_manager.data[f"{typ}.os"].values():
+                for python_ver in self._branch_manager.data[f"{typ}.python.version.minors"]:
+                    out = {
+                        "os": os,
+                        "python": python_ver,
+                    }
+                    out["artifact"] = {
+                        "conda": self._create_workflow_artifact_config_single(
+                            self._main_manager.data["workflow.build.artifact.conda"],
+                            jinja_env_vars=out | os,
+                        )
+                    }
+                    builds.append(out)
+            return builds
 
         build_jobs = {}
         build_config = self._main_manager.data[f"workflow.build"]
@@ -221,8 +256,10 @@ class OutputManager:
             build_job = {
                 "repository": self._repository,
                 "ref": self._ref_name,
-                "ci_builds": cibw_platforms(typ) or False,
+                "ci-builds": ci_builds(typ) or False,
                 "pkg": self._branch_manager.data[typ],
+                "conda-channels": "",
+                "conda-recipe-path": self._branch_manager.data[f"{typ}.conda.recipe.path.local"],
             }
             build_job["artifact"] = self._create_workflow_artifact_config(
                 build_config["artifact"],
