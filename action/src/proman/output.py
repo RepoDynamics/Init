@@ -33,6 +33,7 @@ class OutputManager:
         self._out_test: list[dict] = []
         self._out_build: list[dict] = []
         self._out_publish_testpypi: dict = {}
+        self._out_publish_anaconda: dict = {}
         self._out_publish_pypi: dict = {}
         self._out_release: dict = {}
         return
@@ -55,6 +56,7 @@ class OutputManager:
         package_build: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
+        package_publish_anaconda: bool = False,
         github_release_config: dict | None = None,
         zenodo_config: dict | None = None,
         zenodo_sandbox_config: dict | None = None,
@@ -83,10 +85,11 @@ class OutputManager:
             self._set_lint("test")
         if package_test and self._branch_manager.data["test"]:
             self._out_test.append(self._create_output_package_test(source=package_test_source))
-        if package_build or package_publish_testpypi or package_publish_pypi:
+        if package_build or package_publish_testpypi or package_publish_pypi or package_publish_anaconda:
             self.set_package_build_and_publish(
                 publish_testpypi=package_publish_testpypi,
                 publish_pypi=package_publish_pypi,
+                publish_anaconda=package_publish_anaconda,
             )
         if github_release_config or zenodo_config or zenodo_sandbox_config:
             self.set_release(
@@ -102,6 +105,7 @@ class OutputManager:
             for web_config in self._out_web:
                 web_config["job"]["deploy"] = False
             self._out_publish_testpypi = False
+            self._out_publish_anaconda = False
             self._out_publish_pypi = False
             self._out_release = False
         output = {
@@ -111,6 +115,7 @@ class OutputManager:
             "test": self._out_test or False,
             "build": self._out_build or False,
             "publish-testpypi": self._out_publish_testpypi or False,
+            "publish-anaconda": self._out_publish_anaconda or False,
             "publish-pypi": self._out_publish_pypi or False,
             "release": self._out_release or False,
         }
@@ -186,6 +191,7 @@ class OutputManager:
         self,
         publish_testpypi: bool = False,
         publish_pypi: bool = False,
+        publish_anaconda: bool = False,
     ):
 
         def ci_builds(typ: Literal["pkg", "test"]) -> list[dict]:
@@ -271,7 +277,7 @@ class OutputManager:
         for typ in ("pkg", "test"):
             if not self._branch_manager.data[typ]:
                 continue
-            if not (publish_pypi or publish_testpypi) and build_config["action"] == "disabled":
+            if not (publish_pypi or publish_testpypi or publish_anaconda) and build_config["action"] == "disabled":
                 continue
             build_job = {
                 "repository": self._repository,
@@ -297,7 +303,9 @@ class OutputManager:
             self._out_build.append(out)
             build_jobs[typ] = build_job
 
-        for target, do_publish, in (("testpypi", publish_testpypi), ("pypi", publish_pypi)):
+        for target, do_publish, in (
+            ("testpypi", publish_testpypi), ("pypi", publish_pypi), ("anaconda", publish_anaconda)
+        ):
             if not do_publish:
                 continue
             job_config = self._main_manager.data[f"workflow.publish.{target}"]
@@ -311,26 +319,28 @@ class OutputManager:
             for typ, build in build_jobs.items():
                 if job_config["action"][typ] == "disabled":
                     continue
-                publish_out["job"]["publish"].append(
-                    {
-                        "name": self._fill_jinja(
-                            job_config["task_name"],
+                publish_job = {
+                    "name": self._fill_jinja(
+                        job_config["task_name"],
+                        env_vars=build,
+                    ),
+                    "env": {
+                        "name": self._fill_jinja(job_config["env"]["name"], env_vars=build),
+                        "url": self._fill_jinja(
+                            job_config["env"]["url"],
                             env_vars=build,
                         ),
-                        "env": {
-                            "name": self._fill_jinja(job_config["env"]["name"], env_vars=build),
-                            "url": self._fill_jinja(
-                                job_config["env"]["url"],
-                                env_vars=build,
-                            ),
-                        },
-                        "artifact": build["artifact"],
-                        "index-url": self._branch_manager.fill_jinja_template(
-                            job_config["index"]["url"]["upload"],
-                            env_vars=self._jinja_env_vars,
-                        ),
-                    }
-                )
+                    },
+                    "artifact": build["artifact"],
+                }
+                if target != "anaconda":
+                    publish_job["index-url"] = self._branch_manager.fill_jinja_template(
+                        job_config["index"]["url"]["upload"],
+                        env_vars=self._jinja_env_vars,
+                    )
+                else:
+                    publish_job["user"] = job_config["index"]["channel"]
+                publish_out["job"]["publish"].append(publish_job)
             if publish_out["job"]["publish"]:
                 setattr(self, f"_out_publish_{target}", publish_out)
         return
@@ -372,7 +382,7 @@ class OutputManager:
 
     def _create_output_package_test(
         self,
-        source: Literal["github", "pypi", "testpypi"] = "github",
+        source: Literal["github", "pypi", "testpypi", "anaconda"] = "github",
         pyargs: list[str] | None = None,
         args: list[str] | None = None,
         overrides: dict[str, str] | None = None,
@@ -380,7 +390,9 @@ class OutputManager:
     ) -> dict:
         source = source.lower()
         env_vars = {
-            "source": {"github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI"}[source]
+            "source": {
+                "github": "GitHub", "pypi": "PyPI", "testpypi": "TestPyPI", "anaconda": "Anaconda"
+            }[source]
         }
         job_config = self._main_manager.data["workflow.test"]
         job_name = self._fill_jinja(job_config["name"], env_vars)
