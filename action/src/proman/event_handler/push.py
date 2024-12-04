@@ -254,6 +254,7 @@ class PushEventHandler(EventHandler):
             package_build=True,
             package_publish_testpypi= init and self.head_commit_msg.footer.publish_testpypi is not False,
             package_publish_pypi=init and self.head_commit_msg.footer.publish_pypi is not False,
+            package_publish_anaconda=True,
             github_release_config=gh_release_output,
             zenodo_config=zenodo_output,
             zenodo_sandbox_config=zenodo_sandbox_output,
