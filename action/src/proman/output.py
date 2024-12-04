@@ -247,6 +247,7 @@ class OutputManager:
             return builds
 
         def conda_channels(typ: Literal["pkg", "test"]) -> str:
+            return
 
 
         build_jobs = {}
