@@ -339,7 +339,12 @@ class OutputManager:
                         env_vars=self._jinja_env_vars,
                     )
                 else:
-                    publish_job["user"] = job_config["index"]["channel"]
+                    channel = job_config["index"]["channel"]
+                    publish_job["user"] = channel
+                    pkg_name = self._branch_manager.data[f"{typ}.name"].lower()
+                    publish_out["job"].setdefault("finalize", []).append(
+                        {"label": "dev", "spec": f"{channel}/{pkg_name}/{self.version or "0.0.0"}"}
+                    )
                 publish_out["job"]["publish"].append(publish_job)
             if publish_out["job"]["publish"]:
                 setattr(self, f"_out_publish_{target}", publish_out)
