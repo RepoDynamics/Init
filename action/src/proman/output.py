@@ -226,9 +226,9 @@ class OutputManager:
                     "os": get_noarch_os(),
                     "python": pkg["python"]["version"]["minors"][-1],
                 }
-                noarch_build["conda"] = self._create_workflow_artifact_config_single(
+                noarch_build["artifact"] = self._create_workflow_artifact_config_single(
                     self._main_manager.data["workflow.build.artifact.conda"],
-                    jinja_env_vars=noarch_build | {"pkg": pkg},
+                    jinja_env_vars=noarch_build | {"pkg": pkg, "platform": "any", "python": "3"},
                 )
                 return [noarch_build]
             builds = []
