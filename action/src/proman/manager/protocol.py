@@ -312,8 +312,8 @@ class ProtocolManager:
                 pattern_section = rf"### {re.escape(part['title'])}\n{pattern_content}"
                 if idx != 0:
                     pattern_section = f"\n{pattern_section}"
-                if part["optional"]:
-                    pattern_section = f"(?:{pattern_section})?"
+                # if part["optional"]:
+                #     pattern_section = f"(?:{pattern_section})?"
                 pattern_sections.append(pattern_section)
             return "".join(pattern_sections)
 
@@ -346,7 +346,7 @@ class ProtocolManager:
             if elem["type"] == "markdown" or not elem.get("active", True):
                 continue
             elem_id = elem.get("id")
-            parts.append({"id": elem_id, "title": elem["attributes"]["label"], "optional": optional})
+            parts.append({"id": elem_id, "title": elem["attributes"]["label"]})
             if elem_id:
                 settings[elem_id] = elem
         pattern = create_pattern(parts)
