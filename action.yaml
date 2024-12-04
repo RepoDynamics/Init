@@ -91,6 +91,9 @@ outputs:
   publish-pypi:
     value: ${{ steps.action.outputs.publish-pypi }}
     description: Configurations for publish-pypi job.
+  publish-anaconda:
+    value: ${{ steps.action.outputs.publish-anaconda }}
+    description: Configurations for publish-anaconda job.
   release:
     value: ${{ steps.action.outputs.release }}
     description: Configurations for release job.
