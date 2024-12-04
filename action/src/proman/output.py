@@ -246,6 +246,9 @@ class OutputManager:
                     builds.append(out)
             return builds
 
+        def conda_channels(typ: Literal["pkg", "test"]) -> str:
+
+
         build_jobs = {}
         build_config = self._main_manager.data[f"workflow.build"]
         for typ in ("pkg", "test"):
@@ -256,8 +259,9 @@ class OutputManager:
             build_job = {
                 "repository": self._repository,
                 "ref": self._ref_name,
-                "ci-builds": ci_builds(typ) or False,
                 "pkg": self._branch_manager.data[typ],
+                "ci-builds": ci_builds(typ) or False,
+                "conda-builds": conda_builds(typ),
                 "conda-channels": "",
                 "conda-recipe-path": self._branch_manager.data[f"{typ}.conda.recipe.path.local"],
             }
