@@ -248,7 +248,22 @@ class OutputManager:
             return builds
 
         def conda_channels(typ: Literal["pkg", "test"]) -> str:
-            return
+
+            def update_channel_priority(requirement: str):
+                parts = requirement.split("::")
+                if len(parts) > 1:
+                    channel = parts[0]
+                    channel_priority[channel] = channel_priority.get(channel, 0) + 1
+                return
+
+            meta = self._branch_manager.data.get(f"{typ}.conda.recipe.meta.values", {})
+            channel_priority = {}
+            for key in ("host", "run", "run_constrained"):
+                for req in meta.get("requirements", {}).get("values", {}).get(key, {}).get("values", []):
+                    update_channel_priority(req["value"])
+            for req in meta.get("test", {}).get("values", {}).get("requires", {}).get("values", []):
+                update_channel_priority(req["value"])
+            return ",".join(sorted(channel_priority, key=channel_priority.get, reverse=True))
 
 
         build_jobs = {}
@@ -264,7 +279,7 @@ class OutputManager:
                 "pkg": self._branch_manager.data[typ],
                 "ci-builds": ci_builds(typ) or False,
                 "conda-builds": conda_builds(typ),
-                "conda-channels": "",
+                "conda-channels": conda_channels(typ),
                 "conda-recipe-path": self._branch_manager.data[f"{typ}.conda.recipe.path.local"],
             }
             build_job["artifact"] = self._create_workflow_artifact_config(
