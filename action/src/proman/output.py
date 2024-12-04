@@ -212,17 +212,18 @@ class OutputManager:
             return builds
 
         def conda_builds(typ: Literal["pkg", "test"]) -> list[dict]:
-            pkg = self._branch_manager.data[typ]
-            if pkg["python"]["pure"]:
+
+            def get_noarch_os():
                 for runner_prefix in ("ubuntu", "macos", "windows"):
                     for os in pkg["os"].values():
                         if os["runner"].startswith(runner_prefix):
-                            selected_os = os
-                            break
-                    else:
-                        raise RuntimeError("No OS found.")
+                            return os
+                return
+
+            pkg = self._branch_manager.data[typ]
+            if pkg["python"]["pure"]:
                 noarch_build = {
-                    "os": selected_os,
+                    "os": get_noarch_os(),
                     "python": pkg["python"]["version"]["minors"][-1],
                 }
                 noarch_build["conda"] = self._create_workflow_artifact_config_single(
