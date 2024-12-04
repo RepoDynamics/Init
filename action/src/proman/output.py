@@ -356,13 +356,13 @@ class OutputManager:
         config_zenodo: dict | None = None,
         config_zenodo_sandbox: dict | None = None,
     ):
-        for config, key in (
-            (config_github, "github"),
-            (config_zenodo, "zenodo"),
-            (config_zenodo_sandbox, "zenodo_sandbox")
+        for config, key, has_token in (
+            (config_github, "github", True),
+            (config_zenodo, "zenodo", bool(self._branch_manager.zenodo_token)),
+            (config_zenodo_sandbox, "zenodo_sandbox", bool(self._branch_manager.zenodo_sandbox_token))
         ):
             job_config = self._branch_manager.data[f"workflow.publish.{key}"]
-            if not job_config or job_config["action"] == "disabled":
+            if not job_config or job_config["action"] == "disabled" or not has_token:
                 continue
             out = self._out_release or {
                 "name": job_config["name"],
