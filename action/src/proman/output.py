@@ -227,7 +227,7 @@ class OutputManager:
                 }
                 noarch_build["conda"] = self._create_workflow_artifact_config_single(
                     self._main_manager.data["workflow.build.artifact.conda"],
-                    jinja_env_vars=noarch_build,
+                    jinja_env_vars=noarch_build | {"pkg": pkg},
                 )
                 return [noarch_build]
             builds = []
@@ -240,7 +240,7 @@ class OutputManager:
                     out["artifact"] = {
                         "conda": self._create_workflow_artifact_config_single(
                             self._main_manager.data["workflow.build.artifact.conda"],
-                            jinja_env_vars=out | os,
+                            jinja_env_vars=out | {"pkg": pkg},
                         )
                     }
                     builds.append(out)
