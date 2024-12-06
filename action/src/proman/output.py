@@ -206,7 +206,7 @@ class OutputManager:
                 "repository": self._repository,
                 "ref": self._ref,
                 "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
-                "no-push": "" if deploy else "True",
+                "no-push": "false" if deploy else "true",
                 "env": job_config["env"],
             }
         }
@@ -218,6 +218,7 @@ class OutputManager:
         publish_testpypi: bool = False,
         publish_pypi: bool = False,
         publish_anaconda: bool = False,
+        anaconda_label: str = "test",
     ):
 
         def ci_builds(typ: Literal["pkg", "test"]) -> list[dict]:
@@ -369,7 +370,7 @@ class OutputManager:
                     publish_job["user"] = channel
                     pkg_name = self._branch_manager.data[f"{typ}.name"].lower()
                     publish_out["job"].setdefault("finalize", []).append(
-                        {"label": "dev", "spec": f"{channel}/{pkg_name}/{self.version or "0.0.0"}"}
+                        {"label": anaconda_label, "spec": f"{channel}/{pkg_name}/{self.version or "0.0.0"}"}
                     )
                 publish_out["job"]["publish"].append(publish_job)
             if publish_out["job"]["publish"]:
