@@ -32,6 +32,7 @@ class OutputManager:
         self._out_lint: list[dict] = []
         self._out_test: list[dict] = []
         self._out_build: list[dict] = []
+        self._out_docker: list[dict] = []
         self._out_publish_testpypi: dict = {}
         self._out_publish_anaconda: dict = {}
         self._out_publish_pypi: dict = {}
@@ -54,6 +55,8 @@ class OutputManager:
         package_test: bool = False,
         package_test_source: Literal["github", "pypi", "testpypi"] = "github",
         package_build: bool = False,
+        docker_build: bool = False,
+        docker_deploy: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
         package_publish_anaconda: bool = False,
@@ -114,6 +117,7 @@ class OutputManager:
             "lint": self._out_lint or False,
             "test": self._out_test or False,
             "build": self._out_build or False,
+            "docker": self._out_docker or False,
             "publish-testpypi": self._out_publish_testpypi or False,
             "publish-anaconda": self._out_publish_anaconda or False,
             "publish-pypi": self._out_publish_pypi or False,
@@ -185,6 +189,26 @@ class OutputManager:
             env_vars=out["job"] | self._jinja_env_vars,
         )
         self._out_lint.append(out)
+        return
+
+    def _set_docker(self, deploy: bool):
+        job_config = self._main_manager.data["workflow.docker"]
+        if not job_config or (not deploy and job_config["action"]["build"] == "disabled") or (
+            deploy and job_config["action"]["deploy"] == "disabled"
+        ):
+            return
+        out = {
+            "name": self._fill_jinja(job_config["name"]),
+            "job": {
+                "name": "Build & Deploy" if deploy else "Build",
+                "repository": self._repository,
+                "ref": self._ref,
+                "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
+                "no-push": "" if deploy else "True",
+                "env": job_config["env"],
+            }
+        }
+        self._out_docker.append(out)
         return
 
     def set_package_build_and_publish(
