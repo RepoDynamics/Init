@@ -88,6 +88,8 @@ class OutputManager:
             self._set_lint("test")
         if package_test and self._branch_manager.data["test"]:
             self._out_test.append(self._create_output_package_test(source=package_test_source))
+        if docker_build or docker_deploy:
+            self._set_docker(deploy=docker_deploy)
         if package_build or package_publish_testpypi or package_publish_pypi or package_publish_anaconda:
             self.set_package_build_and_publish(
                 publish_testpypi=package_publish_testpypi,
