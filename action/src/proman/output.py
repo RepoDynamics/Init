@@ -247,7 +247,7 @@ class OutputManager:
         publish_testpypi: bool = False,
         publish_pypi: bool = False,
         publish_anaconda: bool = False,
-        anaconda_label: str = "test",
+        anaconda_label: str = "dev",
     ):
 
         def ci_builds(typ: Literal["pkg", "test"]) -> list[dict]:
