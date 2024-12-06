@@ -246,14 +246,13 @@ class PushEventHandler(EventHandler):
         self._output_manager.set(
             main_manager=new_manager,
             branch_manager=new_manager,
-            version=version_tag,
+            version=version_tag if init else version_tag.version,
             website_deploy=True,
             package_lint=True,
             test_lint=True,
             package_test=True,
             package_build=True,
-            binder_build=True,
-            binder_deploy=False, # TODO
+            binder_deploy=True,
             package_publish_testpypi= init and self.head_commit_msg.footer.publish_testpypi is not False,
             package_publish_pypi=init and self.head_commit_msg.footer.publish_pypi is not False,
             package_publish_anaconda=True,
