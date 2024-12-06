@@ -252,8 +252,8 @@ class PushEventHandler(EventHandler):
             test_lint=True,
             package_test=True,
             package_build=True,
-            docker_build=True,
-            docker_deploy=False, # TODO
+            binder_build=True,
+            binder_deploy=False, # TODO
             package_publish_testpypi= init and self.head_commit_msg.footer.publish_testpypi is not False,
             package_publish_pypi=init and self.head_commit_msg.footer.publish_pypi is not False,
             package_publish_anaconda=True,

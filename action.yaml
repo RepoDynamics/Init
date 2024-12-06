@@ -85,9 +85,9 @@ outputs:
   build:
     value: ${{ steps.action.outputs.build }}
     description: Configurations for build job.
-  docker:
-    value: ${{ steps.action.outputs.docker }}
-    description: Configurations for docker job.
+  binder:
+    value: ${{ steps.action.outputs.binder }}
+    description: Configurations for binder job.
   publish-testpypi:
     value: ${{ steps.action.outputs.publish-testpypi }}
     description: Configurations for publish-testpypi job.

@@ -3,11 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from pathlib import Path
 
+from jupyter_lsp.specs import dockerfile
 from loggerman import logger
 import pyserials as ps
 import mdit
 import versioningit
 
+from proman.dtype import BranchType
 from proman.dstruct import VersionTag, Version
 from proman import const
 
@@ -32,7 +34,7 @@ class OutputManager:
         self._out_lint: list[dict] = []
         self._out_test: list[dict] = []
         self._out_build: list[dict] = []
-        self._out_docker: list[dict] = []
+        self._out_binder: list[dict] = []
         self._out_publish_testpypi: dict = {}
         self._out_publish_anaconda: dict = {}
         self._out_publish_pypi: dict = {}
@@ -55,8 +57,8 @@ class OutputManager:
         package_test: bool = False,
         package_test_source: Literal["github", "pypi", "testpypi"] = "github",
         package_build: bool = False,
-        docker_build: bool = False,
-        docker_deploy: bool = False,
+        binder_build: bool = False,
+        binder_deploy: bool = False,
         package_publish_testpypi: bool = False,
         package_publish_pypi: bool = False,
         package_publish_anaconda: bool = False,
@@ -88,8 +90,8 @@ class OutputManager:
             self._set_lint("test")
         if package_test and self._branch_manager.data["test"]:
             self._out_test.append(self._create_output_package_test(source=package_test_source))
-        if docker_build or docker_deploy:
-            self._set_docker(deploy=docker_deploy)
+        if binder_build or binder_deploy:
+            self._set_binder(deploy=binder_deploy)
         if package_build or package_publish_testpypi or package_publish_pypi or package_publish_anaconda:
             self.set_package_build_and_publish(
                 publish_testpypi=package_publish_testpypi,
@@ -119,7 +121,7 @@ class OutputManager:
             "lint": self._out_lint or False,
             "test": self._out_test or False,
             "build": self._out_build or False,
-            "docker": self._out_docker or False,
+            "binder": self._out_binder or False,
             "publish-testpypi": self._out_publish_testpypi or False,
             "publish-anaconda": self._out_publish_anaconda or False,
             "publish-pypi": self._out_publish_pypi or False,
@@ -193,24 +195,54 @@ class OutputManager:
         self._out_lint.append(out)
         return
 
-    def _set_docker(self, deploy: bool):
-        job_config = self._main_manager.data["workflow.docker"]
+    def _set_binder(self, deploy: bool):
+        job_config = self._main_manager.data["workflow.binder"]
         if not job_config or (not deploy and job_config["action"]["build"] == "disabled") or (
-            deploy and job_config["action"]["deploy"] == "disabled"
+            deploy and job_config["action"]["deploy"] == "disabled" and job_config["action"]["build"] == "disabled"
         ):
             return
+
+        args = []
+        for label_name, label_value in job_config.get("image", {}).get("label", {}).items():
+            args.append(f'--label "{label_name}={self._fill_jinja(label_value)}"')
+        tags = []
+        cache_image_names = []
+        if isinstance(self._version, VersionTag):
+            tags.append(self.version)
+        curr_branch = self._branch_manager.branch.from_name(self._ref_name)
+        if curr_branch.type in (BranchType.MAIN, BranchType.RELEASE):
+            version = self._version.public if isinstance(self._version, Version) else self._version.version
+            major_version_tag = f"v{version.major}.{version.minor}" if version.major == 0 else f"v{version.major}"
+            tags.append(major_version_tag)
+            if curr_branch.type is BranchType.RELEASE:
+                cache_image_names.append(major_version_tag)
+        else:
+            pr_tag = f"pr{curr_branch.issue}"
+            tags.append(pr_tag)
+            cache_image_names.append(pr_tag)
+        if curr_branch.type is BranchType.MAIN:
+            tags.append("latest")
+            cache_image_names.append("latest")
         out = {
             "name": self._fill_jinja(job_config["name"]),
             "job": {
                 "name": "Build & Deploy" if deploy else "Build",
                 "repository": self._repository,
                 "ref": self._ref,
-                "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
-                "no-push": "false" if deploy else "true",
                 "env": job_config["env"],
+                "path-config": job_config["path"]["config"],
+                "path-dockerfile": job_config["path"].get("dockerfile", ""),
+                "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
+                "image-tags": " ".join(tags),
+                "tag-sha": "true" if isinstance(self._version, VersionTag) else "",
+                "cache-image-names": " ".join(cache_image_names),
+                "repo2docker-args": " ".join(args),
+                "dockerfile-append": "",
+                "test-script": job_config.get("image", {}).get("test_script", ""),
+                "push": str(deploy and job_config["action"]["deploy"] != "disabled"),
             }
         }
-        self._out_docker.append(out)
+        self._out_binder.append(out)
         return
 
     def set_package_build_and_publish(
