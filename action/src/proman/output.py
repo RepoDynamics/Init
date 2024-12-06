@@ -368,6 +368,7 @@ class OutputManager:
                 else:
                     channel = job_config["index"]["channel"]
                     publish_job["user"] = channel
+                    publish_job["version"] = self.version
                     pkg_name = self._branch_manager.data[f"{typ}.name"].lower()
                     publish_out["job"].setdefault("finalize", []).append(
                         {"label": anaconda_label, "spec": f"{channel}/{pkg_name}/{self.version or "0.0.0"}"}
