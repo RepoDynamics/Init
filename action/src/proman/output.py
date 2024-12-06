@@ -10,10 +10,11 @@ from proman.dtype import BranchType
 from proman.dstruct import VersionTag, Version
 from proman import const
 
+
 if TYPE_CHECKING:
     from typing import Literal
     from proman.manager import Manager
-
+    from versionman.pep440_semver import PEP440SemVer
 
 class OutputManager:
 
@@ -42,7 +43,7 @@ class OutputManager:
         self,
         main_manager: Manager,
         branch_manager: Manager,
-        version: VersionTag | Version,
+        version: VersionTag | Version | PEP440SemVer,
         repository: str | None = None,
         ref: str | None = None,
         ref_name: str | None = None,
@@ -75,7 +76,7 @@ class OutputManager:
         self._ref_name = ref_name or self._branch_manager.git.current_branch_name()
         self._ref_before = ref_before or self._branch_manager.gh_context.hash_before
         self._jinja_env_vars = {
-            "version": version if isinstance(version, Version) else version.version,
+            "version": version.version if isinstance(version, VersionTag) else version,
             "branch": self._ref_name,
             "commit": self._ref,
         }
@@ -133,12 +134,9 @@ class OutputManager:
 
     @property
     def version(self) -> str:
-        if not self._version:
-            return ""
-        if isinstance(self._version, Version):
-            return str(self._version)
-        return str(self._version.version)
-
+        if isinstance(self._version, VersionTag):
+            return str(self._version.version)
+        return str(self._version)
 
     def _set_web(self, deploy: bool):
         if "web" not in self._branch_manager.data:
@@ -208,8 +206,10 @@ class OutputManager:
             tags.append(self.version)
         curr_branch = self._branch_manager.branch.from_name(self._ref_name)
         if curr_branch.type in (BranchType.MAIN, BranchType.RELEASE):
-            version = self._version.public if isinstance(self._version, Version) else self._version.version
-            major_version_tag = f"v{version.major}.{version.minor}" if version.major == 0 else f"v{version.major}"
+            pep_semver = self._version.version if isinstance(self._version, VersionTag) else (
+                self._version.public if isinstance(self._version, Version) else self._version
+            )
+            major_version_tag = f"v{pep_semver.major}.{pep_semver.minor}" if pep_semver.major == 0 else f"v{pep_semver.major}"
             tags.append(major_version_tag)
             if curr_branch.type is BranchType.RELEASE:
                 cache_image_names.append(major_version_tag)
