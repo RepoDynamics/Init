@@ -201,7 +201,7 @@ class OutputManager:
         for label_name, label_value in job_config.get("image", {}).get("label", {}).items():
             args.append(f'--label "{label_name}={self._fill_jinja(label_value)}"')
         tags = []
-        cache_image_names = []
+        cache_image_tags = []
         if isinstance(self._version, VersionTag):
             tags.append(self.version)
         curr_branch = self._branch_manager.branch.from_name(self._ref_name)
@@ -212,14 +212,14 @@ class OutputManager:
             major_version_tag = f"v{pep_semver.major}.{pep_semver.minor}" if pep_semver.major == 0 else f"v{pep_semver.major}"
             tags.append(major_version_tag)
             if curr_branch.type is BranchType.RELEASE:
-                cache_image_names.append(major_version_tag)
+                cache_image_tags.append(major_version_tag)
         else:
             pr_tag = f"pr{curr_branch.issue}"
             tags.append(pr_tag)
-            cache_image_names.append(pr_tag)
+            cache_image_tags.append(pr_tag)
         if curr_branch.type is BranchType.MAIN:
             tags.append("latest")
-            cache_image_names.append("latest")
+            cache_image_tags.append("latest")
         out = {
             "name": self._fill_jinja(job_config["name"]),
             "job": {
@@ -232,7 +232,7 @@ class OutputManager:
                 "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
                 "image-tags": " ".join(tags),
                 "tag-sha": "true" if isinstance(self._version, VersionTag) else "",
-                "cache-image-names": " ".join(cache_image_names),
+                "cache-image-tags": " ".join(cache_image_tags),
                 "repo2docker-args": " ".join(args),
                 "dockerfile-append": "",
                 "test-script": job_config.get("image", {}).get("test_script", ""),
