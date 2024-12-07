@@ -230,7 +230,7 @@ class OutputManager:
                 "path-config": job_config["path"]["config"],
                 "path-dockerfile": job_config["path"].get("dockerfile", ""),
                 "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
-                "image-name": f"{job_config["index"]["registry"]}/{job_config["index"]["namespace"]}/{job_config["index"]["name"]}",
+                "image-name": f"{job_config["index"]["registry"]}/{job_config["index"]["namespace"]}/{job_config["index"]["name"]}".lower(),
                 "image-tags": " ".join(tags),
                 "tag-sha": "true" if isinstance(self._version, VersionTag) else "",
                 "cache-image-tags": " ".join(cache_image_tags),
