@@ -229,6 +229,8 @@ class OutputManager:
                 "env": job_config["env"],
                 "path-config": job_config["path"]["config"],
                 "path-dockerfile": job_config["path"].get("dockerfile", ""),
+                "registry": job_config["index"]["registry"],
+                "username": job_config["index"]["username"],
                 "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
                 "image-name": f"{job_config["index"]["registry"]}/{job_config["index"]["namespace"]}/{job_config["index"]["name"]}".lower(),
                 "image-tags": " ".join(tags),
