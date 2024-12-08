@@ -211,7 +211,7 @@ class Manager:
                         status="fail",
                         summary=f"Failed to render Jinja template at '{path}'.",
                     )
-                    raise ProManException()
+                    raise ProManException() from e
                 return filled
             return template
 
