@@ -113,6 +113,7 @@ class LabelManager:
                     label = Label(
                         category=LabelType.CUSTOM_SINGLE,
                         name=label_data["name"],
+                        group_id=group_id,
                         id=label_id,
                         description=label_data.get("description", ""),
                         color=label_data.get("color", ""),
@@ -125,6 +126,7 @@ class LabelManager:
                             "status", "version", "branch"
                         ) else LabelType.CUSTOM_GROUP,
                         name=label_data["name"],
+                        group_id=group_id,
                         id=label_id,
                         prefix=group_data["prefix"],
                         suffix=label_data["suffix"],
