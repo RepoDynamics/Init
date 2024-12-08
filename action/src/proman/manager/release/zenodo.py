@@ -168,7 +168,7 @@ class ZenodoManager:
                     self._make_output(
                         deposition_id=draft_id,
                         asset_config=self._manager.fill_jinja_templates(
-                            self._manager.data[],
+                            self._manager.data[asset_key],
                             jsonpath=asset_key,
                             env_vars={"version": version}
                         ),
