@@ -50,6 +50,7 @@ class ProtocolManager:
                     data=self._protocol_data[data_id],
                     template=data["template"],
                     template_type=data["template_type"],
+                    jsonpath=f"issue.protocol.data.{data_id}",
                     env_vars=env_vars,
                 )
         return
@@ -74,7 +75,7 @@ class ProtocolManager:
             self._manager.label.status_label(IssueStatus.TRIAGE)
         ]
         for data_id, data in self._config.get("data", {}).items():
-            self._protocol_data[data_id] = self._resolve_to_str(data["value"])
+            self._protocol_data[data_id] = self._resolve_to_str(data["value"], jsonpath=f"issue.protocol.data.{data_id}")
         for label in labels:
             self.add_event(env_vars={"action": "labeled", "label": label})
         for assignee in issue_form.issue_assignees:
@@ -99,9 +100,9 @@ class ProtocolManager:
         body_processed = ""
         return self._issue_inputs, body_processed, labels
 
-    def _resolve_to_str(self, value: str | dict | list, path: str, env_vars: dict | None = None):
+    def _resolve_to_str(self, value: str | dict | list, jsonpath: str, env_vars: dict | None = None):
         env_vars = env_vars or {}
-        value_filled = self._manager.fill_jinja_templates(value, jsonpath=path, env_vars=self._env_vars | env_vars)
+        value_filled = self._manager.fill_jinja_templates(value, jsonpath=jsonpath, env_vars=self._env_vars | env_vars)
         if isinstance(value, str):
             return value_filled
         return mdit.generate(value).source(target="github")
@@ -111,9 +112,10 @@ class ProtocolManager:
         data: str,
         template: str | dict | list,
         template_type: Literal["append", "prepend"],
+        jsonpath: str,
         env_vars: dict | None = None
     ):
-        template_resolved = self._resolve_to_str(template, env_vars=env_vars)
+        template_resolved = self._resolve_to_str(template, jsonpath=jsonpath, env_vars=env_vars)
         if template_type == "append":
             return f"{data}{template_resolved}"
         return f"{template_resolved}{data}"
@@ -194,7 +196,7 @@ class ProtocolManager:
                 marked_entries[element_id] = f"{marker_start}{element_data}{marker_end}"
             self._env_vars[entry_type] = marked_entries
 
-        body = self._resolve_to_str(self._config["template"])
+        body = self._resolve_to_str(self._config["template"], jsonpath="issue.protocol.template")
         output = f"{body.strip()}\n\n{make_config()}{make_inputs()}"
         return output
 
