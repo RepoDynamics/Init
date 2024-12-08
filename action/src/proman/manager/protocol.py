@@ -99,9 +99,9 @@ class ProtocolManager:
         body_processed = ""
         return self._issue_inputs, body_processed, labels
 
-    def _resolve_to_str(self, value: str | dict | list, env_vars: dict | None = None):
+    def _resolve_to_str(self, value: str | dict | list, path: str, env_vars: dict | None = None):
         env_vars = env_vars or {}
-        value_filled = self._manager.fill_jinja_templates(value, env_vars=self._env_vars | env_vars)
+        value_filled = self._manager.fill_jinja_templates(value, jsonpath=path, env_vars=self._env_vars | env_vars)
         if isinstance(value, str):
             return value_filled
         return mdit.generate(value).source(target="github")
