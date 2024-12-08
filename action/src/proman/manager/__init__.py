@@ -205,13 +205,14 @@ class Manager:
                     logger.critical(
                         "Jinja Templating",
                         f"Failed to render Jinja template at '{path}': {e}",
+                        logger.traceback()
                     )
                     self.reporter.add(
                         name="main",
                         status="fail",
                         summary=f"Failed to render Jinja template at '{path}'.",
                     )
-                    raise ProManException() from e
+                    raise ProManException()
                 return filled
             return template
 
