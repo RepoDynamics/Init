@@ -189,13 +189,13 @@ class Manager:
             if isinstance(template, dict):
                 filled = {}
                 for key, value in template.items():
-                    new_path = f"{jsonpath}.{key}"
+                    new_path = f"{path}.{key}"
                     filled[recursive_fill(key, new_path)] = recursive_fill(value, new_path)
                 return filled
             if isinstance(template, list):
                 filled = []
                 for idx, value in enumerate(template):
-                    new_path = f"{jsonpath}[{idx}]"
+                    new_path = f"{path}[{idx}]"
                     filled.append(recursive_fill(value, new_path))
                 return filled
             if isinstance(template, str):
