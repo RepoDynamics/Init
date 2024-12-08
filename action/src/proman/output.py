@@ -6,7 +6,6 @@ from loggerman import logger
 import pyserials as ps
 import mdit
 
-from proman.dtype import BranchType
 from proman.dstruct import VersionTag, Version
 from proman import const
 
@@ -196,30 +195,9 @@ class OutputManager:
             deploy and job_config["action"]["deploy"] == "disabled" and job_config["action"]["build"] == "disabled"
         ):
             return
-
         args = []
         for label_name, label_value in job_config.get("image", {}).get("label", {}).items():
             args.append(f'--label "{label_name}={self._fill_jinja(label_value)}"')
-        tags = []
-        cache_image_tags = []
-        if isinstance(self._version, VersionTag):
-            tags.append(self.version)
-        curr_branch = self._branch_manager.branch.from_name(self._ref_name)
-        if curr_branch.type in (BranchType.MAIN, BranchType.RELEASE):
-            pep_semver = self._version.version if isinstance(self._version, VersionTag) else (
-                self._version.public if isinstance(self._version, Version) else self._version
-            )
-            major_version_tag = f"v{pep_semver.major}.{pep_semver.minor}" if pep_semver.major == 0 else f"v{pep_semver.major}"
-            tags.append(major_version_tag)
-            if curr_branch.type is BranchType.RELEASE:
-                cache_image_tags.append(major_version_tag)
-        else:
-            pr_tag = f"pr{curr_branch.issue}"
-            tags.append(pr_tag)
-            cache_image_tags.append(pr_tag)
-        if curr_branch.type is BranchType.MAIN:
-            tags.append("latest")
-            cache_image_tags.append("latest")
         out = {
             "name": self._fill_jinja(job_config["name"]),
             "job": {
@@ -232,14 +210,15 @@ class OutputManager:
                 "registry": job_config["index"]["registry"],
                 "username": job_config["index"]["username"],
                 "artifact": self._create_workflow_artifact_config(job_config["artifact"]),
-                "image-name": f"{job_config["index"]["registry"]}/{job_config["index"]["namespace"]}/{job_config["index"]["name"]}".lower(),
-                "image-tags": " ".join(tags),
+                "image-name": self._branch_manager.release.binder.image_name,
+                "image-tags": " ".join(self._branch_manager.release.binder.image_tags),
                 "tag-sha": "true" if isinstance(self._version, VersionTag) else "",
-                "cache-image-tags": " ".join(cache_image_tags),
+                "cache-image-tags": " ".join(self._branch_manager.release.binder.cache_image_tags),
                 "repo2docker-args": " ".join(args),
                 "dockerfile-append": "",
                 "test-script": job_config.get("image", {}).get("test_script", ""),
                 "push": str(deploy and job_config["action"]["deploy"] != "disabled"),
+                "attest": isinstance(self._version, VersionTag)
             }
         }
         self._out_binder.append(out)

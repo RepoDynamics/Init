@@ -7,7 +7,7 @@ from github_contexts import github as _gh_context
 from loggerman import logger
 import fileex as _fileex
 
-from proman.dtype import InitCheckAction
+from proman.dtype import InitCheckAction, BranchType
 from proman.main import EventHandler
 from versionman.pep440_semver import PEP440SemVer
 
@@ -177,6 +177,10 @@ class PushEventHandler(EventHandler):
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(version)
         self.manager.changelog.update_date()
+        self.manager.release.binder.set_image_tag(
+            version=version_tag if init else version_tag.version,
+            branch_type=BranchType.MAIN
+        )
         gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag)
         zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
 
@@ -199,6 +203,7 @@ class PushEventHandler(EventHandler):
 
         hash_vars = self.manager.variable.commit_changes()
         hash_changelog = self.manager.changelog.commit_changes()
+        hash_dockerfile = self.manager.release.binder.commit_changes()
         new_manager, _ = self.run_cca(
             branch_manager=self.manager,
             action=InitCheckAction.COMMIT,
@@ -210,7 +215,7 @@ class PushEventHandler(EventHandler):
             action=InitCheckAction.COMMIT,
             ref_range=(
                 self.gh_context.hash_before,
-                hash_changelog or hash_vars or self.gh_context.hash_after
+               hash_dockerfile or hash_changelog or hash_vars or self.gh_context.hash_after
             ),
         ) if new_manager.data["tool.pre-commit.config.file.content"] else None
         gh_release_output = zenodo_output = zenodo_sandbox_output = None

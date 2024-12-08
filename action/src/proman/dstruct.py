@@ -138,7 +138,7 @@ class Branch(_NamedTuple):
         if self.type is BranchType.DEV:
             return f"{self.prefix}{self.issue}{self.separator}{self.target.name}"
         # BranchType.AUTO
-        return f"{self.prefix}{self.auto_type}{self.separator}{self.target.name}"
+        return f"{self.prefix}{self.target.name}{self.separator}{self.auto_type}"
 
     @property
     def url(self) -> GitHubBranchLinker:

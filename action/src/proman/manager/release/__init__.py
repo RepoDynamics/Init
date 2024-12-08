@@ -7,6 +7,7 @@ from versionman.pep440_semver import PEP440SemVer
 
 from proman.dstruct import Version, VersionTag
 from proman.dtype import IssueStatus, ReleaseAction
+from proman.manager.release.binder import BinderReleaseManager
 from proman.manager.release.github import GitHubReleaseManager
 from proman.manager.release.zenodo import ZenodoManager
 
@@ -21,9 +22,14 @@ class ReleaseManager:
 
     def __init__(self, manager: Manager):
         self._manager = manager
+        self._binder = BinderReleaseManager(manager=self._manager)
         self._github = GitHubReleaseManager(manager=self._manager)
         self._zenodo = ZenodoManager(manager=self._manager)
         return
+
+    @property
+    def binder(self) -> BinderReleaseManager:
+        return self._binder
 
     @property
     def github(self) -> GitHubReleaseManager:

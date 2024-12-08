@@ -32,6 +32,9 @@ class BranchManager:
             **kwargs
         )
 
+    def from_current_git_branch(self):
+        return self.from_name(self._manager.git.current_branch_name())
+
     def from_pull_request_branch(self, branch: HeadBase | dict):
         b = self.from_name(branch["ref"])
         return Branch(
