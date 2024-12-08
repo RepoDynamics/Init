@@ -31,7 +31,7 @@ class ProtocolManager:
         self._protocol_data: dict[str, str] = {}
         self._protocol_config: dict = {}
         self._issue_inputs: dict = {}
-        self._env_vars: dict = {"config": self._protocol_config}
+        self._env_vars: dict = {"config": self._protocol_config, "input": self._issue_inputs}
         return
 
     @property
@@ -185,7 +185,6 @@ class ProtocolManager:
 
         for entry_type, entry_data in (
             ("data", self._protocol_data),
-            ("input", self._issue_inputs),
         ):
             marked_entries = {}
             for element_id, element_data in entry_data.items():
