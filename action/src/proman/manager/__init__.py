@@ -6,6 +6,7 @@ import copy
 import jinja2
 
 import controlman
+from controlman import date
 from controlman.cache_manager import CacheManager
 from loggerman import logger
 
@@ -21,7 +22,6 @@ from proman.manager.release import ReleaseManager
 from proman.manager.repo import RepoManager
 from proman.manager.user import UserManager
 from proman.manager.variable import VariableManager
-from controlman import date
 
 if _TYPE_CHECKING:
     from github_contexts import GitHubContext
@@ -47,6 +47,7 @@ class Manager:
         github_link: GitHubLink,
         zenodo_token: Token,
         zenodo_sandbox_token: Token,
+        reporter: Reporter,
     ):
         self._data = data
         self._git = git_api
@@ -57,6 +58,7 @@ class Manager:
         self._gh_link = github_link
         self._zenodo_token = zenodo_token
         self._zenodo_sandbox_token = zenodo_sandbox_token
+        self._reporter = reporter
 
         self._cache_manager = CacheManager(
             path_local_cache=self._git.repo_path / data["local.cache.path"],
@@ -73,6 +75,10 @@ class Manager:
         self._variable_manager = VariableManager(self)
         self._release_manager = ReleaseManager(self) # must be after self._variable_manager as ZenodoManager needs it at init
         return
+
+    @property
+    def reporter(self) -> Reporter:
+        return self._reporter
 
     @property
     def data(self) -> NestedDict:
@@ -177,18 +183,39 @@ class Manager:
             self.jinja_env_vars | {"now": date.from_now()} | (env_vars or {})
         )
 
-    def fill_jinja_templates(self, templates: dict | list | str, env_vars: dict | None = None) -> dict:
+    def fill_jinja_templates(self, templates: dict | list | str, jsonpath: str, env_vars: dict | None = None) -> dict:
 
-        def recursive_fill(template):
+        def recursive_fill(template, path):
             if isinstance(template, dict):
-                return {recursive_fill(key): recursive_fill(value) for key, value in template.items()}
+                filled = {}
+                for key, value in template.items():
+                    new_path = f"{jsonpath}.{key}"
+                    filled[recursive_fill(key, new_path)] = recursive_fill(value, new_path)
+                return filled
             if isinstance(template, list):
-                return [recursive_fill(value) for value in template]
+                filled = []
+                for idx, value in enumerate(template):
+                    new_path = f"{jsonpath}[{idx}]"
+                    filled.append(recursive_fill(value, new_path))
+                return filled
             if isinstance(template, str):
-                return self.fill_jinja_template(template, env_vars)
+                try:
+                    filled = self.fill_jinja_template(template, env_vars)
+                except Exception as e:
+                    logger.critical(
+                        "Jinja Templating",
+                        f"Failed to render Jinja template at '{path}': {e}",
+                    )
+                    self.reporter.add(
+                        name="main",
+                        status="fail",
+                        summary=f"Failed to render Jinja template at '{path}'.",
+                    )
+                    raise ProManException()
+                return filled
             return template
 
-        return recursive_fill(templates)
+        return recursive_fill(templates, jsonpath)
 
     @staticmethod
     def normalize_github_date(date_str: str) -> str:
@@ -233,6 +260,7 @@ def from_metadata_json(
             github_link=github_link,
             zenodo_token=zenodo_token,
             zenodo_sandbox_token=zenodo_sandbox_token,
+            reporter=reporter,
         )
     except controlman.exception.load.ControlManInvalidMetadataError as e:
         logger.critical(
