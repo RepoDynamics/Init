@@ -105,7 +105,7 @@ class ProtocolManager:
         value_filled = self._manager.fill_jinja_templates(value, jsonpath=jsonpath, env_vars=self._env_vars | env_vars)
         if isinstance(value, str):
             return value_filled
-        return mdit.generate(value).source(target="github")
+        return mdit.generate(value_filled).source(target="github")
 
     def _update_data_from_template(
         self,
