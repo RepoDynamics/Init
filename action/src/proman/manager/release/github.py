@@ -78,7 +78,7 @@ class GitHubReleaseManager:
             release_id=release_id,
             publish=publish and not config["release"]["draft"],
             asset_config=self._manager.fill_jinja_templates(
-                config["asset"], env_vars={"version": tag.version}
+                config["asset"], jsonpath="workflow.publish.github.asset", env_vars={"version": tag.version}
             ) if "asset" in config else None,
             make_latest=make_latest,
             discussion_category_name=config["release"].get("discussion_category_name"),
