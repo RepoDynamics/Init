@@ -208,7 +208,7 @@ class PushEventHandler(EventHandler):
             version=version_tag if init else version_tag.version,
             branch_type=BranchType.MAIN
         )
-        self.manager.release.binder.commit_changes()
+        new_manager.release.binder.commit_changes()
         self.jinja_env_vars["ccc"] = new_manager.data
         self.run_refactor(
             branch_manager=new_manager,
