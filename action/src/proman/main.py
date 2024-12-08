@@ -228,6 +228,7 @@ class EventHandler:
             github_link=self._gh_link,
             zenodo_token=self._zenodo_token,
             zenodo_sandbox_token=self._zenodo_sandbox_token,
+            reporter=self.reporter,
         )
 
     def run_sync_fix(
