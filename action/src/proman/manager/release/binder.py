@@ -35,6 +35,7 @@ class BinderReleaseManager:
                 old_content = f.read()
             if content.strip() == old_content.strip():
                 return False
+        dockerfile_path.parent.mkdir(parents=True, exist_ok=True)
         with open(dockerfile_path, "w") as f:
             f.write(content)
         return True
