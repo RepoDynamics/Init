@@ -215,6 +215,11 @@ class RepoManager:
                 )
                 continue
             if old_label != new_label:
+                logger.info(
+                    "Relabel",
+                    logger.pretty(old_label),
+                    logger.pretty(new_label)
+                )
                 self._manager.gh_api_actions.label_update(
                     name=old_label.name,
                     new_name=new_label.name,
