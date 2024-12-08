@@ -26,7 +26,10 @@ class BinderReleaseManager:
             return False
         image_tag = self._image_tags.get(
             "version_major",
-            self._image_tags.get("transient")
+            self._image_tags.get(
+                "transient",
+                self._image_tags.get("latest")
+            )
         )
         content = f"FROM {self.image_name}:{image_tag}\n"
         dockerfile_path = self._manager.git.repo_path / binder_directory / "Dockerfile"
@@ -75,9 +78,10 @@ class BinderReleaseManager:
             tags["version_full"] = str(version.version)
         if branch_type in (BranchType.MAIN, BranchType.RELEASE):
             # For all release branches, add major version tag
-            major_version_tag = f"v{pep_semver.major}.{pep_semver.minor}" if pep_semver.major == 0 else f"v{pep_semver.major}"
-            tags["version_major"] = major_version_tag
-            cache_tags.append(major_version_tag)
+            if str(pep_semver) != "0.0.0":
+                major_version_tag = f"v{pep_semver.major}"
+                tags["version_major"] = major_version_tag
+                cache_tags.append(major_version_tag)
             if branch_type is BranchType.MAIN:
                 # For the main branch, add an extra latest tag
                 tags["latest"] = "latest"
