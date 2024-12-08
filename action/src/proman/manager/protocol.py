@@ -70,7 +70,7 @@ class ProtocolManager:
                 "version_labels": version_labels,
             }
         )
-        self._protocol_config.update(self._config["config"])
+        self._protocol_config.update(self._config["config"].get("default", {}))
         labels = issue_form.id_labels + issue_form.labels + version_labels + branch_labels + [
             self._manager.label.status_label(IssueStatus.TRIAGE)
         ]
@@ -173,15 +173,15 @@ class ProtocolManager:
 
         def make_config():
             config_str = ps.write.to_yaml_string(self._protocol_config).strip()
-            marker_start, marker_end = self._make_text_marker(id="config")
-            return f"{marker_start}\n{config_str}\n{marker_end}"
+            marker_start, marker_end = self._make_text_marker(id="config", data=self._config["config"])
+            return f"{marker_start}{config_str}{marker_end}"
 
         def make_inputs():
             if not self._issue_inputs:
                 return ""
             inputs = ps.write.to_yaml_string(self._issue_inputs).strip()
-            marker_start, marker_end = self._make_text_marker(id="input")
-            return f"\n\n{marker_start}\n{inputs}\n{marker_end}"
+            marker_start, marker_end = self._make_text_marker(id="input", data=self._config["inputs"])
+            return f"{marker_start}{inputs}{marker_end}"
 
         for entry_type, entry_data in (
             ("data", self._protocol_data),
@@ -195,8 +195,11 @@ class ProtocolManager:
                 marked_entries[element_id] = f"{marker_start}{element_data}{marker_end}"
             self._env_vars[entry_type] = marked_entries
 
-        body = self._resolve_to_str(self._config["template"], jsonpath="issue.protocol.template")
-        output = f"{body.strip()}\n\n{make_config()}{make_inputs()}"
+        output = self._resolve_to_str(
+            self._config["template"],
+            jsonpath="issue.protocol.template",
+            env_vars={"config": make_config(), "inputs": make_inputs()}
+        )
         return output
 
     def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
