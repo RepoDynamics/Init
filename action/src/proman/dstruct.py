@@ -249,7 +249,7 @@ class CommitFooter:
 
     @property
     def initialize_project(self) -> bool:
-        return "initialize-project" in self._data
+        return self._data.get("initialize-project", False)
 
     @property
     def squash(self) -> bool | None:
