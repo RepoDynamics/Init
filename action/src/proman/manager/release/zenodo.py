@@ -163,11 +163,13 @@ class ZenodoManager:
                     sandbox=sandbox,
                     version=version,
                 )
+                asset_key = f"workflow.publish.zenodo{"_sandbox" if sandbox else ""}.asset"
                 outputs.append(
                     self._make_output(
                         deposition_id=draft_id,
                         asset_config=self._manager.fill_jinja_templates(
-                            self._manager.data[f"workflow.publish.zenodo{"_sandbox" if sandbox else ""}.asset"],
+                            self._manager.data[],
+                            jsonpath=asset_key,
                             env_vars={"version": version}
                         ),
                         publish=publish
