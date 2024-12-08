@@ -12,11 +12,11 @@ from proman.dstruct import Tasklist, MainTasklistEntry, SubTasklistEntry
 from proman.exception import ProManException
 
 if TYPE_CHECKING:
-    from typing import Sequence
+    from typing import Sequence, Literal
     from github_contexts.github.payload.object.issue import Issue
     from github_contexts.github.payload.object.pull_request import PullRequest
     from proman.manager import Manager
-    from proman.dstruct import IssueForm
+    from proman.dstruct import IssueForm, Label
 
 
 class ProtocolManager:
@@ -31,7 +31,7 @@ class ProtocolManager:
         self._protocol_data: dict[str, str] = {}
         self._protocol_config: dict = {}
         self._issue_inputs: dict = {}
-        self._env_vars: dict = {}
+        self._env_vars: dict = {"config": self._protocol_config}
         return
 
     @property
@@ -43,33 +43,80 @@ class ProtocolManager:
         self._protocol = value
         return
 
-    def initialize_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str]:
+    def add_event(self, env_vars: dict):
+        for data_id, data in self._config.get("data", {}).items():
+            if "template" in data:
+                self._protocol_data[data_id] = self._update_data_from_template(
+                    data=self._protocol_data[data_id],
+                    template=data["template"],
+                    template_type=data["template_type"],
+                    env_vars=env_vars,
+                )
+        return
+
+    def initialize_issue(
+        self,
+        issue: Issue,
+        issue_form: IssueForm,
+    ) -> tuple[dict, str, list[Label]]:
         self._config = self._manager.data["issue.protocol"]
-        self._issue_inputs = self._extract_issue_ticket_inputs(issue.body, issue_form.body)
-
-
-        self._env_vars = {
-            "form": issue_form,
-            "input": self._issue_inputs,
-        }
-        body_template = issue_form.post_process.get("body")
-        if body_template:
-            body_processed = self._generate(
-                template=body_template,
-                issue_form=issue_form,
-                issue_inputs=issue_entries,
-                issue_body=issue.body
-            )
-        else:
-            logger.info("Issue Post Processing", "No post-process action defined in issue form.")
-            body_processed = issue.body
-        self.protocol = self._generate(
-            template=self._manager.data["doc.protocol.template"],
-            issue_form=issue_form,
-            issue_inputs=issue_entries,
-            issue_body=body_processed,
+        self._issue_inputs.update(self._extract_issue_ticket_inputs(issue.body, issue_form.body))
+        version_labels, branch_labels = self._make_auto_labels_from_issue_ticket_inputs()
+        self._env_vars.update(
+            {
+                "form": issue_form,
+                "status": IssueStatus.TRIAGE,
+                "version_labels": version_labels,
+            }
         )
-        return issue_entries, body_processed
+        self._protocol_config.update(self._config["config"])
+        labels = issue_form.id_labels + issue_form.labels + version_labels + branch_labels + [
+            self._manager.label.status_label(IssueStatus.TRIAGE)
+        ]
+        for data_id, data in self._config.get("data", {}).items():
+            self._protocol_data[data_id] = self._resolve_to_str(data["value"])
+        for label in labels:
+            self.add_event(env_vars={"action": "labeled", "label": label})
+        for assignee in issue_form.issue_assignees:
+            self.add_event(env_vars={"action": "assigned", "assignee": assignee})
+
+        # if issue_form.processed_body:
+        #     body_processed = self._generate(
+        #         template=issue_form.processed_body,
+        #         issue_form=issue_form,
+        #         issue_inputs=issue_entries,
+        #         issue_body=issue.body
+        #     )
+        # else:
+        #     logger.info("Issue Post Processing", "No post-process action defined in issue form.")
+        #     body_processed = issue.body
+        # self.protocol = self._generate(
+        #     template=self._manager.data["doc.protocol.template"],
+        #     issue_form=issue_form,
+        #     issue_inputs=issue_entries,
+        #     issue_body=body_processed,
+        # )
+        body_processed = ""
+        return self._issue_inputs, body_processed, labels
+
+    def _resolve_to_str(self, value: str | dict | list, env_vars: dict | None = None):
+        env_vars = env_vars or {}
+        value_filled = self._manager.fill_jinja_templates(value, env_vars=self._env_vars | env_vars)
+        if isinstance(value, str):
+            return value_filled
+        return mdit.generate(value).source(target="github")
+
+    def _update_data_from_template(
+        self,
+        data: str,
+        template: str | dict | list,
+        template_type: Literal["append", "prepend"],
+        env_vars: dict | None = None
+    ):
+        template_resolved = self._resolve_to_str(template, env_vars=env_vars)
+        if template_type == "append":
+            return f"{data}{template_resolved}"
+        return f"{template_resolved}{data}"
 
     def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
         data = {}
@@ -120,7 +167,7 @@ class ProtocolManager:
             comment_id=self._protocol_comment_id, body=self.protocol
         )
 
-    def _generate_output(self) -> str:
+    def generate(self) -> str:
 
         def make_config():
             config_str = ps.write.to_yaml_string(self._protocol_config).strip()
@@ -134,13 +181,21 @@ class ProtocolManager:
             marker_start, marker_end = self._make_text_marker(id="input")
             return f"\n\n{marker_start}\n{inputs}\n{marker_end}"
 
-        output = self._manager.fill_jinja_templates(
-            templates=self._config["template"],
-            env_vars=self._env_vars,
-        )
-        if not isinstance(output, str):
-            output = mdit.generate(output).source(target="github")
-        output = f"{output.strip()}\n\n{make_config()}{make_inputs()}"
+        for entry_type, entry_data in (
+            ("data", self._protocol_data),
+            ("input", self._issue_inputs),
+        ):
+            marked_entries = {}
+            for element_id, element_data in entry_data.items():
+                marker_start, marker_end = self._make_text_marker(
+                    id=f"{entry_type}.{element_id}",
+                    data=self._config["data"][element_id] if entry_type == "data" else None,
+                )
+                marked_entries[element_id] = f"{marker_start}{element_data}{marker_end}"
+            self._env_vars[entry_type] = marked_entries
+
+        body = self._resolve_to_str(self._config["template"])
+        output = f"{body.strip()}\n\n{make_config()}{make_inputs()}"
         return output
 
     def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
@@ -301,6 +356,24 @@ class ProtocolManager:
             data[pos] if pos in data else self._config["marker"][pos].format(id)
             for pos in ("start", "end")
         )
+
+    def _make_auto_labels_from_issue_ticket_inputs(self):
+        version_labels = []
+        branch_labels = []
+        if "version" in self._issue_inputs:
+            for version in self._issue_inputs["version"]:
+                version_labels.append(self._manager.label.label_version(version))
+                branch = self._manager.branch.from_version(version)
+                branch_labels.append(self._manager.label.label_branch(branch.name))
+        elif "branch" in self._issue_inputs:
+            for branch in self._issue_inputs["branch"]:
+                branch_labels.append(self._manager.label.label_branch(branch))
+        else:
+            logger.info(
+                "Issue Label Update",
+                "Could not match branch or version in issue body to pattern defined in metadata.",
+            )
+        return version_labels, branch_labels
 
     @staticmethod
     def _extract_issue_ticket_inputs(body: str, body_elems: list[dict]) -> dict[str, str | list]:

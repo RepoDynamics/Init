@@ -46,107 +46,40 @@ class IssuesEventHandler(EventHandler):
         return
 
     def _run_opened(self):
-
-        def assign() -> None:
-            assignees = issue_form.issue_assignees.copy()
-            assignment = issue_form.post_process.get("assign_creator")
-            if assignment:
-                if_checkbox = assignment.get("if_checkbox")
-                if if_checkbox:
-                    checkbox = issue_entries[if_checkbox["id"]].splitlines()[if_checkbox["number"] - 1]
-                    if checkbox.startswith("- [X]"):
-                        checked = True
-                        process = True
-                    elif checkbox.startswith("- [ ]"):
-                        checked = False
-                        process = True
-                    else:
-                        logger.warning(
-                            "Issue Assignment",
-                            "Could not match checkbox in issue body to pattern defined in metadata.",
-                        )
-                        checked = None
-                        process = False
-                    if process and (
-                        (if_checkbox["is_checked"] and checked) or
-                        (not if_checkbox["is_checked"] and not checked)
-                    ):
-                        for user in assignees:
-                            if user["github"]["id"] == self.issue_author["github"]["id"]:
-                                break
-                        else:
-                            assignees.append(self.issue_author)
-            self._gh_api.issue_add_assignees(
-                number=self.issue.number, assignees=[user["github"]["id"] for user in assignees]
-            )
-            for assignee in assignees:
-                self.manager.protocol.add_timeline_entry(
-                    env_vars={
-                        "action": "assigned",
-                        "assignee": assignee,
-                    },
-                )
-            return
-
-        def add_labels() -> None:
-            labels = [
-                self.manager.label.status_label(IssueStatus.TRIAGE)
-            ] + issue_form.id_labels + issue_form.labels
-            if "version" in issue_entries:
-                versions = [version.strip() for version in issue_entries["version"].split(",")]
-                for version in versions:
-                    labels.append(self.manager.label.label_version(version))
-                    branch = self.manager.branch.from_version(version)
-                    labels.append(self.manager.label.label_branch(branch.name))
-            elif "branch" in issue_entries:
-                branches = [branch.strip() for branch in issue_entries["branch"].split(",")]
-                for branch in branches:
-                    labels.append(self.manager.label.label_branch(branch))
-            else:
-                logger.info(
-                    "Issue Label Update",
-                    "Could not match branch or version in issue body to pattern defined in metadata.",
-                )
-            gh_response = self._gh_api.issue_labels_set(
-                self.issue.number,
-                [label_obj.name for label_obj in set(labels)]
-            )
-            logger.info(
-                "Issue Labels Update",
-                self.reporter.api_response_code_block(gh_response)
-            )
-            for label in labels:
-                self.manager.protocol.add_timeline_entry(
-                    env_vars={"action": "labeled", "label": label}
-                )
-            return
-
         self.reporter.event(f"Issue #{self.issue.number} opened")
         issue_form = self.manager.issue.form_from_issue_body(self.issue.body)
-        issue_entries, body_processed = self.manager.protocol.initialize_issue(
+        issue_inputs, body_processed, labels = self.manager.protocol.initialize_issue(
             issue=self.issue, issue_form=issue_form
         )
-        self.manager.protocol.add_timeline_entry()
-        self.manager.protocol.update_status(IssueStatus.TRIAGE)
-        add_labels()
-        assign()
-        logger.info(
-            "Development Protocol",
-            mdit.element.code_block(self.manager.protocol.protocol)
+        api_response_label = self._gh_api.issue_labels_set(
+            self.issue.number,
+            [label_obj.name for label_obj in set(labels)]
         )
+        logger.info(
+            "Issue Labels Update",
+            self.reporter.api_response_code_block(api_response_label)
+        )
+        api_response_assign = self._gh_api.issue_add_assignees(
+            number=self.issue.number, assignees=[assignee["github"]["id"] for assignee in issue_form.issue_assignees]
+        )
+        logger.info(
+            "Issue Assignment",
+            self.reporter.api_response_code_block(api_response_assign)
+        )
+        protocol = self.manager.protocol.generate()
         if self.manager.data["doc.protocol.as_comment"]:
             response = self._gh_api.issue_update(number=self.issue.number, body=body_processed)
             logger.info(
                 "Issue Body Update",
                 logger.pretty(response)
             )
-            response = self._gh_api.issue_comment_create(number=self.issue.number, body=self.manager.protocol.protocol)
+            response = self._gh_api.issue_comment_create(number=self.issue.number, body=protocol)
             logger.info(
                 "Dev Protocol Comment",
                 logger.pretty(response)
             )
         else:
-            response = self._gh_api.issue_update(number=self.issue.number, body=self.manager.protocol.protocol)
+            response = self._gh_api.issue_update(number=self.issue.number, body=protocol)
             logger.info(
                 "Issue Body Update",
                 logger.pretty(response)

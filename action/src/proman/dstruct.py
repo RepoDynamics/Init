@@ -322,13 +322,12 @@ class IssueForm(_NamedTuple):
     review_assignees: list[User]
     labels: list[Label]
     role: dict[str, dict[str, int] | None]
-    pre_process: dict
-    post_process: dict
     name: str
     description: str
     projects: list[str]
     title: str
     body: list[dict]
+    processed_body: str | dict
 
 
 @_dataclass(frozen=True)

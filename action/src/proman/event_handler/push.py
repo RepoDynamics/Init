@@ -306,11 +306,30 @@ class PushEventHandler(EventHandler):
         return
 
     def _run_branch_edited_main_normal(self):
-        self.reporter.event("Repository configuration synchronization")
-        self.manager.repo.update_all(
-            manager_before=self.manager_from_metadata_file(
-                repo="base",
-                commit_hash=self.gh_context.hash_before,
-            )
+        self.reporter.event("Push to main branch")
+        new_manager, _ = self.run_cca(
+            branch_manager=self.manager,
+            action=InitCheckAction.COMMIT,
+        )
+        self.jinja_env_vars["ccc"] = new_manager.data
+        self.run_refactor(
+            branch_manager=new_manager,
+            action=InitCheckAction.COMMIT,
+            ref_range=(
+                self.gh_context.hash_before,
+                self.gh_context.hash_after
+            ),
+        ) if new_manager.data["tool.pre-commit.config.file.content"] else None
+        new_manager.git.push()
+        new_manager.repo.update_all(manager_before=self.manager)
+        self._output_manager.set(
+            main_manager=new_manager,
+            branch_manager=new_manager,
+            version=new_manager.release.latest_version(),
+            website_deploy=True,
+            package_lint=True,
+            test_lint=True,
+            package_test=True,
+            package_build=True,
         )
         return

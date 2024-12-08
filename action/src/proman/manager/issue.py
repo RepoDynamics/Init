@@ -77,11 +77,10 @@ class IssueManager:
                 "commit_author": None,
                 "commit_committer": None,
             } | self._manager.data.get("issue.form.role", {}) | issue_form.get("role", {}),
-            pre_process=issue_form.get("pre_process", {}),
-            post_process=issue_form.get("post_process", {}),
             name=issue_form["name"],
             description=issue_form["description"],
             projects=issue_form.get("projects", []),
             title=issue_form.get("title", ""),
             body=issue_form.get("body", []),
+            processed_body=issue_form.get("processed_body", []),
         )
