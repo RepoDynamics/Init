@@ -26,7 +26,7 @@ class BinderReleaseManager:
             return False
         image_tag = self._image_tags.get(
             "version_major",
-            self._image_tags["transient"]
+            self._image_tags.get("transient")
         )
         content = f"FROM {self.image_name}:{image_tag}\n"
         dockerfile_path = self._manager.git.repo_path / binder_directory / "Dockerfile"
