@@ -45,6 +45,18 @@ class ProtocolManager:
         )
         return config_resolved
 
+    @property
+    def data(self) -> dict:
+        return self._protocol_data
+
+    @property
+    def input(self) -> dict:
+        return self._issue_inputs
+
+    @property
+    def tasklist(self) -> Tasklist:
+        return self._tasklist
+
     def add_event(self, env_vars: dict):
         for data_id, data in self._config.get("data", {}).items():
             if "template" in data:
