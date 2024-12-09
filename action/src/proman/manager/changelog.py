@@ -68,7 +68,6 @@ class ChangelogManager:
         if issue.milestone:
             self._update_milestone(milestone=issue.milestone)
         self._update_parent(version=base_version)
-        self._update_protocol(protocol=protocol)
         self._update_pull_request(pull=pull, base_version=base_version, head_version=base_version)
 
         self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
