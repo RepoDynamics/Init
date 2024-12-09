@@ -34,15 +34,6 @@ class ProtocolManager:
         self._env_vars: dict = {"config": self._protocol_config, "input": self._issue_inputs}
         return
 
-    @property
-    def protocol(self) -> str:
-        return self._protocol
-
-    @protocol.setter
-    def protocol(self, value: str):
-        self._protocol = value
-        return
-
     def add_event(self, env_vars: dict):
         for data_id, data in self._config.get("data", {}).items():
             if "template" in data:
@@ -54,107 +45,6 @@ class ProtocolManager:
                     env_vars=env_vars,
                 )
         return
-
-    def initialize_issue(
-        self,
-        issue: Issue,
-        issue_form: IssueForm,
-    ) -> tuple[dict, str, list[Label]]:
-        self._config = self._manager.data["issue.protocol"]
-        self._issue_inputs.update(self._extract_issue_ticket_inputs(issue.body, issue_form.body))
-        version_labels, branch_labels = self._make_auto_labels_from_issue_ticket_inputs()
-        self._env_vars.update(
-            {
-                "form": issue_form,
-                "status": IssueStatus.TRIAGE,
-                "version_labels": version_labels,
-            }
-        )
-        self._protocol_config.update(self._config["config"].get("default", {}))
-        labels = issue_form.id_labels + issue_form.labels + version_labels + branch_labels + [
-            self._manager.label.status_label(IssueStatus.TRIAGE)
-        ]
-        for data_id, data in self._config.get("data", {}).items():
-            self._protocol_data[data_id] = self._resolve_to_str(data["value"], jsonpath=f"issue.protocol.data.{data_id}")
-        for label in labels:
-            self.add_event(env_vars={"action": "labeled", "label": label})
-        for assignee in issue_form.issue_assignees:
-            self.add_event(env_vars={"action": "assigned", "assignee": assignee})
-
-        # if issue_form.processed_body:
-        #     body_processed = self._generate(
-        #         template=issue_form.processed_body,
-        #         issue_form=issue_form,
-        #         issue_inputs=issue_entries,
-        #         issue_body=issue.body
-        #     )
-        # else:
-        #     logger.info("Issue Post Processing", "No post-process action defined in issue form.")
-        #     body_processed = issue.body
-        # self.protocol = self._generate(
-        #     template=self._manager.data["doc.protocol.template"],
-        #     issue_form=issue_form,
-        #     issue_inputs=issue_entries,
-        #     issue_body=body_processed,
-        # )
-        body_processed = ""
-        return self._issue_inputs, body_processed, labels
-
-    def _resolve_to_str(self, value: str | dict | list, jsonpath: str, env_vars: dict | None = None):
-        env_vars = env_vars or {}
-        value_filled = self._manager.fill_jinja_templates(value, jsonpath=jsonpath, env_vars=self._env_vars | env_vars)
-        if isinstance(value, str):
-            return value_filled
-        return mdit.generate(value_filled).source(target="github")
-
-    def _update_data_from_template(
-        self,
-        data: str,
-        template: str | dict | list,
-        template_type: Literal["append", "prepend"],
-        jsonpath: str,
-        env_vars: dict | None = None
-    ):
-        template_resolved = self._resolve_to_str(template, jsonpath=jsonpath, env_vars=env_vars)
-        if template_type == "append":
-            return f"{data}{template_resolved}"
-        return f"{template_resolved}{data}"
-
-    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
-        data = {}
-        env_vars = {
-            "data": data,
-            "form": issue_form,
-            "input": issue_inputs,
-            "issue_body": issue_body,
-        }
-        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title"):
-            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
-            if template_data:
-                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
-        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
-            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
-        protocol = self._manager.fill_jinja_template(
-            template=template,
-            env_vars=env_vars,
-        )
-        return protocol
-
-    def load_from_issue(self, issue: Issue) -> str:
-        if self._manager.data["doc.protocol.as_comment"]:
-            comments = self._manager.gh_api_actions.issue_comments(number=issue.number, max_count=10)
-            protocol_comment = comments[0]
-            self._protocol_comment_id = protocol_comment.get("id")
-            self.protocol = protocol_comment.get("body")
-        else:
-            self.protocol = issue.body
-            self._protocol_issue_nr = issue.number
-        return self.protocol
-
-    def load_from_pull(self, pull: PullRequest) -> str:
-        self._protocol_pull_nr = pull.number
-        self.protocol = pull.body
-        return self.protocol
 
     def update_on_github(self):
         if self._protocol_issue_nr:
@@ -201,6 +91,115 @@ class ProtocolManager:
             env_vars={"config": make_config(), "inputs": make_inputs()}
         )
         return output
+
+    def initialize_issue(
+        self,
+        issue: Issue,
+        issue_form: IssueForm,
+    ) -> tuple[dict, str, list[Label]]:
+        self._config = self._manager.data["issue.protocol"]
+        self._issue_inputs.update(self._extract_issue_ticket_inputs(issue.body, issue_form.body))
+        version_labels, branch_labels = self._make_auto_labels_from_issue_ticket_inputs()
+        self._env_vars.update(
+            {
+                "form": issue_form,
+                "status": IssueStatus.TRIAGE,
+                "version_labels": version_labels,
+            }
+        )
+        self._protocol_config.update(self._config["config"].get("default", {}))
+        labels = issue_form.id_labels + issue_form.labels + version_labels + branch_labels + [
+            self._manager.label.status_label(IssueStatus.TRIAGE)
+        ]
+        for data_id, data in self._config.get("data", {}).items():
+            self._protocol_data[data_id] = self._resolve_to_str(data["value"], jsonpath=f"issue.protocol.data.{data_id}")
+        for label in labels:
+            self.add_event(env_vars={"action": "labeled", "label": label})
+        for assignee in issue_form.issue_assignees:
+            self.add_event(env_vars={"action": "assigned", "assignee": assignee})
+
+        # if issue_form.processed_body:
+        #     body_processed = self._generate(
+        #         template=issue_form.processed_body,
+        #         issue_form=issue_form,
+        #         issue_inputs=issue_entries,
+        #         issue_body=issue.body
+        #     )
+        # else:
+        #     logger.info("Issue Post Processing", "No post-process action defined in issue form.")
+        #     body_processed = issue.body
+        # self.protocol = self._generate(
+        #     template=self._manager.data["doc.protocol.template"],
+        #     issue_form=issue_form,
+        #     issue_inputs=issue_entries,
+        #     issue_body=body_processed,
+        # )
+        body_processed = ""
+        return self._issue_inputs, body_processed, labels
+
+    def load_from_issue(self, issue: Issue) -> str:
+        self._config = self._manager.data["issue.protocol"]
+        if self._config["as_comment"]:
+            comments = self._manager.gh_api_actions.issue_comments(number=issue.number, max_count=10)
+            protocol_comment = comments[0]
+            self._protocol_comment_id = protocol_comment.get("id")
+            protocol = protocol_comment.get("body")
+        else:
+            protocol = issue.body
+            self._protocol_issue_nr = issue.number
+
+
+
+        return self.protocol
+
+    def load_from_pull(self, pull: PullRequest) -> str:
+        self._protocol_pull_nr = pull.number
+        self.protocol = pull.body
+        return self.protocol
+
+    def _resolve_to_str(self, value: str | dict | list, jsonpath: str, env_vars: dict | None = None):
+        env_vars = env_vars or {}
+        value_filled = self._manager.fill_jinja_templates(value, jsonpath=jsonpath, env_vars=self._env_vars | env_vars)
+        if isinstance(value, str):
+            return value_filled
+        return mdit.generate(value_filled).source(target="github")
+
+    def _update_data_from_template(
+        self,
+        data: str,
+        template: str | dict | list,
+        template_type: Literal["append", "prepend"],
+        jsonpath: str,
+        env_vars: dict | None = None
+    ):
+        template_resolved = self._resolve_to_str(template, jsonpath=jsonpath, env_vars=env_vars)
+        if template_type == "append":
+            return f"{data}{template_resolved}"
+        return f"{template_resolved}{data}"
+
+
+    def _read_inputs(self, protocol: str):
+        marker_start, marker_end = self._make_text_marker(id="input", data=self._config["inputs"])
+
+    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
+        data = {}
+        env_vars = {
+            "data": data,
+            "form": issue_form,
+            "input": issue_inputs,
+            "issue_body": issue_body,
+        }
+        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title"):
+            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
+            if template_data:
+                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
+        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
+            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
+        protocol = self._manager.fill_jinja_template(
+            template=template,
+            env_vars=env_vars,
+        )
+        return protocol
 
     def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
         marker_start, marker_end = self._make_text_marker(id=id, data=spec)

@@ -88,7 +88,7 @@ class IssuesEventHandler(EventHandler):
 
     def _run_labeled(self):
         label = self.manager.label.resolve_label(self.payload.label.name)
-        self.manager.protocol.add_timeline_entry(env_vars={"label": label})
+        self.manager.protocol.add_event(env_vars={"label": label})
         if label.category is not LabelType.STATUS:
             self.reporter.event(f"Issue #{self.issue.number} labeled `{label.name}`")
             self.manager.protocol.update_on_github()

@@ -3,19 +3,19 @@ rich >= 13.5
 versioningit >= 3.1.2, < 4
 Jinja2 >= 3, < 4
 ActionMan == 0.0.0.dev24
-ControlMan == 0.0.0.dev414
-ConventionalCommits == 0.0.0.dev52
+ControlMan == 0.0.0.dev415
+ConventionalCommits == 0.0.0.dev53
 GitHub-Contexts == 0.0.0.dev16
-LoggerMan == 0.0.0.dev80
-MDit == 0.0.0.dev50
+LoggerMan == 0.0.0.dev81
+MDit == 0.0.0.dev51
 HTMP == 0.0.0.dev5
-PyLinks == 0.0.0.dev63
+PyLinks == 0.0.0.dev64
 PySyntax == 0.0.0.dev5
 VersionMan == 0.0.0.dev249
-GitTidy == 0.0.0.dev77
+GitTidy == 0.0.0.dev78
 PkgData == 0.0.0.dev5
-PyShellMan == 0.0.0.dev40
-PySerials == 0.0.0.dev53
+PyShellMan == 0.0.0.dev41
+PySerials == 0.0.0.dev54
 FileEx == 0.0.0.dev1
 ANSI-SGR == 0.0.0.dev10
 PyColorIT == 0.0.0.dev8
