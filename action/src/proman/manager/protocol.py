@@ -381,7 +381,7 @@ class ProtocolManager:
         return
 
     def _extract_marker_wrapped(self, text: str, marker: dict):
-        pattern = rf"{re.escape(marker["start"])}(.*?){re.escape(marker["end"])}"
+        pattern = rf"{re.escape(marker["start"].lstrip())}(.*?){re.escape(marker["end"].rstrip())}"
         match = re.search(pattern, text, flags=re.DOTALL)
         data = match.group(1) if match else ""
         logger.info(
