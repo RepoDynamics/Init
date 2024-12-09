@@ -51,7 +51,7 @@ class RepoFileType(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
 
 class BranchType(_Enum):
@@ -68,7 +68,7 @@ class BranchType(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
     def __hash__(self):
         return hash((self.__class__, self.value))
@@ -90,7 +90,7 @@ class InitCheckAction(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
 
 class ReleaseAction(_Enum):
@@ -105,7 +105,7 @@ class ReleaseAction(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
 
 class IssueStatus(_Enum):
@@ -129,7 +129,7 @@ class IssueStatus(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
     @property
     def level(self) -> int:
@@ -186,7 +186,7 @@ class IssueStatus(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
 
 class LabelType(_Enum):
@@ -203,5 +203,5 @@ class LabelType(_Enum):
     def __eq__(self, other):
         if isinstance(other, str):
             return self.value == other
-        return self == other
+        return self is other
 
