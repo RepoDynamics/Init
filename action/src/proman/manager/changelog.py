@@ -330,4 +330,4 @@ class ChangelogManager:
         return True
 
     def _update_type(self, issue_form: IssueForm):
-        self.current["type"] = issue_form.commit.action or "local"
+        self.current["type"] = issue_form.commit.action.value or "local"
