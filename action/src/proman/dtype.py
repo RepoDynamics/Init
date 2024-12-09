@@ -70,6 +70,9 @@ class BranchType(_Enum):
             return self.value == other
         return self == other
 
+    def __hash__(self):
+        return hash((self.__class__, self.value))
+
 
 class InitCheckAction(_Enum):
     NONE = "disabled"
