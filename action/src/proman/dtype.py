@@ -45,6 +45,14 @@ class RepoFileType(_Enum):
     WORKFLOW = "Workflow"
     OTHER = "Other"
 
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
+
 
 class BranchType(_Enum):
     MAIN = "main"
@@ -53,6 +61,14 @@ class BranchType(_Enum):
     DEV = "dev"
     AUTO = "auto"
     OTHER = "other"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
 
 
 class InitCheckAction(_Enum):
@@ -65,12 +81,28 @@ class InitCheckAction(_Enum):
     COMMIT = "commit"
     AMEND = "amend"
 
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
+
 
 class ReleaseAction(_Enum):
     MAJOR = "major"
     MINOR = "minor"
     PATCH = "patch"
     POST = "post"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
 
 
 class IssueStatus(_Enum):
@@ -87,6 +119,14 @@ class IssueStatus(_Enum):
     DEPLOY_BETA = "deploy_beta"
     DEPLOY_RC = "deploy_rc"
     DEPLOY_FINAL = "deploy_final"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
 
     @property
     def level(self) -> int:
@@ -137,6 +177,14 @@ class IssueStatus(_Enum):
             other = IssueStatus(other)
         return self.level <= other.level
 
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
+
 
 class LabelType(_Enum):
     STATUS = "status"
@@ -145,4 +193,12 @@ class LabelType(_Enum):
     CUSTOM_GROUP = "custom_group"
     CUSTOM_SINGLE = "custom_single"
     UNKNOWN = "unknown"
+
+    def __str__(self):
+        return self.value
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value == other
+        return self == other
 
