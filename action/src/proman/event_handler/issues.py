@@ -39,7 +39,7 @@ class IssuesEventHandler(EventHandler):
             return self._run_opened()
         self.issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
         self.labels = self.manager.label.resolve_labels(self.issue.label_names)
-        self.manager.protocol.load_from_issue(issue=self.issue, issue_form=self.issue_form)
+        self.manager.protocol.load_from_issue(issue=self.issue, issue_form=self.issue_form, labels=self.labels)
         if action == gh_context.enum.ActionType.LABELED:
             return self._run_labeled()
         if action == gh_context.enum.ActionType.ASSIGNED:
