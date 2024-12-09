@@ -141,7 +141,7 @@ class ProtocolManager:
         )
         return output
 
-    def initialize_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str, set[Label]]:
+    def initialize_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str, list[Label]]:
         self._config = self._manager.data["issue.protocol"]
         self._issue_inputs.update(self._extract_issue_ticket_inputs(issue.body, issue_form.body))
         labels, status_label = self._make_auto_labels_from_issue_ticket_inputs(issue_form=issue_form)
@@ -378,7 +378,14 @@ class ProtocolManager:
     def _extract_marker_wrapped(text: str, marker: dict):
         pattern = rf"{re.escape(marker["start"])}(.*?){re.escape(marker["end"])}"
         match = re.search(pattern, text, flags=re.DOTALL)
-        return match.group(1) if match else ""
+        data = match.group(1) if match else ""
+        logger.info(
+            "Protocol Data Extraction",
+            mdit.element.code_block(data, caption="Match") if data else "No Match found.",
+            mdit.element.code_block(pattern, caption="RegEx Pattern"),
+            mdit.element.code_block(text, language="markdown", caption="Protocol"),
+        )
+        return
 
     @staticmethod
     def _wrap_in_markers(entry: str, marker: dict[str, str]):
