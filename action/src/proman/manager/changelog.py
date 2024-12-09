@@ -117,7 +117,7 @@ class BareChangelogManager:
 
     def update_protocol(self, protocol: ProtocolManager):
         self.update_protocol_data(protocol.get_all_data())
-        self.update_protocol_tasklist(protocol.get_tasklist())
+        self.update_protocol_tasklist(protocol._extract_tasklist())
         return
 
     def update_protocol_data(self, data: dict):

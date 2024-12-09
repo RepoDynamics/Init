@@ -10,9 +10,10 @@ import mdit
 
 from proman.dtype import LabelType, IssueStatus
 from proman.main import EventHandler
+from proman.manager.protocol import ProtocolManager
 
 if _TYPE_CHECKING:
-    from proman.dstruct import Label, Branch, Version
+    from proman.dstruct import Label, Branch, Version, IssueForm
 
 
 class IssuesEventHandler(EventHandler):
@@ -24,7 +25,8 @@ class IssuesEventHandler(EventHandler):
         issue = self.manager.add_issue_jinja_env_var(self.issue)
         self.issue_author = issue["user"]
 
-        self._label_groups: dict[LabelType, list[Label]] = {}
+        self.issue_form: IssueForm = None
+        self.labels: dict[LabelType, list[Label]] = {}
         self._protocol_comment_id: int | None = None
         self._protocol_issue_nr: int | None = None
         return
@@ -33,34 +35,36 @@ class IssuesEventHandler(EventHandler):
     def run(self):
         action = self.payload.action
         if action == gh_context.enum.ActionType.OPENED:
+            self.issue_form = self.manager.issue.form_from_issue_body(self.issue.body)
             return self._run_opened()
-        self.manager.protocol.load_from_issue(self.issue)
+        self.issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
+        self.labels = self.manager.label.resolve_labels(self.issue.label_names)
+        self.manager.protocol.load_from_issue(issue=self.issue, issue_form=self.issue_form)
         if action == gh_context.enum.ActionType.LABELED:
             return self._run_labeled()
         if action == gh_context.enum.ActionType.ASSIGNED:
             return self._run_assignment(assigned=True)
         if action == gh_context.enum.ActionType.UNASSIGNED:
             return self._run_assignment(assigned=False)
-        self.manager.protocol.add_timeline_entry()
+        self.manager.protocol.add_event()
         self.manager.protocol.update_on_github()
         return
 
     def _run_opened(self):
         self.reporter.event(f"Issue #{self.issue.number} opened")
-        issue_form = self.manager.issue.form_from_issue_body(self.issue.body)
         issue_inputs, body_processed, labels = self.manager.protocol.initialize_issue(
-            issue=self.issue, issue_form=issue_form
+            issue=self.issue, issue_form=self.issue_form
         )
         api_response_label = self._gh_api.issue_labels_set(
             self.issue.number,
-            [label_obj.name for label_obj in set(labels)]
+            [label_obj.name for label_obj in labels]
         )
         logger.info(
             "Issue Labels Update",
             self.reporter.api_response_code_block(api_response_label)
         )
         api_response_assign = self._gh_api.issue_add_assignees(
-            number=self.issue.number, assignees=[assignee["github"]["id"] for assignee in issue_form.issue_assignees]
+            number=self.issue.number, assignees=[assignee["github"]["id"] for assignee in self.issue_form.issue_assignees]
         )
         logger.info(
             "Issue Assignment",
@@ -93,12 +97,11 @@ class IssuesEventHandler(EventHandler):
             self.reporter.event(f"Issue #{self.issue.number} labeled `{label.name}`")
             self.manager.protocol.update_on_github()
             return
-        self.manager.protocol.update_status(label.id)
+        self.manager.protocol.add_env_var(status_label=label)
         # Remove all other status labels
-        self._label_groups = self.manager.label.resolve_labels(self.issue.label_names)
         self.manager.label.update_status_label_on_github(
             issue_nr=self.issue.number,
-            old_status_labels=self._label_groups[LabelType.STATUS],
+            old_status_labels=self.labels[LabelType.STATUS],
             new_status_label=label,
         )
         if label.id in [IssueStatus.REJECTED, IssueStatus.DUPLICATE, IssueStatus.INVALID]:
@@ -113,17 +116,17 @@ class IssuesEventHandler(EventHandler):
         def get_base_branches() -> list[tuple[Branch, list[Label]]]:
             base_branches_and_labels = []
             common_labels = []
-            for label_group, group_labels in self._label_groups.items():
+            for label_group, group_labels in self.labels.items():
                 if label_group not in [LabelType.BRANCH, LabelType.VERSION]:
                     common_labels.extend(group_labels)
-            if self._label_groups.get(LabelType.VERSION):
-                for version_label in self._label_groups[LabelType.VERSION]:
+            if self.labels.get(LabelType.VERSION):
+                for version_label in self.labels[LabelType.VERSION]:
                     branch_label = self.manager.label.label_version_to_branch(version_label)
                     branch = self.manager.branch.from_name(branch_label.suffix)
                     all_labels_for_branch = common_labels + [version_label, branch_label]
                     base_branches_and_labels.append((branch, all_labels_for_branch))
             else:
-                for branch_label in self._label_groups[LabelType.BRANCH]:
+                for branch_label in self.labels[LabelType.BRANCH]:
                     branch = self.manager.branch.from_name(branch_label.suffix)
                     base_branches_and_labels.append((branch, common_labels + [branch_label]))
             return base_branches_and_labels
@@ -146,7 +149,7 @@ class IssuesEventHandler(EventHandler):
             base_version = self.manager.release.latest_version()
             # Write initial commit on dev branch to be able to open a draft pull request
             # Ref: https://stackoverflow.com/questions/46577500/why-cant-i-create-an-empty-pull-request-for-discussion-prior-to-developing-chan
-            self._git_base.commit(message="[skip actions]", allow_empty=True)
+            self._git_base.commit(message="[skip ci]", allow_empty=True)
             self._git_base.push(target="origin", set_upstream=True)
             return head, base_version
 
@@ -154,8 +157,7 @@ class IssuesEventHandler(EventHandler):
             api_response_pull = self._gh_api.pull_create(
                 head=head.name,
                 base=base.name,
-                title=self.manager.protocol.get_pr_title() or self.issue.title,
-                body=self.manager.protocol.protocol,
+                title=self.manager.protocol.config.get("pr_title", self.issue.title),
                 maintainer_can_modify=True,
                 draft=True,
             )
@@ -171,10 +173,10 @@ class IssuesEventHandler(EventHandler):
                 f"Pull Request Labels Update ({head.name} -> {base.name})",
                 self.reporter.api_response_code_block(api_response_labels)
             )
-            if issue_form.pull_assignees:
+            if self.issue_form.pull_assignees:
                 api_response_assignment = self._gh_api.issue_add_assignees(
                     number=api_response_pull["number"],
-                    assignees=[user["github"]["id"] for user in issue_form.pull_assignees]
+                    assignees=[user["github"]["id"] for user in self.issue_form.pull_assignees]
                 )
                 logger.info(
                     "Pull Request Assignment",
@@ -186,32 +188,24 @@ class IssuesEventHandler(EventHandler):
                 pull=api_response_pull,
                 author=self.payload_sender,
             )
-            self.manager.protocol.add_timeline_entry(
+            self.manager.protocol.add_event(
                 env_vars={"event": "pull_request", "action": "opened"},
             )
-            devdoc_pull = copy.copy(base_protocol)
-            devdoc_pull.add_reference_readthedocs(pull_nr=pull["number"])
-            for assignee in issue_form.pull_assignees:
-                devdoc_pull.add_timeline_entry(
-                    env_vars={
-                        "event": "pull_request",
-                        "action": "assigned",
-                        "pull_request": pull,
-                        "assignee": assignee,
-                    },
-                )
-            self._gh_api.pull_update(number=pull["number"], body=devdoc_pull.protocol)
+            pull_protocol = ProtocolManager(manager=self.manager)
+            pull_protocol.initialize_pull(
+                pull=pull,
+                issue=self.issue,
+                issue_form=self.issue_form,
+                labels=labels,
+            )
+            pull_protocol.update_on_github()
             return pull
 
-        # if self.manager.protocol._protocol_config.get("fi")
-
-        issue_form = self.manager.issue.form_from_id_labels(self.issue.label_names)
-        implementation_branches_info = []
-        base_protocol = copy.copy(self.manager.protocol)
+        pull_requests = []
         for base_branch, labels in get_base_branches():
             head_branch, base_version = create_head_branch(base=base_branch)
             pull = create_pull(head=head_branch, base=base_branch, labels=labels)
-            implementation_branches_info.append(pull)
+            pull_requests.append(pull)
             head_manager = self.manager_from_metadata_file(repo="base") if (
                 base_branch.name != self.payload.repository.default_branch
             ) else self.manager
@@ -219,10 +213,10 @@ class IssuesEventHandler(EventHandler):
                 base_version=base_version,
                 issue_num=self.issue.number,
                 deploy_type=IssueStatus.DEPLOY_ALPHA,
-                action=issue_form.commit.action,
+                action=self.issue_form.commit.action,
             )
             head_manager.changelog.initialize_from_issue(
-                issue_form=issue_form,
+                issue_form=self.issue_form,
                 issue=self.issue,
                 labels=labels,
                 pull=pull,
@@ -248,13 +242,13 @@ class IssuesEventHandler(EventHandler):
                 amend=True
             )
             self._git_base.push(force_with_lease=True)
-        self.manager.protocol.add_pr_list(implementation_branches_info)
+        self.manager.protocol.add_env_var(pull_requests=pull_requests)
         return
 
     def _run_assignment(self, assigned: bool):
         assignee = self.manager.user.get_from_github_rest_id(self.payload.assignee.id)
         action_desc = "assigned to" if assigned else "unassigned from"
         self.reporter.event(f"Issue #{self.issue.number} {action_desc} {assignee['github']['id']}")
-        self.manager.protocol.add_timeline_entry(env_vars={"assignee": assignee})
+        self.manager.protocol.add_event(env_vars={"assignee": assignee})
         self.manager.protocol.update_on_github()
         return

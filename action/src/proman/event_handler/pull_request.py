@@ -641,7 +641,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                     apply(commit_entry["subtasks"], subtask.subtasks)
             return
 
-        tasklist = self.manager.protocol.get_tasklist()
+        tasklist = self.manager.protocol._extract_tasklist()
         for commit in self.commits:
             author_role = None
             committer_role = None
@@ -676,7 +676,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
                 else:
                     apply(extract_commit_body(commit.body), task.subtasks)
                 break
-        self.manager.protocol.write_tasklist(tasklist)
+        self.manager.protocol._write_tasklist(tasklist)
         return tasklist
 
     def _write_pre_protocol(self, ver: str):

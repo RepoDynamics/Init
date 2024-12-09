@@ -7,7 +7,7 @@ from loggerman import logger
 import mdit
 import pyserials as ps
 
-from proman.dtype import IssueStatus
+from proman.dtype import IssueStatus, LabelType
 from proman.dstruct import Tasklist, MainTasklistEntry, SubTasklistEntry
 from proman.exception import ProManException
 
@@ -31,92 +31,136 @@ class ProtocolManager:
         self._protocol_data: dict[str, str] = {}
         self._protocol_config: dict = {}
         self._issue_inputs: dict = {}
+        self._tasklist: Tasklist | None = None
         self._env_vars: dict = {"config": self._protocol_config, "input": self._issue_inputs}
         return
+
+    @property
+    def config(self) -> dict:
+        config_resolved = self._manager.fill_jinja_templates(
+            self._protocol_config,
+            jsonpath="protocol.config",
+            env_vars=self._env_vars | {"data": self._protocol_data}
+        )
+        return config_resolved
 
     def add_event(self, env_vars: dict):
         for data_id, data in self._config.get("data", {}).items():
             if "template" in data:
-                self._protocol_data[data_id] = self._update_data_from_template(
-                    data=self._protocol_data[data_id],
-                    template=data["template"],
-                    template_type=data["template_type"],
-                    jsonpath=f"issue.protocol.data.{data_id}",
-                    env_vars=env_vars,
+                template_resolved = self._resolve_to_str(
+                    data["template"], jsonpath=f"issue.protocol.data.{data_id}", env_vars=env_vars
+                )
+                existing_data = self._protocol_data[data_id]
+                self._protocol_data[data_id] = (
+                    f"{existing_data}{template_resolved}" if data["template_type"] == "append"
+                    else f"{template_resolved}{existing_data}"
                 )
         return
 
+    def add_env_var(
+        self,
+        status_label: Label | None = None,
+        pull_requests: list[dict] | None = None,
+    ):
+        env_vars = {key: value for key, value in locals().items() if key != "self" and value is not None}
+        self._env_vars.update(env_vars)
+        return
+
     def update_on_github(self):
+        protocol = self.generate()
         if self._protocol_issue_nr:
             return self._manager.gh_api_actions.issue_update(
-                number=self._protocol_issue_nr, body=self.protocol
+                number=self._protocol_issue_nr, body=protocol
             )
         if self._protocol_pull_nr:
             return self._manager.gh_api_actions.pull_update(
-                number=self._protocol_pull_nr, body=self.protocol
+                number=self._protocol_pull_nr, body=protocol
             )
         return self._manager.gh_api_actions.issue_comment_update(
-            comment_id=self._protocol_comment_id, body=self.protocol
+            comment_id=self._protocol_comment_id, body=protocol
         )
 
     def generate(self) -> str:
 
-        def make_config():
+        def make_config() -> str:
             config_str = ps.write.to_yaml_string(self._protocol_config).strip()
-            marker_start, marker_end = self._make_text_marker(id="config", data=self._config["config"])
-            return f"{marker_start}{config_str}{marker_end}"
+            return self._wrap_in_markers(config_str, self._config["config"])
 
-        def make_inputs():
+        def make_inputs() -> str:
             if not self._issue_inputs:
                 return ""
             inputs = ps.write.to_yaml_string(self._issue_inputs).strip()
-            marker_start, marker_end = self._make_text_marker(id="input", data=self._config["inputs"])
-            return f"{marker_start}{inputs}{marker_end}"
+            return self._wrap_in_markers(inputs, self._config["inputs"])
 
-        for entry_type, entry_data in (
-            ("data", self._protocol_data),
-        ):
-            marked_entries = {}
-            for element_id, element_data in entry_data.items():
-                marker_start, marker_end = self._make_text_marker(
-                    id=f"{entry_type}.{element_id}",
-                    data=self._config["data"][element_id] if entry_type == "data" else None,
-                )
-                marked_entries[element_id] = f"{marker_start}{element_data}{marker_end}"
-            self._env_vars[entry_type] = marked_entries
+        def make_data() -> dict:
+            return {
+                element_id: self._wrap_in_markers(element_data, self._config["data"][element_id])
+                for element_id, element_data in self._protocol_data.items()
+            }
+
+        def make_tasklist() -> str:
+            """Write an implementation tasklist as Markdown string
+            and update it in the protocol.
+
+            Parameters
+            ----------
+            tasklist
+                A list of dictionaries, each representing a tasklist entry.
+                The format of each dictionary is the same as that returned by
+                `_extract_tasklist_entries`.
+            """
+
+            def write(entry_list: Sequence[MainTasklistEntry | SubTasklistEntry], level=0):
+                for entry in entry_list:
+                    check = 'X' if entry.complete else ' '
+                    string.append(f"{' ' * level * 2}- [{check}] {entry.summary.strip()}")
+                    if entry.body:
+                        for line in entry.body.splitlines():
+                            string.append(f"{' ' * (level + 1) * 2}{line}")
+                    write(entry.subtasks, level + 1)
+                return
+
+            if not self._tasklist:
+                return ""
+            string = []
+            write(self._tasklist.tasks)
+            return self._wrap_in_markers(
+                "\n".join(string).strip(),
+                marker=self._config["tasklist"],
+            )
 
         output = self._resolve_to_str(
             self._config["template"],
             jsonpath="issue.protocol.template",
-            env_vars={"config": make_config(), "inputs": make_inputs()}
+            env_vars={
+                "config": make_config(),
+                "data": make_data(),
+                "inputs": make_inputs(),
+                "tasklist": make_tasklist()
+            }
         )
         return output
 
-    def initialize_issue(
-        self,
-        issue: Issue,
-        issue_form: IssueForm,
-    ) -> tuple[dict, str, list[Label]]:
+    def initialize_issue(self, issue: Issue, issue_form: IssueForm) -> tuple[dict, str, set[Label]]:
         self._config = self._manager.data["issue.protocol"]
         self._issue_inputs.update(self._extract_issue_ticket_inputs(issue.body, issue_form.body))
-        version_labels, branch_labels = self._make_auto_labels_from_issue_ticket_inputs()
+        labels, status_label = self._make_auto_labels_from_issue_ticket_inputs(issue_form=issue_form)
         self._env_vars.update(
             {
                 "form": issue_form,
-                "status": IssueStatus.TRIAGE,
-                "version_labels": version_labels,
+                "labels": labels,
+                "status_label": status_label,
             }
         )
         self._protocol_config.update(self._config["config"].get("default", {}))
-        labels = issue_form.id_labels + issue_form.labels + version_labels + branch_labels + [
-            self._manager.label.status_label(IssueStatus.TRIAGE)
-        ]
         for data_id, data in self._config.get("data", {}).items():
             self._protocol_data[data_id] = self._resolve_to_str(data["value"], jsonpath=f"issue.protocol.data.{data_id}")
-        for label in labels:
-            self.add_event(env_vars={"action": "labeled", "label": label})
+        self.add_event(env_vars={"action": "opened"})
         for assignee in issue_form.issue_assignees:
             self.add_event(env_vars={"action": "assigned", "assignee": assignee})
+        all_labels = set([label for label_list in labels.values() for label in label_list] + [status_label])
+        for label in all_labels:
+            self.add_event(env_vars={"action": "labeled", "label": label})
 
         # if issue_form.processed_body:
         #     body_processed = self._generate(
@@ -135,10 +179,43 @@ class ProtocolManager:
         #     issue_body=body_processed,
         # )
         body_processed = ""
-        return self._issue_inputs, body_processed, labels
+        return self._issue_inputs, body_processed, all_labels
 
-    def load_from_issue(self, issue: Issue) -> str:
+    def initialize_pull(self, pull: dict, issue: Issue, issue_form: IssueForm, labels: list[Label]):
+        self._protocol_pull_nr = pull["number"]
+        self._config = self._manager.data["pull.protocol"]
+        labels_env = {}
+        status_label = None
+        for label in labels:
+            if label.category is LabelType.STATUS:
+                status_label = label
+            else:
+                labels_env.setdefault(label.category.value, []).append(label)
+        self._env_vars.update(
+            {
+                "event": "pull_request",
+                "action": "opened",
+                "form": issue_form,
+                "pull_request": pull,
+                "issue": issue,
+                "labels": labels_env,
+                "status_label": status_label,
+            }
+        )
+        self._protocol_config.update(self._config["config"].get("default", {}))
+        for data_id, data in self._config.get("data", {}).items():
+            self._protocol_data[data_id] = self._resolve_to_str(data["value"], jsonpath=f"pull.protocol.data.{data_id}")
+        self.add_event(env_vars={"action": "opened"})
+        for assignee in issue_form.pull_assignees:
+            self.add_event(env_vars={"action": "assigned", "assignee": assignee})
+        for label in labels:
+            self.add_event(env_vars={"action": "labeled", "label": label})
+        return
+
+    def load_from_issue(self, issue: Issue, issue_form: IssueForm, labels: dict[LabelType, list[Label]]):
         self._config = self._manager.data["issue.protocol"]
+        self._env_vars.update({"form": issue_form})
+        self._add_labels_env_var(labels)
         if self._config["as_comment"]:
             comments = self._manager.gh_api_actions.issue_comments(number=issue.number, max_count=10)
             protocol_comment = comments[0]
@@ -147,15 +224,20 @@ class ProtocolManager:
         else:
             protocol = issue.body
             self._protocol_issue_nr = issue.number
-
-
-
-        return self.protocol
+        self._issue_inputs.update(
+            self._extract_yaml(protocol, marker=self._config["inputs"])
+        )
+        self._protocol_config.update(
+            self._extract_yaml(protocol, marker=self._config["config"])
+        )
+        for data_id, data in self._config.get("data", {}).items():
+            self._protocol_data[data_id] = self._extract_marker_wrapped(text=protocol, marker=data)
+        return
 
     def load_from_pull(self, pull: PullRequest) -> str:
         self._protocol_pull_nr = pull.number
-        self.protocol = pull.body
-        return self.protocol
+        protocol = pull.body
+        return
 
     def _resolve_to_str(self, value: str | dict | list, jsonpath: str, env_vars: dict | None = None):
         env_vars = env_vars or {}
@@ -164,74 +246,11 @@ class ProtocolManager:
             return value_filled
         return mdit.generate(value_filled).source(target="github")
 
-    def _update_data_from_template(
-        self,
-        data: str,
-        template: str | dict | list,
-        template_type: Literal["append", "prepend"],
-        jsonpath: str,
-        env_vars: dict | None = None
-    ):
-        template_resolved = self._resolve_to_str(template, jsonpath=jsonpath, env_vars=env_vars)
-        if template_type == "append":
-            return f"{data}{template_resolved}"
-        return f"{template_resolved}{data}"
+    def _extract_yaml(self, protocol: str, marker: dict) -> dict:
+        yaml_str = self._extract_marker_wrapped(text=protocol, marker=marker)
+        return ps.read.yaml_from_string(yaml_str)
 
-
-    def _read_inputs(self, protocol: str):
-        marker_start, marker_end = self._make_text_marker(id="input", data=self._config["inputs"])
-
-    def _generate(self, template: str, issue_form: IssueForm, issue_inputs: dict, issue_body: str) -> str:
-        data = {}
-        env_vars = {
-            "data": data,
-            "form": issue_form,
-            "input": issue_inputs,
-            "issue_body": issue_body,
-        }
-        for template_key in ("tasklist", "timeline", "references", "pr_list", "pr_title"):
-            template_data = self._manager.data.get(f"doc.protocol.{template_key}")
-            if template_data:
-                env_vars[template_key] = self.create_data(id=template_key, spec=template_data, env_vars=env_vars)
-        for data_id, data_value in self._manager.data["doc.protocol.data"].items():
-            data[data_id] = self.create_data(id=data_id, spec=data_value, env_vars=env_vars)
-        protocol = self._manager.fill_jinja_template(
-            template=template,
-            env_vars=env_vars,
-        )
-        return protocol
-
-    def create_data(self, id: str, spec: dict, env_vars: dict) -> str:
-        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
-        data_filled = self._manager.fill_jinja_template(template=spec["value"], env_vars=env_vars)
-        return f"{marker_start}{data_filled}{marker_end}"
-
-    def get_data(self, id: str, spec: dict) -> str:
-        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
-        pattern = rf"{re.escape(marker_start)}(.*?){re.escape(marker_end)}"
-        match = re.search(pattern, self.protocol, flags=re.DOTALL)
-        return match.group(1) if match else ""
-
-    def get_all_data(self) -> dict[str, str]:
-        return {
-            data_id: self.get_data(id=data_id, spec=data_config)
-            for data_id, data_config in self._manager.data.get("doc.protocol.data", {}).items()
-        }
-
-    def add_data(
-        self,
-        id: str,
-        spec: dict,
-        data: str,
-        replace: bool = False
-    ) -> str:
-        marker_start, marker_end = self._make_text_marker(id=id, data=spec)
-        pattern = rf"({re.escape(marker_start)})(.*?)({re.escape(marker_end)})"
-        replacement = r"\1" + data + r"\3" if replace else r"\1\2" + data + r"\3"
-        self.protocol = re.sub(pattern, replacement, self.protocol, flags=re.DOTALL)
-        return self.protocol
-
-    def get_tasklist(self) -> Tasklist | None:
+    def _extract_tasklist(self, protocol: str) -> Tasklist | None:
         """
         Extract the implementation tasklist from the pull request body.
 
@@ -300,8 +319,8 @@ class ProtocolManager:
                     )
             return tasklist_entries
 
-        tasklist_str = self.get_data(id="tasklist", spec=self._manager.data["doc.protocol.tasklist"]).strip()
-        body_md = mdit.element.code_block(self.protocol, language="markdown", caption="Protocol")
+        tasklist_str = self._extract_marker_wrapped(text=protocol, marker=self._config["tasklist"]).strip()
+        body_md = mdit.element.code_block(protocol, language="markdown", caption="Protocol")
         if not tasklist_str:
             logger.warning(
                 log_title,
@@ -322,45 +341,7 @@ class ProtocolManager:
         )
         return tasklist
 
-    def write_tasklist(self, tasklist: Tasklist) -> str:
-        """Write an implementation tasklist as Markdown string
-        and update it in the protocol.
-
-        Parameters
-        ----------
-        tasklist
-            A list of dictionaries, each representing a tasklist entry.
-            The format of each dictionary is the same as that returned by
-            `_extract_tasklist_entries`.
-        """
-        string = []
-
-        def write(entry_list: Sequence[MainTasklistEntry | SubTasklistEntry], level=0):
-            for entry in entry_list:
-                check = 'X' if entry.complete else ' '
-                string.append(f"{' ' * level * 2}- [{check}] {entry.summary.strip()}")
-                if entry.body:
-                    for line in entry.body.splitlines():
-                        string.append(f"{' ' * (level + 1) * 2}{line}")
-                write(entry.subtasks, level + 1)
-
-        write(tasklist.tasks)
-        tasklist = "\n".join(string).strip()
-        return self.add_data(
-            id="tasklist",
-            spec=self._manager.data["doc.protocol.tasklist"],
-            data=f"\n{tasklist}\n",
-            replace=True
-        )
-
-    def _make_text_marker(self, id: str, data: dict | None = None) -> tuple[str, str]:
-        data = data or {}
-        return tuple(
-            data[pos] if pos in data else self._config["marker"][pos].format(id)
-            for pos in ("start", "end")
-        )
-
-    def _make_auto_labels_from_issue_ticket_inputs(self):
+    def _make_auto_labels_from_issue_ticket_inputs(self, issue_form: IssueForm) -> tuple[dict[str, list[Label]], Label]:
         version_labels = []
         branch_labels = []
         if "version" in self._issue_inputs:
@@ -376,7 +357,32 @@ class ProtocolManager:
                 "Issue Label Update",
                 "Could not match branch or version in issue body to pattern defined in metadata.",
             )
-        return version_labels, branch_labels
+        labels = {
+            "version": version_labels,
+            "branch": branch_labels,
+        }
+        for label in issue_form.id_labels + issue_form.labels:
+            labels.setdefault(label.category.value, []).append(label)
+        status_label = self._manager.label.status_label(IssueStatus.TRIAGE)
+        return labels, status_label
+
+    def _add_labels_env_var(self, labels: dict[LabelType, list[Label]]):
+        labels_out = {
+            k.value: v for k, v in labels.items() if k is not LabelType.STATUS
+        }
+        self._env_vars["labels"] = labels_out
+        self._env_vars["status_label"] = labels.get(LabelType.STATUS, [None])[0]
+        return
+
+    @staticmethod
+    def _extract_marker_wrapped(text: str, marker: dict):
+        pattern = rf"{re.escape(marker["start"])}(.*?){re.escape(marker["end"])}"
+        match = re.search(pattern, text, flags=re.DOTALL)
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _wrap_in_markers(entry: str, marker: dict[str, str]):
+        return f"{marker["start"]}{entry}{marker["end"]}"
 
     @staticmethod
     def _extract_issue_ticket_inputs(body: str, body_elems: list[dict]) -> dict[str, str | list]:
@@ -462,3 +468,16 @@ class ProtocolManager:
     #         )
     #         return checkbox
     #     return re.sub(pattern, replacer, checkbox, count=1)
+
+    # def add_data(
+    #     self,
+    #     id: str,
+    #     spec: dict,
+    #     data: str,
+    #     replace: bool = False
+    # ) -> str:
+    #     marker_start, marker_end = self._make_text_marker(id=id, data=spec)
+    #     pattern = rf"({re.escape(marker_start)})(.*?)({re.escape(marker_end)})"
+    #     replacement = r"\1" + data + r"\3" if replace else r"\1\2" + data + r"\3"
+    #     self.protocol = re.sub(pattern, replacement, self.protocol, flags=re.DOTALL)
+    #     return self.protocol
