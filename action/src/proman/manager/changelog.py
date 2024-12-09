@@ -7,27 +7,26 @@ from loggerman import logger
 import pyserials as ps
 import controlman
 from controlman import data_validator
+from controlman import date
 
 from github_contexts.github.payload.object import Issue
 
 from proman.dtype import LabelType
-from controlman import date
-
+from proman.dstruct import VersionTag, Version
 
 if _TYPE_CHECKING:
-    from typing import Literal
-    from pathlib import Path
     from github_contexts.github.payload.object import PullRequest, Milestone
     from versionman.pep440_semver import PEP440SemVer
     from proman.manager import Manager, ProtocolManager
-    from proman.dstruct import IssueForm, Tasklist, Version, Label
+    from proman.dstruct import IssueForm, Tasklist, Label
 
 
-class BareChangelogManager:
+class ChangelogManager:
 
-    def __init__(self, repo_path: Path):
+    def __init__(self, manager: Manager):
+        self._manager = manager
         log_title = "Changelog Load"
-        self._filepath = repo_path / controlman.const.FILEPATH_CHANGELOG
+        self._filepath = self._manager.git.repo_path / controlman.const.FILEPATH_CHANGELOG
         self._changelog = ps.read.json_from_file(self._filepath)
         self._read = copy.deepcopy(self._changelog)
         logger.success(
@@ -51,6 +50,90 @@ class BareChangelogManager:
     def full(self) -> list:
         return self._changelog
 
+    def update_from_issue(
+        self,
+        issue_form: IssueForm,
+        issue: Issue,
+        labels: list[Label],
+        pull: dict,
+        protocol: ProtocolManager,
+        base_version: Version,
+        target_version: Version | VersionTag,
+    ):
+        self.update_version(version=target_version)
+        self.update_date()
+        self._update_type(issue_form=issue_form)
+        self._update_issue(issue=issue, issue_form=issue_form, protocol=protocol)
+        self._update_labels(labels=labels)
+        if issue.milestone:
+            self._update_milestone(milestone=issue.milestone)
+        self._update_parent(version=base_version)
+        self._update_protocol(protocol=protocol)
+        self._update_pull_request(pull=pull, base_version=base_version, head_version=base_version)
+
+        self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
+        for assignee in issue_form.pull_assignees + issue_form.review_assignees:
+            self.update_contributor(
+                id=assignee.id,
+                member=assignee.member,
+                roles=assignee.current_role,
+            )
+        if issue_form.role["submitter"]:
+            submitter = self._manager.user.from_issue_author(issue, add_to_contributors=True)
+            self.update_contributor(
+                member=submitter.member, id=submitter.id, roles=issue_form.role["submitter"]
+            )
+        return
+
+    def update_from_pull(
+        self,
+        issue_form: IssueForm,
+        pull: PullRequest,
+        labels: dict[LabelType, list[Label]],
+        protocol: ProtocolManager,
+        tasklist: Tasklist,
+        base_version: Version,
+        head_version: Version,
+        target_version: Version | PEP440SemVer,
+    ):
+        self.update_date()
+        self._update_labels(labels)
+        if pull.milestone:
+            self._update_milestone(milestone=pull.milestone)
+        self._update_parent(version=base_version)
+        self.update_protocol_data(protocol.get_all_data())
+        self.update_protocol_tasklist(tasklist)
+        self.update_public(public=bool(issue_form.commit.action))
+        self._update_pull_request(pull=pull, base_version=base_version, head_version=head_version)
+        self.update_type_id(type_id=issue_form.id)
+        self.update_version(version=target_version)
+        self._update_contributors_with_assignees(issue=pull, issue_form=issue_form)
+        if not pull.draft:
+            self.update_pull_reviewers(pull=pull, issue_form=issue_form)
+        return
+
+    def update_pull_reviewers(self, pull: PullRequest, issue_form: IssueForm):
+        for reviewer in pull.requested_reviewers:
+            user = self._manager.user.get_from_github_rest_id(
+                reviewer.id, add_to_contributors=True
+            )
+            for predefined_reviewer in issue_form.review_assignees:
+                if predefined_reviewer == user:
+                    roles = predefined_reviewer.current_role
+                    break
+            else:
+                roles = issue_form.role["review_assignee"]
+            if roles:
+                self.update_contributor(id=user.id, member=user.member, roles=roles)
+        return
+
+    def commit_changes(self, amend: bool = False) -> str | None:
+        written = self.write_file()
+        if not written:
+            return None
+        commit = self._manager.commit.create_auto(id="changelog_sync")
+        return self._manager.git.commit(message=str(commit.conv_msg), amend=amend)
+
     def update_contributor(self, id: str, member: bool, roles: dict[str, int]):
         category = "member" if member else "collaborator"
         contributor_roles = self.current.setdefault(
@@ -65,18 +148,59 @@ class BareChangelogManager:
         self.current["date"] = date.to_internal(date.from_now())
         return
 
-    def update_issue(self, issue: Issue):
-        self.current["issue"] = {
+    def _update_contributors_with_assignees(self, issue: Issue | PullRequest, issue_form: IssueForm):
+        assignee_gh_ids = []
+        if issue.assignee:
+            assignee_gh_ids.append(issue.assignee.id)
+        if issue.assignees:
+            for assignee in issue.assignees:
+                if assignee:
+                    assignee_gh_ids.append(assignee.id)
+        for assignee_gh_id in set(assignee_gh_ids):
+            user = self._manager.user.get_from_github_rest_id(
+                assignee_gh_id, add_to_contributors=True
+            )
+            predefined_assignees = issue_form.issue_assignees if isinstance(issue, Issue) else issue_form.pull_assignees
+            for predefined_assignee in predefined_assignees:
+                if predefined_assignee == user:
+                    roles = predefined_assignee.current_role
+                    break
+            else:
+                roles = issue_form.role[
+                    "issue_assignee" if isinstance(issue, Issue) else "pull_assignee"
+                ]
+            if roles:
+                self.update_contributor(
+                    id=user.id,
+                    member=user.member,
+                    roles=roles,
+                )
+        return
+
+    def _update_issue(self, issue: Issue, issue_form: IssueForm, protocol: ProtocolManager):
+        entry = {
+            "type": issue_form.id,
             "number": issue.number,
             "id": issue.id,
             "node_id": issue.node_id,
             "url": issue.html_url,
-            "created_at": date.to_internal(date.from_github(issue.created_at)),
+            "date": date.to_internal(date.from_github(issue.created_at)),
             "title": issue.title,
         }
+        for datum_id, datum in self._manager.data["issue.protocol.data"].items():
+            if datum.get("changelog"):
+                entry.setdefault("protocol", {}).setdefault("data", {})[datum_id] = protocol.data.get(datum_id)
+        for body_elem in issue_form.body:
+            if body_elem.get("changelog"):
+                elem_id = body_elem.get("id")
+                if elem_id:
+                    entry.setdefault("protocol", {}).setdefault("input", {})[elem_id] = protocol.input.get(
+                        elem_id
+                    )
+        self.current["issue"] = entry
         return
 
-    def update_labels(self, labels: list[Label] | dict[LabelType, list[Label]]):
+    def _update_labels(self, labels: list[Label] | dict[LabelType, list[Label]]):
         if isinstance(labels, list):
             label_list = labels
         else:
@@ -93,7 +217,7 @@ class BareChangelogManager:
         self.current["labels"] = out
         return
 
-    def update_milestone(self, milestone: Milestone):
+    def _update_milestone(self, milestone: Milestone):
         self.current["milestone"] = {
             "number": milestone.number,
             "id": milestone.id,
@@ -106,7 +230,7 @@ class BareChangelogManager:
         }
         return
 
-    def update_parent(self, version: Version):
+    def _update_parent(self, version: Version):
         self.current["parent"] = {
             "version": str(version.public),
             "distance": version.distance,
@@ -115,9 +239,9 @@ class BareChangelogManager:
         }
         return
 
-    def update_protocol(self, protocol: ProtocolManager):
-        self.update_protocol_data(protocol.get_all_data())
-        self.update_protocol_tasklist(protocol._extract_tasklist())
+    def _update_protocol(self, protocol: ProtocolManager):
+        self.update_protocol_data(protocol.data)
+        self.update_protocol_tasklist(protocol.tasklist)
         return
 
     def update_protocol_data(self, data: dict):
@@ -128,7 +252,7 @@ class BareChangelogManager:
         self.current["tasks"] = tasklist.as_list
         return
 
-    def update_pull_request(
+    def _update_pull_request(
         self,
         pull: PullRequest | dict,
         base_version: Version,
@@ -139,7 +263,7 @@ class BareChangelogManager:
             "id": pull["id"],
             "node_id": pull["node_id"],
             "url": pull["html_url"],
-            "created_at": date.to_internal(date.from_github(pull["created_at"])),
+            "date": date.to_internal(date.from_github(pull["created_at"])),
             "title": pull["title"],
             "additions": pull.get("additions", 0),
             "deletions": pull.get("deletions", 0),
@@ -173,16 +297,21 @@ class BareChangelogManager:
         return
 
     def update_release_zenodo_draft_status(self, sandbox: bool, draft: bool = False):
-        release_data = self.current.get("dev", {}).get("zenodo_sandbox", {}) if sandbox else self.current.get("zenodo")
+        release_data = self.current.get("dev", {}).get("zenodo_sandbox", {}) if sandbox else self.current.get(
+            "zenodo")
         release_data["draft"] = draft
         return
 
-    def update_type_id(self, type_id: str):
-        self.current["type_id"] = type_id
-        return
-
-    def update_version(self, version: Version | PEP440SemVer | str):
+    def update_version(self, version: VersionTag | Version | PEP440SemVer):
+        if isinstance(version, VersionTag):
+            self.current["version"] = str(version.version)
+            self.current["tag"] = str(version)
+            return
+        elif isinstance(version, Version) and not version.is_local:
+            tag_prefix = self._manager.data["tag.version.prefix"]
+            self.current["tag"] = f"{tag_prefix}{version}"
         self.current["version"] = str(version)
+        return
 
     def finalize(self, pre: bool):
         self.current.pop("dev", None)
@@ -201,124 +330,5 @@ class BareChangelogManager:
         )
         return True
 
-
-class ChangelogManager(BareChangelogManager):
-
-    def __init__(self, manager: Manager):
-        self._manager = manager
-        super().__init__(repo_path=self._manager.git.repo_path)
-        return
-
-    def initialize_from_issue(
-        self,
-        issue_form: IssueForm,
-        issue: Issue,
-        labels: list[Label],
-        pull: dict,
-        protocol: ProtocolManager,
-        base_version: Version,
-        target_version: Version,
-    ):
-        self.update_date()
-        self.update_issue(issue)
-        self.update_labels(labels=labels)
-        if issue.milestone:
-            self.update_milestone(milestone=issue.milestone)
-        self.update_parent(version=base_version)
-        self.update_protocol(protocol=protocol)
-        self.update_public(public=bool(issue_form.commit.action))
-        self.update_pull_request(pull=pull, base_version=base_version, head_version=base_version)
-        self.update_type_id(type_id=issue_form.id)
-        self.update_version(version=target_version)
-        self._update_contributors_with_assignees(issue=issue, issue_form=issue_form)
-        for assignee in issue_form.pull_assignees + issue_form.review_assignees:
-            self.update_contributor(
-                id=assignee.id,
-                member=assignee.member,
-                roles=assignee.current_role,
-            )
-        if issue_form.role["submitter"]:
-            submitter = self._manager.user.from_issue_author(issue, add_to_contributors=True)
-            self.update_contributor(
-                member=submitter.member, id=submitter.id, roles=issue_form.role["submitter"]
-            )
-        return
-
-    def update_from_pull_request(
-        self,
-        issue_form: IssueForm,
-        pull: PullRequest,
-        labels: dict[LabelType, list[Label]],
-        protocol: ProtocolManager,
-        tasklist: Tasklist,
-        base_version: Version,
-        head_version: Version,
-        target_version: Version | PEP440SemVer,
-    ):
-        self.update_date()
-        self.update_labels(labels)
-        if pull.milestone:
-            self.update_milestone(milestone=pull.milestone)
-        self.update_parent(version=base_version)
-        self.update_protocol_data(protocol.get_all_data())
-        self.update_protocol_tasklist(tasklist)
-        self.update_public(public=bool(issue_form.commit.action))
-        self.update_pull_request(pull=pull, base_version=base_version, head_version=head_version)
-        self.update_type_id(type_id=issue_form.id)
-        self.update_version(version=target_version)
-        self._update_contributors_with_assignees(issue=pull, issue_form=issue_form)
-        if not pull.draft:
-            self.update_pull_request_reviewers(pull=pull, issue_form=issue_form)
-        return
-
-    def update_pull_request_reviewers(self, pull: PullRequest, issue_form: IssueForm):
-        for reviewer in pull.requested_reviewers:
-            user = self._manager.user.get_from_github_rest_id(
-                reviewer.id, add_to_contributors=True
-            )
-            for predefined_reviewer in issue_form.review_assignees:
-                if predefined_reviewer == user:
-                    roles = predefined_reviewer.current_role
-                    break
-            else:
-                roles = issue_form.role["review_assignee"]
-            if roles:
-                self.update_contributor(id=user.id, member=user.member, roles=roles)
-        return
-
-    def commit_changes(self, amend: bool = False) -> str | None:
-        written = self.write_file()
-        if not written:
-            return None
-        commit = self._manager.commit.create_auto(id="changelog_sync")
-        return self._manager.git.commit(message=str(commit.conv_msg), amend=amend)
-
-    def _update_contributors_with_assignees(self, issue: Issue | PullRequest, issue_form: IssueForm):
-        assignee_gh_ids = []
-        if issue.assignee:
-            assignee_gh_ids.append(issue.assignee.id)
-        if issue.assignees:
-            for assignee in issue.assignees:
-                if assignee:
-                    assignee_gh_ids.append(assignee.id)
-        for assignee_gh_id in set(assignee_gh_ids):
-            user = self._manager.user.get_from_github_rest_id(
-                assignee_gh_id, add_to_contributors=True
-            )
-            predefined_assignees = issue_form.issue_assignees if isinstance(issue, Issue) else issue_form.pull_assignees
-            for predefined_assignee in predefined_assignees:
-                if predefined_assignee == user:
-                    roles = predefined_assignee.current_role
-                    break
-            else:
-                roles = issue_form.role[
-                    "issue_assignee" if isinstance(issue, Issue) else "pull_assignee"
-                ]
-            if roles:
-                self.update_contributor(
-                    id=user.id,
-                    member=user.member,
-                    roles=roles,
-                )
-        return
-
+    def _update_type(self, issue_form: IssueForm):
+        self.current["type"] = issue_form.commit.action or "local"
