@@ -183,6 +183,7 @@ class ProtocolManager:
         return self._issue_inputs, body_processed, all_labels
 
     def initialize_pull(self, pull: dict, issue: Issue, issue_form: IssueForm, labels: list[Label]):
+        self._type = "Pull Request"
         self._protocol_pull_nr = pull["number"]
         self._config = self._manager.data["pull.protocol"]
         labels_env = {}
@@ -225,6 +226,10 @@ class ProtocolManager:
         else:
             protocol = issue.body
             self._protocol_issue_nr = issue.number
+        logger.info(
+            "Issue Protocol Load",
+            mdit.element.code_block(protocol, language="markdown", caption="Protocol"),
+        )
         self._issue_inputs.update(
             self._extract_yaml(protocol, marker=self._config["inputs"])
         )
@@ -375,18 +380,16 @@ class ProtocolManager:
         self._env_vars["status_label"] = labels.get(LabelType.STATUS, [None])[0]
         return
 
-    @staticmethod
-    def _extract_marker_wrapped(text: str, marker: dict):
+    def _extract_marker_wrapped(self, text: str, marker: dict):
         pattern = rf"{re.escape(marker["start"])}(.*?){re.escape(marker["end"])}"
         match = re.search(pattern, text, flags=re.DOTALL)
         data = match.group(1) if match else ""
         logger.info(
-            "Protocol Data Extraction",
+            f"{self._type} Protocol Data Extraction",
             mdit.element.code_block(data, caption="Match") if data else "No Match found.",
             mdit.element.code_block(pattern, caption="RegEx Pattern"),
-            mdit.element.code_block(text, language="markdown", caption="Protocol"),
         )
-        return
+        return data
 
     @staticmethod
     def _wrap_in_markers(entry: str, marker: dict[str, str]):
