@@ -215,7 +215,7 @@ class IssuesEventHandler(EventHandler):
                 deploy_type=IssueStatus.DEPLOY_ALPHA,
                 action=self.issue_form.commit.action,
             )
-            head_manager.changelog.initialize_from_issue(
+            head_manager.changelog.update_from_issue(
                 issue_form=self.issue_form,
                 issue=self.issue,
                 labels=labels,
