@@ -132,7 +132,7 @@ class PullRequestEventHandler(PullRequestTargetEventHandler):
             self.manager.release.github.get_or_make_draft(tag=tag)
             self.manager.release.zenodo.get_or_make_drafts()
             self.head_manager.changelog.update_release_zenodo_draft_status(sandbox=True, draft=False)
-        self.head_manager.changelog.update_from_pull_request(
+        self.head_manager.changelog.update_from_pull(
             issue_form=self.issue_form,
             pull=self.pull,
             labels=self.manager.label.resolve_labels(self.pull.label_names),
