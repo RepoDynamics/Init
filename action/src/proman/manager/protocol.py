@@ -158,7 +158,7 @@ class ProtocolManager:
         self.add_event(env_vars={"action": "opened"})
         for assignee in issue_form.issue_assignees:
             self.add_event(env_vars={"action": "assigned", "assignee": assignee})
-        all_labels = set([label for label_list in labels.values() for label in label_list] + [status_label])
+        all_labels = [label for label_list in labels.values() for label in label_list] + [status_label]
         for label in all_labels:
             self.add_event(env_vars={"action": "labeled", "label": label})
 
