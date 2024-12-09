@@ -175,7 +175,7 @@ class PushEventHandler(EventHandler):
         )
         version = user_input.version or PEP440SemVer("0.0.0")
         version_tag = self.manager.release.create_version_tag(version)
-        self.manager.changelog.update_version(version)
+        self.manager.changelog.update_version(version_tag)
         self.manager.changelog.update_date()
         gh_draft = self.manager.release.github.get_or_make_draft(tag=version_tag)
         zenodo_draft, zenodo_sandbox_draft = self.manager.release.zenodo.get_or_make_drafts()
