@@ -205,3 +205,5 @@ class LabelType(_Enum):
             return self.value == other
         return self is other
 
+    def __hash__(self):
+        return hash((self.__class__, self.value))
