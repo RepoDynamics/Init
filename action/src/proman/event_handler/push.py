@@ -187,7 +187,7 @@ class PushEventHandler(EventHandler):
                 ("zenodo_sandbox", user_input.publish_zenodo_sandbox)
             ):
                 changelog_entry = self.manager.changelog.current.get(
-                    changelog_key
+                    changelog_key, {}
                 ) if changelog_key != "zenodo_sandbox" else self.manager.changelog.current.get("dev", {})
                 if do_publish is False:
                     changelog_entry.pop(changelog_key, None)
