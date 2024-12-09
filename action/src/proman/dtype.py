@@ -53,6 +53,9 @@ class RepoFileType(_Enum):
             return self.value == other
         return self is other
 
+    def __hash__(self):
+        return hash((self.__class__, self.value))
+
 
 class BranchType(_Enum):
     MAIN = "main"
@@ -92,6 +95,9 @@ class InitCheckAction(_Enum):
             return self.value == other
         return self is other
 
+    def __hash__(self):
+        return hash((self.__class__, self.value))
+
 
 class ReleaseAction(_Enum):
     MAJOR = "major"
@@ -106,6 +112,9 @@ class ReleaseAction(_Enum):
         if isinstance(other, str):
             return self.value == other
         return self is other
+
+    def __hash__(self):
+        return hash((self.__class__, self.value))
 
 
 class IssueStatus(_Enum):
@@ -122,14 +131,6 @@ class IssueStatus(_Enum):
     DEPLOY_BETA = "deploy_beta"
     DEPLOY_RC = "deploy_rc"
     DEPLOY_FINAL = "deploy_final"
-
-    def __str__(self):
-        return self.value
-
-    def __eq__(self, other):
-        if isinstance(other, str):
-            return self.value == other
-        return self is other
 
     @property
     def level(self) -> int:
@@ -187,6 +188,9 @@ class IssueStatus(_Enum):
         if isinstance(other, str):
             return self.value == other
         return self is other
+
+    def __hash__(self):
+        return hash((self.__class__, self.value))
 
 
 class LabelType(_Enum):
