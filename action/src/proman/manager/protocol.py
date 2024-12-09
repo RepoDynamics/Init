@@ -193,6 +193,7 @@ class ProtocolManager:
                 status_label = label
             else:
                 labels_env.setdefault(label.category.value, []).append(label)
+        tasklist_str = self._resolve_to_str(self._config["tasklist"]["value"], jsonpath=f"pull.protocol.tasklist.value")
         self._env_vars.update(
             {
                 "event": "pull_request",
@@ -202,6 +203,7 @@ class ProtocolManager:
                 "issue": issue,
                 "labels": labels_env,
                 "status_label": status_label,
+                "tasklist": self._wrap_in_markers(tasklist_str, marker=self._config["tasklist"])
             }
         )
         self._protocol_config.update(self._config["config"].get("default", {}))
