@@ -122,7 +122,7 @@ class ProtocolManager:
                 return
 
             if not self._tasklist:
-                return ""
+                return self._env_vars.get("tasklist", "")
             string = []
             write(self._tasklist.tasks)
             return self._wrap_in_markers(
