@@ -33,6 +33,7 @@ class ProtocolManager:
         self._issue_inputs: dict = {}
         self._tasklist: Tasklist | None = None
         self._env_vars: dict = {"config": self._protocol_config, "input": self._issue_inputs}
+        self._type: Literal["Issue", "Pull Request"] = "Issue"
         return
 
     @property
