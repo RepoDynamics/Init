@@ -57,7 +57,7 @@ class ProtocolManager:
     def tasklist(self) -> Tasklist:
         return self._tasklist
 
-    def add_event(self, env_vars: dict):
+    def add_event(self, env_vars: dict | None = None):
         for data_id, data in self._config.get("data", {}).items():
             if "template" in data:
                 template_resolved = self._resolve_to_str(
