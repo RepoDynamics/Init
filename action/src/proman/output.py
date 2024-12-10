@@ -347,6 +347,8 @@ class OutputManager:
             if not do_publish:
                 continue
             job_config = self._main_manager.data[f"workflow.publish.{target}"]
+            if not job_config:
+                continue
             publish_out = {
                 "name": self._fill_jinja(job_config["name"]),
                 "job": {
