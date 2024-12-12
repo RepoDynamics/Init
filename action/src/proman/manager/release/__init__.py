@@ -185,12 +185,29 @@ class ReleaseManager:
         git: Git | None = None,
     ) -> VersionTag:
         version_tag = self.create_version_tag(version=version) if not isinstance(version, VersionTag) else version
+        major = str(version_tag.version.major)
+        if major == "0":
+            major = f"0.{version_tag.version.minor}"
+        final_env_vars = {"version": version, "release": major} | (env_vars or {})
         msg = self._manager.fill_jinja_template(
             self._manager.data["tag.version.message"],
-            {"version": version} | (env_vars or {}),
+            env_vars=final_env_vars,
         )
         git = git or self._manager.git
         git.create_tag(tag=str(version_tag), message=msg)
+        release_tag_config =  self._manager.data["tag.release"]
+        if release_tag_config:
+            release_tag = f"{release_tag_config["prefix"]}{major}"
+            git.delete_tag(
+                tag=release_tag,
+                push_target="origin",
+                raise_nonexistent=False,
+            )
+            release_tag_msg = self._manager.fill_jinja_template(
+                release_tag_config["message"],
+                env_vars=final_env_vars
+            )
+            git.create_tag(tag=release_tag, message=release_tag_msg)
         return version_tag
 
     def create_version_tag(self, version: PEP440SemVer) -> VersionTag:

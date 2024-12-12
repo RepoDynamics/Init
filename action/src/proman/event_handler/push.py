@@ -36,13 +36,6 @@ class PushEventHandler(EventHandler):
 
     @logger.sectioner("Push Handler Execution")
     def run(self):
-        if self.head_commit and self.head_commit.committer.username == "RepoDynamicsBot":
-            self.reporter.add(
-                name="event",
-                status="skip",
-                summary="Automated commit by RepoDynamicsBot.",
-            )
-            return
         if self.gh_context.ref_type is not _gh_context.enum.RefType.BRANCH:
             self.reporter.event(
                 f"Push to tag `{self.gh_context.ref_name}`"
@@ -173,7 +166,7 @@ class PushEventHandler(EventHandler):
         self.reporter.event(
             "Project initialization" if init else "Repository initialization phase"
         )
-        version = user_input.version or PEP440SemVer("0.0.0")
+        version = user_input.version or PEP440SemVer(self.manager.changelog.current["version"])
         version_tag = self.manager.release.create_version_tag(version)
         self.manager.changelog.update_version(version_tag)
         self.manager.changelog.update_date()
