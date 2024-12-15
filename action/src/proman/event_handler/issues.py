@@ -2,8 +2,6 @@ from __future__ import annotations as _annotations
 
 from typing import TYPE_CHECKING as _TYPE_CHECKING
 
-import copy
-
 from github_contexts import github as gh_context
 from loggerman import logger
 import mdit
