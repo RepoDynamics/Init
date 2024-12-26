@@ -3,9 +3,9 @@ rich >= 13.5
 versioningit >= 3.1.2, < 4
 Jinja2 >= 3, < 4
 ActionMan == 0.0.0.dev24
-ControlMan == 0.0.0.dev423
+ControlMan == 0.0.0.dev424
 ConventionalCommits == 0.0.0.dev54
-GitHub-Contexts == 0.0.0.dev20
+GitHub-Contexts == 0.0.0.dev21
 LoggerMan == 0.0.0.dev82
 MDit == 0.0.0.dev52
 HTMP == 0.0.0.dev5
